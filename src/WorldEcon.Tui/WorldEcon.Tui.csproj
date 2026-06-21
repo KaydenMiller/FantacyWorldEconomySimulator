@@ -9,6 +9,9 @@
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Terminal.Gui" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\WorldEcon.Application\WorldEcon.Application.csproj" />
     <ProjectReference Include="..\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
     <ProjectReference Include="..\WorldEcon.Engine\WorldEcon.Engine.csproj" />
