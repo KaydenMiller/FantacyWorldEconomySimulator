@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/WorldEcon.Application/WorldEcon.Application.csproj" />
+    <Project Path="src/WorldEcon.Cli/WorldEcon.Cli.csproj" />
     <Project Path="src/WorldEcon.Domain/WorldEcon.Domain.csproj" />
     <Project Path="src/WorldEcon.Persistence/WorldEcon.Persistence.csproj" />
     <Project Path="src/WorldEcon.SharedKernel/WorldEcon.SharedKernel.csproj" />
