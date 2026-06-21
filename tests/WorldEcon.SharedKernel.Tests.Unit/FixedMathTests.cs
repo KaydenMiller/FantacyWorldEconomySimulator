@@ -74,4 +74,27 @@ public class FixedMathTests
         var act = () => FixedMath.FloorMod(5, 0);
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Test]
+    public void PowBpInt_ExponentZero_IsOne()
+        => FixedMath.PowBpInt(20_000, 0).Should().Be(10_000); // anything^0 = 1.0
+
+    [Test]
+    public void PowBpInt_ExponentOne_IsBase()
+        => FixedMath.PowBpInt(20_000, 1).Should().Be(20_000); // 2.0^1 = 2.0
+
+    [Test]
+    public void PowBpInt_Squares_GreaterThanOne()
+        => FixedMath.PowBpInt(20_000, 2).Should().Be(40_000); // 2.0^2 = 4.0
+
+    [Test]
+    public void PowBpInt_Squares_LessThanOne()
+        => FixedMath.PowBpInt(5_000, 2).Should().Be(2_500); // 0.5^2 = 0.25
+
+    [Test]
+    public void PowBpInt_Throws_OnNegativeExponent()
+    {
+        var act = () => FixedMath.PowBpInt(20_000, -1);
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }

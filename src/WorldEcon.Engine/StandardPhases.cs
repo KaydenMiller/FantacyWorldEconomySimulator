@@ -7,5 +7,6 @@ public static class StandardPhases
         new Phases.ProductionPhase(),
         new Phases.ConsumptionPhase(),
         new Phases.PerishabilityPhase(),
+        new Phases.PricingPhase(),
     };
 }

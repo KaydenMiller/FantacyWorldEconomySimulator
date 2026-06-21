@@ -13,8 +13,9 @@ public sealed class Stockpile : AggregateRoot<StockpileId>
     public GoodId GoodId { get; private set; }
     public long Quantity { get; private set; }
     public Money CostBasis { get; private set; } // per-unit
+    public Money MarketPrice { get; private set; } // per-unit supply/demand price; Money.Zero until priced
 
-    private Stockpile() : base(default) { } // EF
+    private Stockpile() : base(default) { MarketPrice = Money.Zero; } // EF
 
     private Stockpile(StockpileId id, WorldId worldId, StockpileOwnerKind ownerKind, Guid ownerId,
         GoodId goodId, long quantity, Money costBasis) : base(id)
@@ -25,6 +26,7 @@ public sealed class Stockpile : AggregateRoot<StockpileId>
         GoodId = goodId;
         Quantity = quantity;
         CostBasis = costBasis;
+        MarketPrice = Money.Zero;
     }
 
     public static ErrorOr<Stockpile> CreateForShop(WorldId worldId, ShopId shop, GoodId good, long quantity, Money unitCostBasis)
@@ -57,5 +59,13 @@ public sealed class Stockpile : AggregateRoot<StockpileId>
             return Error.Validation("stockpile.withdraw.insufficient", "Not enough on hand to withdraw.");
         Quantity -= quantity;
         return Result.Success;
+    }
+
+    /// <summary>Sets the per-unit supply/demand market price. Rejects a negative price.</summary>
+    public void SetMarketPrice(Money price)
+    {
+        if (price.IsNegative)
+            throw new ArgumentOutOfRangeException(nameof(price), price.Units, "Market price must not be negative.");
+        MarketPrice = price;
     }
 }

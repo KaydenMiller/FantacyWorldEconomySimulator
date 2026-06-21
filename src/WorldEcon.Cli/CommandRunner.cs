@@ -237,11 +237,11 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"CostBasis",10}");
+        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"CostBasis",10} {"MarketPrice",12}");
         foreach (var sp in stockpiles)
         {
             var name = goodsById.TryGetValue(sp.GoodId, out var n) ? n : "(unknown)";
-            Console.WriteLine($"  {name,-16} {sp.Quantity,10} {sp.CostBasis.Units,10}");
+            Console.WriteLine($"  {name,-16} {sp.Quantity,10} {sp.CostBasis.Units,10} {sp.MarketPrice.Units,12}");
         }
         return 0;
     }

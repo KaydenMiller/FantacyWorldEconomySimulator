@@ -61,6 +61,20 @@ public static class FixedMath
         return q;
     }
 
+    /// <summary>
+    /// Integer power of a basis-point value: <paramref name="baseBp"/> (a fraction in bp) raised to a
+    /// non-negative integer <paramref name="exponent"/>, result in bp. <c>PowBpInt(b, 0) == BpScale</c> (1.0).
+    /// </summary>
+    public static long PowBpInt(long baseBp, int exponent)
+    {
+        if (exponent < 0)
+            throw new ArgumentOutOfRangeException(nameof(exponent), exponent, "Exponent must not be negative.");
+        long result = BpScale;
+        for (int i = 0; i < exponent; i++)
+            result = MulBp(result, baseBp);
+        return result;
+    }
+
     /// <summary>Modulo that is always in [0, modulus) for positive modulus.</summary>
     public static long FloorMod(long a, long modulus)
     {
