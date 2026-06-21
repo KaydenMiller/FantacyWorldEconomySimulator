@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WorldEcon.Engine</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WorldEcon.Domain\WorldEcon.Domain.csproj" />
+    <ProjectReference Include="..\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
+    <ProjectReference Include="..\WorldEcon.Simulation\WorldEcon.Simulation.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Persistence transitively pulls SQLite, which carries this advisory.
+         Suppress to stay warning-clean (mirrors WorldEcon.Persistence.csproj). -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+</Project>

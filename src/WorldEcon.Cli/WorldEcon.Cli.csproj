@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\WorldEcon.Application\WorldEcon.Application.csproj" />
+    <ProjectReference Include="..\WorldEcon.Engine\WorldEcon.Engine.csproj" />
     <ProjectReference Include="..\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
   </ItemGroup>
 </Project>
