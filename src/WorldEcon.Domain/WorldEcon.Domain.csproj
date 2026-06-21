@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WorldEcon.Domain</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="ErrorOr" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WorldEcon.SharedKernel\WorldEcon.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>
