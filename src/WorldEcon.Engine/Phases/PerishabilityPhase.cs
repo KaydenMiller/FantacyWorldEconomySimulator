@@ -46,7 +46,7 @@ public sealed class PerishabilityPhase : ISimulationPhase
             long loss = FixedMath.DivFloor(stock.Quantity * Tick.DefaultMinutesPerDay, good.ShelfLifeTicks);
             loss = Math.Min(loss, stock.Quantity);
             if (loss > 0)
-                stock.Withdraw(loss);
+                stock.Withdraw(loss).OrThrow("perishability decay");
         }
     }
 

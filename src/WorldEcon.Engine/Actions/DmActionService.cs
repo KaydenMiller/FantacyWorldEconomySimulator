@@ -69,7 +69,7 @@ public sealed class DmActionService
                 continue;
 
             long take = Math.Min(remaining, stock.Quantity);
-            stock.Withdraw(take);
+            stock.Withdraw(take).OrThrow("DM buy-from-shops withdraw");
             remaining -= take;
             bought += take;
         }
@@ -120,7 +120,7 @@ public sealed class DmActionService
             var stock = await FindMarketStockpile(worldId, settlementId, goodId);
             long withdraw = Math.Min(-delta, stock?.Quantity ?? 0);
             if (withdraw > 0)
-                stock!.Withdraw(withdraw);
+                stock!.Withdraw(withdraw).OrThrow("DM market-stock adjustment withdraw");
             applied = -withdraw;
         }
 

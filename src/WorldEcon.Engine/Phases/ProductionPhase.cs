@@ -114,7 +114,7 @@ public sealed class ProductionPhase : ISimulationPhase
             long committed = 0;
             foreach (var (line, stock) in inputStocks)
             {
-                stock.Withdraw(line.Quantity);
+                stock.Withdraw(line.Quantity).OrThrow("production input reservation");
                 committed += line.Quantity * stock.CostBasis.Units;
             }
 

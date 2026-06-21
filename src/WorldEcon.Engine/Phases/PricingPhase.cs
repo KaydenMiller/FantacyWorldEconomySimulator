@@ -59,6 +59,8 @@ public sealed class PricingPhase : ISimulationPhase
             {
                 if (node.SettlementId != settlement.Id)
                     continue;
+                if (node.Disabled)
+                    continue;
                 if (!recipes.TryGetValue(node.RecipeId, out var recipe))
                     continue;
                 foreach (var line in recipe.Inputs)

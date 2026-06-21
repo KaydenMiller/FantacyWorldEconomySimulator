@@ -142,7 +142,7 @@ public sealed class TradePhase : ISimulationPhase
             if (quantity < 1)
                 continue;
 
-            bestSeatStock.Withdraw(quantity);
+            bestSeatStock.Withdraw(quantity).OrThrow("trade seat-market purchase");
             merchant.Spend(new Money(quantity * bestSeatPrice));
 
             long travelTicks = bestDest.Distance * TravelTicksPerDistance;
