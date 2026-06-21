@@ -51,4 +51,23 @@ public class RngTests
         var act = () => rng.NextInt(0);
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Test]
+    public void GoldenVector_Seed42_MatchesCanonicalReference()
+    {
+        // Pinned against the canonical public-domain xoshiro256**/SplitMix64
+        // reference (Blackman & Vigna). DO NOT EDIT these values to match new
+        // output — a mismatch means the algorithm changed and replay is broken.
+        var rng = new Xoshiro256StarStar(42UL);
+        var actual = Enumerable.Range(0, 8).Select(_ => rng.NextULong()).ToArray();
+        actual.Should().Equal(
+            0x15780B2E0C2EC716UL,
+            0x6104D9866D113A7EUL,
+            0xAE17533239E499A1UL,
+            0xECB8AD4703B360A1UL,
+            0xFDE6DC7FE2EC5E64UL,
+            0xC50DA53101795238UL,
+            0xB82154855A65DDB2UL,
+            0xD99A2743EBE60087UL);
+    }
 }
