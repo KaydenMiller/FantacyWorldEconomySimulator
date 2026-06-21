@@ -14,6 +14,9 @@ public sealed class Settlement : AggregateRoot<SettlementId>
     public long Population { get; private set; }
     public Provenance Provenance { get; private set; }
 
+    // Parameterless ctor for EF Core materialization.
+    private Settlement() : base(default) => Name = null!;
+
     private Settlement(SettlementId id, WorldId worldId, RegionId regionId, string name,
         SettlementType type, int x, int y, long population, Provenance provenance) : base(id)
     {

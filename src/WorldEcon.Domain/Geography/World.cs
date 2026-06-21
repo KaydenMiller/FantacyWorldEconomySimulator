@@ -13,6 +13,14 @@ public sealed class World : AggregateRoot<WorldId>
     public Tick CurrentTick { get; private set; }
     public string RulesetVersion { get; private set; }
 
+    // Parameterless ctor for EF Core materialization (sets private/get-only props via backing fields).
+    private World() : base(default)
+    {
+        Name = null!;
+        Calendar = null!;
+        RulesetVersion = null!;
+    }
+
     private World(WorldId id, string name, ulong seed, CalendarDefinition calendar, Tick currentTick, string rulesetVersion)
         : base(id)
     {

@@ -14,6 +14,9 @@ public sealed class Route : AggregateRoot<RouteId>
     public int Danger { get; private set; }
     public RouteCategory Category { get; private set; }
 
+    // Parameterless ctor for EF Core materialization.
+    private Route() : base(default) { }
+
     private Route(RouteId id, WorldId worldId, SettlementId from, SettlementId to,
         long distance, Terrain terrain, int danger, RouteCategory category) : base(id)
     {

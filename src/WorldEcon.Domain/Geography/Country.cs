@@ -9,6 +9,9 @@ public sealed class Country : AggregateRoot<CountryId>
     public ContinentId ContinentId { get; }
     public string Name { get; private set; }
 
+    // Parameterless ctor for EF Core materialization.
+    private Country() : base(default) => Name = null!;
+
     private Country(CountryId id, WorldId worldId, ContinentId continentId, string name) : base(id)
     {
         WorldId = worldId;
