@@ -32,4 +32,11 @@ public class WeightedAverageValuationTests
         var act = () => Sut.Blend(10, new Money(100), 0, new Money(50));
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
+
+    [Test]
+    public void Blend_Throws_OnOverflow()
+    {
+        var act = () => Sut.Blend(long.MaxValue, new Money(long.MaxValue), 1, new Money(1));
+        act.Should().Throw<OverflowException>();
+    }
 }
