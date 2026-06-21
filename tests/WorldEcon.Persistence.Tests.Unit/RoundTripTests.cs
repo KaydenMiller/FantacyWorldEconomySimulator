@@ -55,6 +55,11 @@ public class RoundTripTests
                 var loadedRoute = await ctx.Routes.SingleAsync();
                 loadedRoute.FromSettlementId.Should().Be(hammerfell.Id);
                 loadedRoute.Category.Should().Be(RouteCategory.Land);
+
+                w.Id.Should().Be(world.Id);                       // get-only Id survives via backing field
+                loadedRoute.Id.Should().Be(route.Id);
+                var loadedSettlementIds = await ctx.Settlements.Select(s => s.Id).ToListAsync();
+                loadedSettlementIds.Should().BeEquivalentTo(new[] { hammerfell.Id, riverwood.Id });
             }
         }
         finally
