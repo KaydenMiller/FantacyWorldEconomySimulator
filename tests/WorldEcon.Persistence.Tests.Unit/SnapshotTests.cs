@@ -91,4 +91,63 @@ public class SnapshotTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Test]
+    public async Task Compare_DetectsChangedSettlement()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"we_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var mainPath = Path.Combine(dir, "main.db");
+        var snapPath = Path.Combine(dir, "snap.db");
+        try
+        {
+            var (worldId, _) = await SeedAsync(mainPath);
+            await new SqliteSnapshotService().CaptureAsync(mainPath, snapPath);
+
+            // Mutate the seeded "Hammerfell" settlement's population in main only (raw SQL — no domain mutator yet).
+            await using (var ctx = NewContextOnFile(mainPath))
+            {
+                await ctx.Database.ExecuteSqlRawAsync(
+                    "UPDATE settlements SET \"Population\" = 99999 WHERE \"Name\" = 'Hammerfell';");
+            }
+
+            var diff = await new StructuralCompareService().CompareAsync(snapPath, mainPath, worldId);
+            diff.ChangedSettlements.Should().ContainSingle(name => name == "Hammerfell");
+            diff.AddedSettlements.Should().BeEmpty();
+            diff.RemovedSettlements.Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Test]
+    public async Task Snapshot_OverExistingDest_AfterDestWasOpened_Succeeds()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"we_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        var mainPath = Path.Combine(dir, "main.db");
+        var snapPath = Path.Combine(dir, "snap.db");
+        try
+        {
+            await SeedAsync(mainPath);
+            var svc = new SqliteSnapshotService();
+
+            await svc.CaptureAsync(mainPath, snapPath);
+
+            // Open the dest as a context (pooled), then dispose — leaves a pooled handle.
+            await using (var ctx = NewContextOnFile(snapPath))
+                _ = await ctx.Settlements.CountAsync();
+
+            // Re-snapshot over the existing dest must succeed (no IOException from a stale pooled handle).
+            var act = async () => await svc.CaptureAsync(mainPath, snapPath);
+            await act.Should().NotThrowAsync();
+            File.Exists(snapPath).Should().BeTrue();
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

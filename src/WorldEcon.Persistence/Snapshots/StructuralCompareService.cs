@@ -25,12 +25,13 @@ public sealed class StructuralCompareService : ICompareService
     private static async Task<Dictionary<SettlementId, Settlement>> LoadSettlementsAsync(string path, WorldId worldId)
     {
         await using var ctx = new WorldDbContext(
-            new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={path}").Options);
+            new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={path};Pooling=False").Options);
         var list = await ctx.Settlements.Where(s => s.WorldId == worldId).ToListAsync();
         return list.ToDictionary(s => s.Id);
     }
 
     private static bool SameContent(Settlement a, Settlement b)
         => a.Name == b.Name && a.Type == b.Type && a.X == b.X && a.Y == b.Y
-           && a.Population == b.Population && a.RegionId.Equals(b.RegionId);
+           && a.Population == b.Population && a.RegionId.Equals(b.RegionId)
+           && a.Provenance == b.Provenance;
 }
