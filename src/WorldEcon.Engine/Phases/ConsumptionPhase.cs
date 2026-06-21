@@ -49,7 +49,7 @@ public sealed class ConsumptionPhase : ISimulationPhase
             long demand = FixedMath.MulBp(settlement.Population, good.ConsumptionPerCapitaBp);
             long consume = Math.Min(demand, stock.Quantity);
             if (consume > 0)
-                stock.Withdraw(consume);
+                stock.Withdraw(consume).OrThrow("population consumption");
         }
     }
 
