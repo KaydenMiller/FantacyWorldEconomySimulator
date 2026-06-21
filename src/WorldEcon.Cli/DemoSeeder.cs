@@ -63,6 +63,15 @@ internal static class DemoSeeder
             ProductionNode.Create(world.Id, riverwood.Id, smeltRecipe.Id, FacilityType.Smithy, 1),
             "Riverwood Smithy node");
 
+        // Representative merchants (one per market) so trade can start immediately,
+        // without waiting a week for the spawn phase. Reach 1000 >= route distance 120.
+        var riverwoodMerchant = Unwrap(
+            RepresentativeMerchant.Create(world.Id, riverwood.Id, new Money(50_000), 50, 1000),
+            "Riverwood merchant");
+        var hammerfellMerchant = Unwrap(
+            RepresentativeMerchant.Create(world.Id, hammerfell.Id, new Money(50_000), 50, 1000),
+            "Hammerfell merchant");
+
         // Shops.
         var sundries = Unwrap(Shop.Create(world.Id, hammerfell.Id, "The Sundries", 2000, new Money(100_000)), "The Sundries");
         var apothecary = Unwrap(Shop.Create(world.Id, hammerfell.Id, "Apothecary", 5000, new Money(100_000)), "Apothecary");
@@ -83,6 +92,7 @@ internal static class DemoSeeder
         ctx.Goods.AddRange(potion, iron, bread, ironOre);
         ctx.Shops.AddRange(sundries, apothecary, tradingPost);
         ctx.Stockpiles.AddRange(sundriesPotion, sundriesBread, apothPotion, tradingIron);
+        ctx.Merchants.AddRange(riverwoodMerchant, hammerfellMerchant);
         ctx.ResourceEndowments.Add(oreEndowment);
         ctx.Recipes.Add(smeltRecipe);
         ctx.ProductionNodes.Add(smithyNode);
