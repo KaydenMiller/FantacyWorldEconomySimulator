@@ -47,4 +47,29 @@ public class HierarchyTests
         r.WorldId.Should().Be(wid);
         r.CountryId.Should().Be(coid);
     }
+
+    [Test]
+    public void World_AdvanceTo_SetsCurrentTick()
+    {
+        var w = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
+        w.AdvanceTo(new Tick(1440));
+        w.CurrentTick.Should().Be(new Tick(1440));
+    }
+
+    [Test]
+    public void World_AdvanceTo_AllowsSameTick()
+    {
+        var w = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
+        w.AdvanceTo(Tick.Zero);
+        w.CurrentTick.Should().Be(Tick.Zero);
+    }
+
+    [Test]
+    public void World_AdvanceTo_BackwardsThrows()
+    {
+        var w = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
+        w.AdvanceTo(new Tick(100));
+        var act = () => w.AdvanceTo(new Tick(99));
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }

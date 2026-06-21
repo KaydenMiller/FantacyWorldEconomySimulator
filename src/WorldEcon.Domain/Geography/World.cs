@@ -40,4 +40,16 @@ public sealed class World : AggregateRoot<WorldId>
 
         return new World(WorldId.New(), name.Trim(), seed, calendar, Tick.Zero, rulesetVersion);
     }
+
+    /// <summary>Advances in-world time to <paramref name="tick"/>. Time must not go backwards.</summary>
+    public void AdvanceTo(Tick tick)
+    {
+        if (tick.Value < CurrentTick.Value)
+            throw new ArgumentOutOfRangeException(
+                nameof(tick),
+                tick.Value,
+                $"Cannot advance to tick {tick.Value}: current tick is {CurrentTick.Value} (time must not go backwards).");
+
+        CurrentTick = tick;
+    }
 }

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Application.Queries;
+using WorldEcon.Engine;
 using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
 using WorldEcon.Persistence.Snapshots;
@@ -23,6 +24,7 @@ internal static class CommandRunner
                 "new" => await CmdNew(args),
                 "list" => await CmdList(args),
                 "price" => await CmdPrice(args),
+                "advance" => await CmdAdvance(args),
                 "snapshot" => await CmdSnapshot(args),
                 _ => Unknown(args[0]),
             };
@@ -160,6 +162,43 @@ internal static class CommandRunner
         return 0;
     }
 
+    // ---- advance <dbPath> <ticks> ----
+    private static async Task<int> CmdAdvance(string[] args)
+    {
+        if (args.Length < 3)
+            return MissingArgs("advance <dbPath> <ticks>");
+
+        var path = args[1];
+        if (!long.TryParse(args[2], out var ticks) || ticks < 0)
+        {
+            Console.Error.WriteLine($"Error: ticks must be a non-negative integer, got '{args[2]}'.");
+            return 1;
+        }
+
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        if (world is null)
+        {
+            Console.Error.WriteLine("Error: no world found in database. Run 'new' first.");
+            return 1;
+        }
+
+        var sim = await SimulationContext.LoadAsync(ctx, world.Id);
+
+        // No phases yet: this sub-phase only moves the clock.
+        var engine = new TickEngine([]);
+        await engine.AdvanceAsync(sim, ticks);
+
+        var date = sim.Calendar.ToDate(sim.World.CurrentTick);
+        Console.WriteLine($"Advanced {ticks} ticks.");
+        Console.WriteLine($"  Current tick: {sim.World.CurrentTick.Value}");
+        Console.WriteLine(
+            $"  In-world date: Year {date.Year}, Month {date.Month}, Day {date.Day}, {date.Hour:D2}:{date.Minute:D2}");
+        return 0;
+    }
+
     // ---- snapshot <dbPath> <destPath> ----
     private static async Task<int> CmdSnapshot(string[] args)
     {
@@ -202,6 +241,7 @@ internal static class CommandRunner
         Console.WriteLine("  new      <dbPath>                          Create + migrate DB and seed the demo world.");
         Console.WriteLine("  list     <dbPath>                          List settlements, goods, and shops.");
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
+        Console.WriteLine("  advance  <dbPath> <ticks>                  Advance in-world time by <ticks> minute-ticks.");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
     }
 }
