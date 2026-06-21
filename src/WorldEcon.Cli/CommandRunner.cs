@@ -26,6 +26,8 @@ internal static class CommandRunner
                 "price" => await CmdPrice(args),
                 "advance" => await CmdAdvance(args),
                 "stock" => await CmdStock(args),
+                "merchants" => await CmdMerchants(args),
+                "caravans" => await CmdCaravans(args),
                 "snapshot" => await CmdSnapshot(args),
                 _ => Unknown(args[0]),
             };
@@ -246,6 +248,81 @@ internal static class CommandRunner
         return 0;
     }
 
+    // ---- merchants <dbPath> ----
+    private static async Task<int> CmdMerchants(string[] args)
+    {
+        if (args.Length < 2)
+            return MissingArgs("merchants <dbPath>");
+
+        var path = args[1];
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+
+        var settlementById = (await ctx.Settlements.ToListAsync()).ToDictionary(s => s.Id, s => s.Name);
+
+        var merchants = (await ctx.Merchants.ToListAsync())
+            .OrderBy(m => settlementById.TryGetValue(m.Seat, out var n) ? n : string.Empty, StringComparer.Ordinal)
+            .ThenBy(m => m.Id.Value)
+            .ToList();
+
+        Console.WriteLine("Merchants (Money values are in minor currency units):");
+        Console.WriteLine();
+
+        if (merchants.Count == 0)
+        {
+            Console.WriteLine("  (no merchants)");
+            return 0;
+        }
+
+        Console.WriteLine($"  {"Seat",-16} {"Capital",12} {"CargoCapacity",14} {"Reach",8}");
+        foreach (var m in merchants)
+        {
+            var seat = settlementById.TryGetValue(m.Seat, out var n) ? n : "(unknown)";
+            Console.WriteLine($"  {seat,-16} {m.Capital.Units,12} {m.CargoCapacity,14} {m.Reach,8}");
+        }
+        return 0;
+    }
+
+    // ---- caravans <dbPath> ----
+    private static async Task<int> CmdCaravans(string[] args)
+    {
+        if (args.Length < 2)
+            return MissingArgs("caravans <dbPath>");
+
+        var path = args[1];
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+
+        var settlementById = (await ctx.Settlements.ToListAsync()).ToDictionary(s => s.Id, s => s.Name);
+        var goodById = (await ctx.Goods.ToListAsync()).ToDictionary(g => g.Id, g => g.Name);
+
+        var caravans = (await ctx.Caravans.ToListAsync())
+            .OrderBy(c => c.ArriveTick.Value)
+            .ThenBy(c => c.Id.Value)
+            .ToList();
+
+        Console.WriteLine("Caravans (Money values are in minor currency units):");
+        Console.WriteLine();
+
+        if (caravans.Count == 0)
+        {
+            Console.WriteLine("  (no caravans)");
+            return 0;
+        }
+
+        Console.WriteLine($"  {"Origin",-12} {"Dest",-12} {"Good",-14} {"Qty",6} {"UnitCost",9} {"Depart",10} {"Arrive",10} {"Delivered",10}");
+        foreach (var c in caravans)
+        {
+            var origin = settlementById.TryGetValue(c.OriginId, out var o) ? o : "(unknown)";
+            var dest = settlementById.TryGetValue(c.DestinationId, out var d) ? d : "(unknown)";
+            var good = goodById.TryGetValue(c.GoodId, out var g) ? g : "(unknown)";
+            var delivered = c.Delivered ? "yes" : "no";
+            Console.WriteLine(
+                $"  {origin,-12} {dest,-12} {good,-14} {c.Quantity,6} {c.UnitCostBasis.Units,9} {c.DepartTick.Value,10} {c.ArriveTick.Value,10} {delivered,10}");
+        }
+        return 0;
+    }
+
     // ---- snapshot <dbPath> <destPath> ----
     private static async Task<int> CmdSnapshot(string[] args)
     {
@@ -290,6 +367,8 @@ internal static class CommandRunner
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
         Console.WriteLine("  advance  <dbPath> <ticks>                  Advance in-world time by <ticks> minute-ticks.");
         Console.WriteLine("  stock    <dbPath> <settlement>             Show a settlement's market stockpiles.");
+        Console.WriteLine("  merchants <dbPath>                         List representative merchants and their seats.");
+        Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered).");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
     }
 }

@@ -9,3 +9,5 @@ public readonly record struct ResourceEndowmentId(Guid Value) : IStronglyTypedId
 public readonly record struct ProductionNodeId(Guid Value) : IStronglyTypedId { public static ProductionNodeId New() => new(Guid.NewGuid()); }
 public readonly record struct RecipeId(Guid Value) : IStronglyTypedId { public static RecipeId New() => new(Guid.NewGuid()); }
 public readonly record struct WorkOrderId(Guid Value) : IStronglyTypedId { public static WorkOrderId New() => new(Guid.NewGuid()); }
+public readonly record struct MerchantId(Guid Value) : IStronglyTypedId { public static MerchantId New() => new(Guid.NewGuid()); }
+public readonly record struct CaravanId(Guid Value) : IStronglyTypedId { public static CaravanId New() => new(Guid.NewGuid()); }
