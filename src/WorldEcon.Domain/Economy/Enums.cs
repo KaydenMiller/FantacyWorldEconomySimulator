@@ -6,3 +6,7 @@ public enum SizeClass { Tiny = 0, Small = 1, Medium = 2, Large = 3, Bulky = 4 }
 
 /// <summary>What kind of entity owns a stockpile. Only Shop is exercised in Plan 2.</summary>
 public enum StockpileOwnerKind { SettlementMarket = 0, Shop = 1, Agent = 2 }
+
+public enum FacilityType { Mine = 0, Farm = 1, Forest = 2, Smithy = 3, Mill = 4, Bakery = 5, Workshop = 6 }
+
+public enum RecipeLineKind { Input = 0, Output = 1 }

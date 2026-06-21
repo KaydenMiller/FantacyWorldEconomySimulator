@@ -16,6 +16,10 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<Good> Goods => Set<Good>();
     public DbSet<Stockpile> Stockpiles => Set<Stockpile>();
     public DbSet<Shop> Shops => Set<Shop>();
+    public DbSet<Recipe> Recipes => Set<Recipe>();
+    public DbSet<ProductionNode> ProductionNodes => Set<ProductionNode>();
+    public DbSet<ResourceEndowment> ResourceEndowments => Set<ResourceEndowment>();
+    public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -28,6 +32,10 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
         b.Properties<GoodId>().HaveConversion<GoodIdConverter>();
         b.Properties<StockpileId>().HaveConversion<StockpileIdConverter>();
         b.Properties<ShopId>().HaveConversion<ShopIdConverter>();
+        b.Properties<ResourceEndowmentId>().HaveConversion<ResourceEndowmentIdConverter>();
+        b.Properties<ProductionNodeId>().HaveConversion<ProductionNodeIdConverter>();
+        b.Properties<RecipeId>().HaveConversion<RecipeIdConverter>();
+        b.Properties<WorkOrderId>().HaveConversion<WorkOrderIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder b)

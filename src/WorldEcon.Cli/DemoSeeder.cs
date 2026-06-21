@@ -44,6 +44,24 @@ internal static class DemoSeeder
         var bread = Unwrap(
             Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(30), "loaf", SizeClass.Small, 4320, true),
             "Bread");
+        var ironOre = Unwrap(
+            Good.Create(world.Id, "Iron Ore", GoodCategory.Raw, new Money(20), "unit", SizeClass.Medium, 0, false),
+            "Iron Ore");
+
+        // Production: Riverwood mines Iron Ore and smelts it into Iron Ingot.
+        var oreEndowment = Unwrap(
+            ResourceEndowment.Create(world.Id, riverwood.Id, ironOre.Id, 30),
+            "Iron Ore endowment");
+        var smeltRecipe = Unwrap(
+            Recipe.Create(world.Id, "Smelt Iron", FacilityType.Smithy, new[]
+            {
+                new RecipeLine(ironOre.Id, 10, RecipeLineKind.Input),
+                new RecipeLine(iron.Id, 1, RecipeLineKind.Output),
+            }, 0, 1440),
+            "Smelt Iron recipe");
+        var smithyNode = Unwrap(
+            ProductionNode.Create(world.Id, riverwood.Id, smeltRecipe.Id, FacilityType.Smithy, 1),
+            "Riverwood Smithy node");
 
         // Shops.
         var sundries = Unwrap(Shop.Create(world.Id, hammerfell.Id, "The Sundries", 2000, new Money(100_000)), "The Sundries");
@@ -62,9 +80,12 @@ internal static class DemoSeeder
         ctx.Regions.Add(region);
         ctx.Settlements.AddRange(hammerfell, riverwood);
         ctx.Routes.AddRange(routeOut, routeBack);
-        ctx.Goods.AddRange(potion, iron, bread);
+        ctx.Goods.AddRange(potion, iron, bread, ironOre);
         ctx.Shops.AddRange(sundries, apothecary, tradingPost);
         ctx.Stockpiles.AddRange(sundriesPotion, sundriesBread, apothPotion, tradingIron);
+        ctx.ResourceEndowments.Add(oreEndowment);
+        ctx.Recipes.Add(smeltRecipe);
+        ctx.ProductionNodes.Add(smithyNode);
         ctx.SaveChanges();
 
         return world;

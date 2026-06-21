@@ -25,6 +25,7 @@ internal static class CommandRunner
                 "list" => await CmdList(args),
                 "price" => await CmdPrice(args),
                 "advance" => await CmdAdvance(args),
+                "stock" => await CmdStock(args),
                 "snapshot" => await CmdSnapshot(args),
                 _ => Unknown(args[0]),
             };
@@ -187,8 +188,7 @@ internal static class CommandRunner
 
         var sim = await SimulationContext.LoadAsync(ctx, world.Id);
 
-        // No phases yet: this sub-phase only moves the clock.
-        var engine = new TickEngine([]);
+        var engine = new TickEngine(WorldEcon.Engine.StandardPhases.All());
         await engine.AdvanceAsync(sim, ticks);
 
         var date = sim.Calendar.ToDate(sim.World.CurrentTick);
@@ -196,6 +196,53 @@ internal static class CommandRunner
         Console.WriteLine($"  Current tick: {sim.World.CurrentTick.Value}");
         Console.WriteLine(
             $"  In-world date: Year {date.Year}, Month {date.Month}, Day {date.Day}, {date.Hour:D2}:{date.Minute:D2}");
+        return 0;
+    }
+
+    // ---- stock <dbPath> <settlementName> ----
+    private static async Task<int> CmdStock(string[] args)
+    {
+        if (args.Length < 3)
+            return MissingArgs("stock <dbPath> <settlementName>");
+
+        var path = args[1];
+        var settlementName = args[2];
+
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+
+        var settlement = (await ctx.Settlements.ToListAsync())
+            .FirstOrDefault(s => string.Equals(s.Name, settlementName, StringComparison.OrdinalIgnoreCase));
+        if (settlement is null)
+        {
+            Console.Error.WriteLine($"Error: settlement '{settlementName}' not found.");
+            return 1;
+        }
+
+        var goodsById = (await ctx.Goods.ToListAsync()).ToDictionary(g => g.Id, g => g.Name);
+
+        var stockpiles = (await ctx.Stockpiles
+                .Where(s => s.OwnerKind == WorldEcon.Domain.Economy.StockpileOwnerKind.SettlementMarket
+                            && s.OwnerId == settlement.Id.Value)
+                .ToListAsync())
+            .OrderBy(s => goodsById.TryGetValue(s.GoodId, out var n) ? n : string.Empty, StringComparer.Ordinal)
+            .ToList();
+
+        Console.WriteLine($"Market stockpiles in {settlement.Name} (Money values are in minor currency units):");
+        Console.WriteLine();
+
+        if (stockpiles.Count == 0)
+        {
+            Console.WriteLine("  (no market stockpiles)");
+            return 0;
+        }
+
+        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"CostBasis",10}");
+        foreach (var sp in stockpiles)
+        {
+            var name = goodsById.TryGetValue(sp.GoodId, out var n) ? n : "(unknown)";
+            Console.WriteLine($"  {name,-16} {sp.Quantity,10} {sp.CostBasis.Units,10}");
+        }
         return 0;
     }
 
@@ -242,6 +289,7 @@ internal static class CommandRunner
         Console.WriteLine("  list     <dbPath>                          List settlements, goods, and shops.");
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
         Console.WriteLine("  advance  <dbPath> <ticks>                  Advance in-world time by <ticks> minute-ticks.");
+        Console.WriteLine("  stock    <dbPath> <settlement>             Show a settlement's market stockpiles.");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
     }
 }
