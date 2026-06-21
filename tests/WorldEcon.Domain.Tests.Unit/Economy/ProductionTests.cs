@@ -108,6 +108,21 @@ public class ProductionTests
         => ProductionNode.Create(WorldId.New(), SettlementId.New(), RecipeId.New(), FacilityType.Mine, 0)
             .IsError.Should().BeTrue();
 
+    [Test]
+    public void ProductionNode_Create_IsNotDisabled()
+        => ProductionNode.Create(WorldId.New(), SettlementId.New(), RecipeId.New(), FacilityType.Mine, 3)
+            .Value.Disabled.Should().BeFalse();
+
+    [Test]
+    public void ProductionNode_Disable_ThenEnable_TogglesFlag()
+    {
+        var n = ProductionNode.Create(WorldId.New(), SettlementId.New(), RecipeId.New(), FacilityType.Mine, 3).Value;
+        n.Disable();
+        n.Disabled.Should().BeTrue();
+        n.Enable();
+        n.Disabled.Should().BeFalse();
+    }
+
     // ---------- ResourceEndowment ----------
 
     [Test]
