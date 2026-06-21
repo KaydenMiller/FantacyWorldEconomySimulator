@@ -19,7 +19,7 @@ public static class FixedMath
         Int128 product = (Int128)a * b;
         Int128 q = product / denominator;
         Int128 r = product - q * denominator;
-        if (r == 0) return (long)q;
+        if (r == 0) return checked((long)q);
 
         Int128 twiceR = Int128.Abs(r) * 2;
         Int128 absD = Int128.Abs((Int128)denominator);
@@ -29,12 +29,13 @@ public static class FixedMath
             bool negative = (a < 0) ^ (b < 0) ^ (denominator < 0);
             q += negative ? -1 : 1;
         }
-        return (long)q;
+        return checked((long)q);
     }
 
     /// <summary>Division rounding toward negative infinity.</summary>
     public static long DivFloor(long numerator, long denominator)
     {
+        if (denominator == 0) throw new DivideByZeroException();
         long q = numerator / denominator;
         long r = numerator % denominator;
         if (r != 0 && ((r < 0) != (denominator < 0))) q--;
@@ -55,11 +56,15 @@ public static class FixedMath
         if (roundAway)
         {
             bool negative = (numerator < 0) ^ (denominator < 0);
-            q += negative ? -1 : 1;
+            q = checked(q + (negative ? -1 : 1));
         }
         return q;
     }
 
     /// <summary>Modulo that is always in [0, modulus) for positive modulus.</summary>
-    public static long FloorMod(long a, long modulus) => ((a % modulus) + modulus) % modulus;
+    public static long FloorMod(long a, long modulus)
+    {
+        if (modulus <= 0) throw new ArgumentOutOfRangeException(nameof(modulus), "Modulus must be positive.");
+        return ((a % modulus) + modulus) % modulus;
+    }
 }

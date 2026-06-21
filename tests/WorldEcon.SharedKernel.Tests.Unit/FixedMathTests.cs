@@ -45,4 +45,33 @@ public class FixedMathTests
         FixedMath.FloorMod(7, 3).Should().Be(1);
         FixedMath.FloorMod(-1, 3).Should().Be(2);
     }
+
+    [Test]
+    public void MulDiv_HalfToEven_HoldsForNegativeTies()
+    {
+        FixedMath.MulDiv(-5, 1, 2).Should().Be(-2);  // -2.5 -> -2 (even)
+        FixedMath.MulDiv(-7, 1, 2).Should().Be(-4);  // -3.5 -> -4 (even)
+        FixedMath.MulDiv(5, 1, -2).Should().Be(-2);  // -2.5 -> -2 (even)
+    }
+
+    [Test]
+    public void DivRound_HalfToEven_HoldsForNegativeTies()
+    {
+        FixedMath.DivRound(-5, 2).Should().Be(-2);   // -2.5 -> -2
+        FixedMath.DivRound(-7, 2).Should().Be(-4);   // -3.5 -> -4
+    }
+
+    [Test]
+    public void MulDiv_Throws_OnOverflow()
+    {
+        var act = () => FixedMath.MulDiv(long.MaxValue, 4, 1);
+        act.Should().Throw<OverflowException>();
+    }
+
+    [Test]
+    public void FloorMod_Throws_OnNonPositiveModulus()
+    {
+        var act = () => FixedMath.FloorMod(5, 0);
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }
