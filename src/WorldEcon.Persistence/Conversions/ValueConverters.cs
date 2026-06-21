@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using WorldEcon.Domain.Economy;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
 
@@ -15,6 +16,13 @@ public sealed class UInt64Converter() : ValueConverter<ulong, long>(v => uncheck
 public sealed class CalendarDefinitionConverter() : ValueConverter<CalendarDefinition, string>(
     c => JsonSerializer.Serialize(c, Options),
     s => JsonSerializer.Deserialize<CalendarDefinition>(s, Options)!)
+{
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.General);
+}
+
+public sealed class RecipeLinesConverter() : ValueConverter<IReadOnlyList<RecipeLine>, string>(
+    l => JsonSerializer.Serialize(l, Options),
+    s => JsonSerializer.Deserialize<IReadOnlyList<RecipeLine>>(s, Options)!)
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.General);
 }
