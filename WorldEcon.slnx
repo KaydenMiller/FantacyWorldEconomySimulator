@@ -5,6 +5,7 @@
     <Project Path="src/WorldEcon.Domain/WorldEcon.Domain.csproj" />
     <Project Path="src/WorldEcon.Engine/WorldEcon.Engine.csproj" />
     <Project Path="src/WorldEcon.Persistence/WorldEcon.Persistence.csproj" />
+    <Project Path="src/WorldEcon.Seeding/WorldEcon.Seeding.csproj" />
     <Project Path="src/WorldEcon.SharedKernel/WorldEcon.SharedKernel.csproj" />
     <Project Path="src/WorldEcon.Simulation/WorldEcon.Simulation.csproj" />
   </Folder>
@@ -13,6 +14,7 @@
     <Project Path="tests/WorldEcon.Domain.Tests.Unit/WorldEcon.Domain.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Engine.Tests.Unit/WorldEcon.Engine.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Persistence.Tests.Unit/WorldEcon.Persistence.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.Seeding.Tests.Unit/WorldEcon.Seeding.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.SharedKernel.Tests.Unit/WorldEcon.SharedKernel.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Simulation.Tests.Unit/WorldEcon.Simulation.Tests.Unit.csproj" />
   </Folder>

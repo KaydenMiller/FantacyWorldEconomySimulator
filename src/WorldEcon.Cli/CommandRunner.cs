@@ -7,6 +7,7 @@ using WorldEcon.Engine.Actions;
 using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
 using WorldEcon.Persistence.Snapshots;
+using WorldEcon.Seeding;
 
 namespace WorldEcon.Cli;
 
@@ -25,6 +26,7 @@ internal static class CommandRunner
             return args[0].ToLowerInvariant() switch
             {
                 "new" => await CmdNew(args),
+                "import" => await CmdImport(args),
                 "list" => await CmdList(args),
                 "price" => await CmdPrice(args),
                 "advance" => await CmdAdvance(args),
@@ -70,6 +72,33 @@ internal static class CommandRunner
         Console.WriteLine($"  Settlements: {settlements}");
         Console.WriteLine($"  Goods:       {goods}");
         Console.WriteLine($"  Shops:       {shops}");
+        return 0;
+    }
+
+    // ---- import <jsonPath> <dbPath> ----
+    private static async Task<int> CmdImport(string[] args)
+    {
+        if (args.Length < 3)
+            return MissingArgs("import <jsonPath> <dbPath>");
+
+        var jsonPath = args[1];
+        var dbPath = args[2];
+
+        await using var ctx = OpenContext(dbPath);
+        ctx.Database.Migrate();
+
+        var seed = await new JsonSeedSource(jsonPath).LoadAsync();
+        var worldId = await new SeedImporter(ctx).ImportAsync(seed);
+
+        var world = await ctx.Worlds.FirstAsync(w => w.Id == worldId);
+        var settlements = await ctx.Settlements.CountAsync();
+        var goods = await ctx.Goods.CountAsync();
+        var merchants = await ctx.Merchants.CountAsync();
+
+        Console.WriteLine($"Imported world '{world.Name}' (ruleset {world.RulesetVersion}, seed {world.Seed}) from {jsonPath} into {dbPath}");
+        Console.WriteLine($"  Settlements: {settlements}");
+        Console.WriteLine($"  Goods:       {goods}");
+        Console.WriteLine($"  Merchants:   {merchants}");
         return 0;
     }
 
@@ -513,6 +542,7 @@ internal static class CommandRunner
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  new      <dbPath>                          Create + migrate DB and seed the demo world.");
+        Console.WriteLine("  import   <jsonPath> <dbPath>               Create + migrate DB and import a JSON world seed.");
         Console.WriteLine("  list     <dbPath>                          List settlements, goods, and shops.");
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
         Console.WriteLine("  advance  <dbPath> <ticks>                  Advance in-world time by <ticks> minute-ticks.");
