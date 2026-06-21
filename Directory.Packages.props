@@ -5,5 +5,9 @@
   <ItemGroup>
     <PackageVersion Include="TUnit" Version="1.32.0" />
     <PackageVersion Include="FluentAssertions" Version="7.2.0" />
+    <PackageVersion Include="ErrorOr" Version="2.0.1" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
   </ItemGroup>
 </Project>
