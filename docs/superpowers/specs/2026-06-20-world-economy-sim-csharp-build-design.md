@@ -446,6 +446,18 @@ public interface IPathfinder {
 `AgentAccess` makes sealed crossing edges impassable for agents lacking `AccessPermission` (per-agent closure, §12.2).
 - **Inter-continental shipping lanes** = `RouteCategory.ShippingLane`: long, danger-prone, few chokepoint ports (§9.4).
 
+### Build §12.1 Junction / waypoint nodes [DECIDED — build before the trade/pathfinding plan]
+The graph is **nodes + directed edges**, and distance/terrain/danger/category live **per edge**, not on a whole multi-leg "route." A city-to-city journey is a **path** the pathfinder composes from edges; its total danger is the composition of per-edge dangers. "This leg is dangerous but the overall trip isn't" already works — *provided the road is split into legs*, which requires a **node at the central junction**.
+
+**Decision: add a lightweight, first-class junction (waypoint) node type.** Graph nodes become **settlements ∪ junctions**. A junction participates in pathfinding / per-edge danger / traffic accounting but has **no economy** (no population, shops, production, stockpiles, demand). This is the conceptually correct fit (vs. the workaround of a population-0 pass-through `Settlement`, which pollutes settlement lists and makes the economy treat it as an empty market).
+
+Why it matters:
+- **Per-leg danger:** authoring `A⇄J, B⇄J, C⇄J` (J = junction) instead of `A⇄B, A⇄C, B⇄C` means a dangerous `A⇄J` leg raises the cost of every journey leaving A (A→B and A→C) but not B→C. Directed/asymmetric edges still apply (inbound `A→J` can differ from outbound `J→A`).
+- **Shared-leg traffic:** with a junction, `A⇄J` is a *single* edge traversed by both A→B and A→C paths, so traffic on it is the **sum** of those flows. With three direct edges there is no shared segment to accumulate on — that information cannot exist. This is the core reason to model junctions.
+- **Geometry note:** junction routing is slightly longer than a hypothetical direct road (a Y-junction at the centroid of a 50-mile equilateral triangle is ~28.9 mi/leg → A→J→B ≈ 57.7 mi vs 50 direct). Realistic; author each leg's distance explicitly.
+
+**Build sequencing:** the *modeling* (junction node type + per-leg edges) is a geography concern and is cheap now while only geography + persistence exist. The *traffic accounting* (counting caravans whose path crosses a given leg) is a **stage-3** capability (caravans + pathfinding don't exist yet), but choosing the junction representation is its prerequisite. **Land this node-type distinction before the trade/pathfinding plan (stage 3)** so `IPathfinder` and `Route` are defined over settlements ∪ junctions from the start. Implementation shape: either a shared `INode`/node-id abstraction that `Route` endpoints reference (settlement-id ∪ junction-id), or a `GraphNode` base — to be decided in that plan. **Not in scope for Plan 2 (static economy).**
+
 ---
 
 ## Build §13. Contraband, borders & enforcement (source §12)
