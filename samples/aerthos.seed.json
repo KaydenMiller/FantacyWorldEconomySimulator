@@ -1,0 +1,105 @@
+{
+  "name": "Aerthos",
+  "seed": 42,
+  "rulesetVersion": "1.0.0",
+  "goods": [
+    { "name": "Health Potion", "category": "Potion", "baseValue": 5000, "baseUnit": "vial", "size": "Small", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
+    { "name": "Iron Ingot", "category": "Material", "baseValue": 200, "baseUnit": "ingot", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
+    { "name": "Bread", "category": "Food", "baseValue": 30, "baseUnit": "loaf", "size": "Small", "shelfLifeTicks": 4320, "divisible": true, "consumptionPerCapitaBp": 50 },
+    { "name": "Iron Ore", "category": "Raw", "baseValue": 20, "baseUnit": "unit", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 }
+  ],
+  "recipes": [
+    {
+      "name": "Smelt Iron",
+      "facility": "Smithy",
+      "inputs": [ { "good": "Iron Ore", "quantity": 10 } ],
+      "outputs": [ { "good": "Iron Ingot", "quantity": 1 } ],
+      "laborCost": 0,
+      "ticksToProduce": 1440
+    }
+  ],
+  "continents": [
+    {
+      "name": "Mundus",
+      "countries": [
+        {
+          "name": "Highmark",
+          "regions": [
+            {
+              "name": "The Reach",
+              "settlements": [
+                {
+                  "name": "Hammerfell",
+                  "type": "City",
+                  "x": 10,
+                  "y": 20,
+                  "population": 50000,
+                  "shops": [
+                    {
+                      "name": "The Sundries",
+                      "markupBp": 2000,
+                      "till": 100000,
+                      "stock": [
+                        { "good": "Health Potion", "quantity": 40, "unitCostBasis": 4000 },
+                        { "good": "Bread", "quantity": 100, "unitCostBasis": 25 }
+                      ]
+                    },
+                    {
+                      "name": "Apothecary",
+                      "markupBp": 5000,
+                      "till": 100000,
+                      "stock": [
+                        { "good": "Health Potion", "quantity": 15, "unitCostBasis": 4200 }
+                      ]
+                    }
+                  ],
+                  "market": [
+                    { "good": "Bread", "quantity": 200, "unitCostBasis": 28 }
+                  ],
+                  "endowments": [],
+                  "production": [],
+                  "merchants": [
+                    { "capital": 50000, "cargoCapacity": 50, "reach": 1000 }
+                  ]
+                },
+                {
+                  "name": "Riverwood",
+                  "type": "Village",
+                  "x": 12,
+                  "y": 25,
+                  "population": 800,
+                  "shops": [
+                    {
+                      "name": "Trading Post",
+                      "markupBp": 1500,
+                      "till": 50000,
+                      "stock": [
+                        { "good": "Iron Ingot", "quantity": 60, "unitCostBasis": 180 }
+                      ]
+                    }
+                  ],
+                  "market": [
+                    { "good": "Iron Ore", "quantity": 50, "unitCostBasis": 20 }
+                  ],
+                  "endowments": [
+                    { "good": "Iron Ore", "abundance": 30 }
+                  ],
+                  "production": [
+                    { "recipe": "Smelt Iron", "throughputCap": 1 }
+                  ],
+                  "merchants": [
+                    { "capital": 50000, "cargoCapacity": 50, "reach": 1000 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "routes": [
+    { "fromSettlement": "Hammerfell", "toSettlement": "Riverwood", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" },
+    { "fromSettlement": "Riverwood", "toSettlement": "Hammerfell", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" }
+  ]
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="TUnit" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WorldEcon.Seeding\WorldEcon.Seeding.csproj" />
+    <ProjectReference Include="..\..\src\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\WorldEcon.Engine\WorldEcon.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- No patched version of SQLitePCLRaw.lib.e_sqlite3 exists yet; 2.1.11 is the latest release.
+         Suppress this single transitive advisory until an upstream fix ships. -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+</Project>
