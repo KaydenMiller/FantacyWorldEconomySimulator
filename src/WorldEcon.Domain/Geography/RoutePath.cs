@@ -1,9 +1,9 @@
 namespace WorldEcon.Domain.Geography;
 
 /// <summary>A resolved route through the graph: ordered settlements and total edge distance.</summary>
-public sealed record Path(IReadOnlyList<SettlementId> Nodes, long TotalDistance)
+public sealed record RoutePath(IReadOnlyList<SettlementId> Nodes, long TotalDistance)
 {
-    public bool Equals(Path? other)
+    public bool Equals(RoutePath? other)
         => other is not null
             && TotalDistance == other.TotalDistance
             && Nodes.SequenceEqual(other.Nodes);

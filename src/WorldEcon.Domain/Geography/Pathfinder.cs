@@ -25,10 +25,10 @@ public sealed class Pathfinder : IPathfinder
         }
     }
 
-    public Path? FindPath(SettlementId from, SettlementId to)
+    public RoutePath? FindPath(SettlementId from, SettlementId to)
     {
         if (from.Equals(to))
-            return new Path(new[] { from }, 0);
+            return new RoutePath(new[] { from }, 0);
 
         var (distances, predecessors) = RunDijkstra(from, target: to, maxDistance: null);
 
@@ -48,7 +48,7 @@ public sealed class Pathfinder : IPathfinder
         }
 
         nodes.Reverse();
-        return new Path(nodes, total);
+        return new RoutePath(nodes, total);
     }
 
     public IReadOnlyList<ReachableSettlement> FindReachable(SettlementId from, long maxDistance)

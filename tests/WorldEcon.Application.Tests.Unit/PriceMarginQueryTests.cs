@@ -1,4 +1,3 @@
-using Path = System.IO.Path;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Application.Queries;
