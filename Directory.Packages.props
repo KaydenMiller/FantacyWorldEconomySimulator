@@ -9,5 +9,8 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.9" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.9" />
+    <!-- Terminal.Gui v2: spec requested 2.0.0-beta.11, but no 2.0.0-beta.* or 2.0.0-develop.*
+         resolves anymore (yanked). Pinned to the latest stable v2 release. -->
+    <PackageVersion Include="Terminal.Gui" Version="2.4.7" />
   </ItemGroup>
 </Project>
