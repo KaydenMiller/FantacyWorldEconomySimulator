@@ -58,4 +58,27 @@ public class StockpileTests
         s.Withdraw(11).IsError.Should().BeTrue();
         s.Quantity.Should().Be(10);
     }
+
+    [Test]
+    public void Create_DefaultsMarketPriceToZero()
+    {
+        var s = NewShopStockpile(out _, out _);
+        s.MarketPrice.Should().Be(Money.Zero);
+    }
+
+    [Test]
+    public void SetMarketPrice_UpdatesPrice()
+    {
+        var s = NewShopStockpile(out _, out _);
+        s.SetMarketPrice(new Money(250));
+        s.MarketPrice.Should().Be(new Money(250));
+    }
+
+    [Test]
+    public void SetMarketPrice_RejectsNegative()
+    {
+        var s = NewShopStockpile(out _, out _);
+        var act = () => s.SetMarketPrice(new Money(-1));
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
 }
