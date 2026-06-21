@@ -36,7 +36,9 @@ public class WeightedAverageValuationTests
     [Test]
     public void Blend_Throws_OnOverflow()
     {
-        var act = () => Sut.Blend(long.MaxValue, new Money(long.MaxValue), 1, new Money(1));
+        // Isolates the totalCost line: totalQty (=3) does NOT overflow, but
+        // 2*long.MaxValue + 1 does — so this fails without the checked() guard.
+        var act = () => Sut.Blend(2, new Money(long.MaxValue), 1, new Money(1));
         act.Should().Throw<OverflowException>();
     }
 }
