@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WorldEcon.Simulation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WorldEcon.SharedKernel\WorldEcon.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>
