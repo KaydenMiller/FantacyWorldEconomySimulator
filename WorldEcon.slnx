@@ -8,6 +8,7 @@
     <Project Path="src/WorldEcon.Seeding/WorldEcon.Seeding.csproj" />
     <Project Path="src/WorldEcon.SharedKernel/WorldEcon.SharedKernel.csproj" />
     <Project Path="src/WorldEcon.Simulation/WorldEcon.Simulation.csproj" />
+    <Project Path="src/WorldEcon.Tui/WorldEcon.Tui.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WorldEcon.Application.Tests.Unit/WorldEcon.Application.Tests.Unit.csproj" />
@@ -17,5 +18,6 @@
     <Project Path="tests/WorldEcon.Seeding.Tests.Unit/WorldEcon.Seeding.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.SharedKernel.Tests.Unit/WorldEcon.SharedKernel.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Simulation.Tests.Unit/WorldEcon.Simulation.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.Tui.Tests.Unit/WorldEcon.Tui.Tests.Unit.csproj" />
   </Folder>
 </Solution>
