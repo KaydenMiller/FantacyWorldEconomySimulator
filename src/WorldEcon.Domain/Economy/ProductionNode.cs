@@ -11,6 +11,7 @@ public sealed class ProductionNode : AggregateRoot<ProductionNodeId>
     public RecipeId RecipeId { get; private set; }
     public FacilityType Facility { get; private set; }
     public long ThroughputCap { get; private set; } // max concurrent active batches
+    public bool Disabled { get; private set; }
 
     private ProductionNode() : base(default) { } // EF
 
@@ -32,4 +33,8 @@ public sealed class ProductionNode : AggregateRoot<ProductionNodeId>
 
         return new ProductionNode(ProductionNodeId.New(), worldId, settlementId, recipeId, facility, throughputCap);
     }
+
+    public void Disable() => Disabled = true;
+
+    public void Enable() => Disabled = false;
 }

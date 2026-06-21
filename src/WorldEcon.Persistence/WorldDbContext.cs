@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using WorldEcon.Domain.Actions;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence.Conversions;
@@ -22,6 +23,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<RepresentativeMerchant> Merchants => Set<RepresentativeMerchant>();
     public DbSet<Caravan> Caravans => Set<Caravan>();
+    public DbSet<DmAction> DmActions => Set<DmAction>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -40,6 +42,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
         b.Properties<WorkOrderId>().HaveConversion<WorkOrderIdConverter>();
         b.Properties<MerchantId>().HaveConversion<MerchantIdConverter>();
         b.Properties<CaravanId>().HaveConversion<CaravanIdConverter>();
+        b.Properties<DmActionId>().HaveConversion<DmActionIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder b)

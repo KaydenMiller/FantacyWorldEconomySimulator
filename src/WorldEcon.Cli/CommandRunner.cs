@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Application.Queries;
+using WorldEcon.Domain.Economy;
+using WorldEcon.Domain.Geography;
 using WorldEcon.Engine;
+using WorldEcon.Engine.Actions;
 using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
 using WorldEcon.Persistence.Snapshots;
@@ -29,6 +32,11 @@ internal static class CommandRunner
                 "merchants" => await CmdMerchants(args),
                 "caravans" => await CmdCaravans(args),
                 "snapshot" => await CmdSnapshot(args),
+                "buy" => await CmdBuy(args),
+                "adjust" => await CmdAdjust(args),
+                "disable" => await CmdSetDisabled(args, true),
+                "enable" => await CmdSetDisabled(args, false),
+                "actions" => await CmdActions(args),
                 _ => Unknown(args[0]),
             };
         }
@@ -323,6 +331,148 @@ internal static class CommandRunner
         return 0;
     }
 
+    // ---- buy <dbPath> <settlementName> <goodName> <qty> ----
+    private static async Task<int> CmdBuy(string[] args)
+    {
+        if (args.Length < 5)
+            return MissingArgs("buy <dbPath> <settlement> <good> <qty>");
+
+        if (!long.TryParse(args[4], out var qty) || qty < 1)
+        {
+            Console.Error.WriteLine($"Error: qty must be a positive integer, got '{args[4]}'.");
+            return 1;
+        }
+
+        await using var ctx = OpenContext(args[1]);
+        ctx.Database.Migrate();
+
+        var (world, settlement, good, fail) = await ResolveWorldSettlementGood(ctx, args[2], args[3]);
+        if (fail != 0) return fail;
+
+        var service = new DmActionService(ctx);
+        var result = await service.BuyFromShopsAsync(world!.Id, settlement!.Id, good!.Id, qty, DateTimeOffset.UtcNow);
+        return PrintActionResult(result);
+    }
+
+    // ---- adjust <dbPath> <settlementName> <goodName> <delta> ----
+    private static async Task<int> CmdAdjust(string[] args)
+    {
+        if (args.Length < 5)
+            return MissingArgs("adjust <dbPath> <settlement> <good> <delta>");
+
+        if (!long.TryParse(args[4], out var delta) || delta == 0)
+        {
+            Console.Error.WriteLine($"Error: delta must be a non-zero integer, got '{args[4]}'.");
+            return 1;
+        }
+
+        await using var ctx = OpenContext(args[1]);
+        ctx.Database.Migrate();
+
+        var (world, settlement, good, fail) = await ResolveWorldSettlementGood(ctx, args[2], args[3]);
+        if (fail != 0) return fail;
+
+        var service = new DmActionService(ctx);
+        var result = await service.AdjustMarketStockAsync(world!.Id, settlement!.Id, good!.Id, delta, DateTimeOffset.UtcNow);
+        return PrintActionResult(result);
+    }
+
+    // ---- disable|enable <dbPath> <settlementName> ----
+    private static async Task<int> CmdSetDisabled(string[] args, bool disabled)
+    {
+        var verb = disabled ? "disable" : "enable";
+        if (args.Length < 3)
+            return MissingArgs($"{verb} <dbPath> <settlement>");
+
+        await using var ctx = OpenContext(args[1]);
+        ctx.Database.Migrate();
+
+        var (world, settlement, fail) = await ResolveWorldSettlement(ctx, args[2]);
+        if (fail != 0) return fail;
+
+        var service = new DmActionService(ctx);
+        var result = await service.SetSettlementProductionDisabledAsync(world!.Id, settlement!.Id, disabled, DateTimeOffset.UtcNow);
+        return PrintActionResult(result);
+    }
+
+    // ---- actions <dbPath> ----
+    private static async Task<int> CmdActions(string[] args)
+    {
+        if (args.Length < 2)
+            return MissingArgs("actions <dbPath>");
+
+        await using var ctx = OpenContext(args[1]);
+        ctx.Database.Migrate();
+
+        var actions = (await ctx.DmActions.ToListAsync())
+            .OrderBy(a => a.Sequence)
+            .ToList();
+
+        Console.WriteLine("DM action log:");
+        Console.WriteLine();
+
+        if (actions.Count == 0)
+        {
+            Console.WriteLine("  (no actions logged)");
+            return 0;
+        }
+
+        foreach (var a in actions)
+            Console.WriteLine($"  #{a.Sequence} @tick{a.AppliedTick.Value} {a.Kind} — {a.Description}");
+        return 0;
+    }
+
+    private static async Task<(World? World, Settlement? Settlement, int Fail)> ResolveWorldSettlement(
+        WorldDbContext ctx, string settlementName)
+    {
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        if (world is null)
+        {
+            Console.Error.WriteLine("Error: no world found in database. Run 'new' first.");
+            return (null, null, 1);
+        }
+
+        var settlement = (await ctx.Settlements.ToListAsync())
+            .FirstOrDefault(s => string.Equals(s.Name, settlementName, StringComparison.OrdinalIgnoreCase));
+        if (settlement is null)
+        {
+            Console.Error.WriteLine($"Error: settlement '{settlementName}' not found.");
+            return (world, null, 1);
+        }
+
+        return (world, settlement, 0);
+    }
+
+    private static async Task<(World? World, Settlement? Settlement, Good? Good, int Fail)> ResolveWorldSettlementGood(
+        WorldDbContext ctx, string settlementName, string goodName)
+    {
+        var (world, settlement, fail) = await ResolveWorldSettlement(ctx, settlementName);
+        if (fail != 0)
+            return (world, settlement, null, fail);
+
+        var good = (await ctx.Goods.ToListAsync())
+            .FirstOrDefault(g => string.Equals(g.Name, goodName, StringComparison.OrdinalIgnoreCase));
+        if (good is null)
+        {
+            Console.Error.WriteLine($"Error: good '{goodName}' not found.");
+            return (world, settlement, null, 1);
+        }
+
+        return (world, settlement, good, 0);
+    }
+
+    private static int PrintActionResult(ErrorOr.ErrorOr<WorldEcon.Domain.Actions.DmAction> result)
+    {
+        if (result.IsError)
+        {
+            Console.Error.WriteLine($"Error: {string.Join("; ", result.Errors.Select(e => e.Description))}");
+            return 1;
+        }
+
+        Console.WriteLine(result.Value.Description);
+        return 0;
+    }
+
     // ---- snapshot <dbPath> <destPath> ----
     private static async Task<int> CmdSnapshot(string[] args)
     {
@@ -370,5 +520,10 @@ internal static class CommandRunner
         Console.WriteLine("  merchants <dbPath>                         List representative merchants and their seats.");
         Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered).");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
+        Console.WriteLine("  buy      <dbPath> <settlement> <good> <qty> Party buys a good off shop shelves.");
+        Console.WriteLine("  adjust   <dbPath> <settlement> <good> <delta> Party adjusts market stock (delta may be negative).");
+        Console.WriteLine("  disable  <dbPath> <settlement>             Party disables all production in a settlement.");
+        Console.WriteLine("  enable   <dbPath> <settlement>             Party restores all production in a settlement.");
+        Console.WriteLine("  actions  <dbPath>                          List the DM/party action log.");
     }
 }

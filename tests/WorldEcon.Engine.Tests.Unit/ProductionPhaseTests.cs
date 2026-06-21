@@ -152,6 +152,49 @@ public class ProductionPhaseTests
     }
 
     [Test]
+    public async Task DisabledNode_StartsNoBatch_EvenWithInputs()
+    {
+        GoodId oreId = default;
+        var seed = await SeedAsync((ctx, worldId, settlementId) =>
+        {
+            var ore = Good.Create(worldId, "Iron Ore", GoodCategory.Raw, new Money(20), "unit", SizeClass.Medium, 0, false).Value;
+            var ingot = Good.Create(worldId, "Iron Ingot", GoodCategory.Material, new Money(200), "ingot", SizeClass.Medium, 0, false).Value;
+            oreId = ore.Id;
+            ctx.Goods.AddRange(ore, ingot);
+
+            var recipe = Recipe.Create(worldId, "Smelt Iron", FacilityType.Smithy, new[]
+            {
+                new RecipeLine(ore.Id, 10, RecipeLineKind.Input),
+                new RecipeLine(ingot.Id, 1, RecipeLineKind.Output),
+            }, 0, 1440).Value;
+            ctx.Recipes.Add(recipe);
+
+            var node = ProductionNode.Create(worldId, settlementId, recipe.Id, FacilityType.Smithy, 1).Value;
+            node.Disable();
+            ctx.ProductionNodes.Add(node);
+
+            // Plenty of inputs available, but the node is disabled.
+            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, ore.Id, 100, new Money(20)).Value;
+            ctx.Stockpiles.Add(market);
+        });
+
+        try
+        {
+            await AdvanceAsync(seed.Path, seed.WorldId, 1440);
+
+            await using var ctx = NewContextOnFile(seed.Path);
+            (await ctx.WorkOrders.AnyAsync()).Should().BeFalse();
+            // Inputs untouched because no batch started.
+            var oreStock = await MarketStockpileAsync(seed.Path, oreId);
+            oreStock!.Quantity.Should().Be(100);
+        }
+        finally
+        {
+            File.Delete(seed.Path);
+        }
+    }
+
+    [Test]
     public async Task Recipe_InsufficientInputs_StartsNoBatch()
     {
         GoodId oreId = default;

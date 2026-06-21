@@ -83,6 +83,11 @@ public sealed class ProductionPhase : ISimulationPhase
             .ToListAsync();
         foreach (var node in nodes.OrderBy(n => n.Id.Value))
         {
+            // party can burn/disable a facility (Plan 4): disabled nodes start no new batches
+            // (in-flight WorkOrders still complete normally in step 2).
+            if (node.Disabled)
+                continue;
+
             int incompleteCount = incompleteOrders.Count(w => w.ProductionNodeId == node.Id && !w.Completed);
             if (incompleteCount >= node.ThroughputCap)
                 continue;
