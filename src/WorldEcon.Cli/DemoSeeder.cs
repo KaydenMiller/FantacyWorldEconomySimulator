@@ -42,7 +42,7 @@ internal static class DemoSeeder
             Good.Create(world.Id, "Iron Ingot", GoodCategory.Material, new Money(200), "ingot", SizeClass.Medium, 0, false),
             "Iron Ingot");
         var bread = Unwrap(
-            Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(30), "loaf", SizeClass.Small, 4320, true),
+            Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(30), "loaf", SizeClass.Small, 4320, true, consumptionPerCapitaBp: 50),
             "Bread");
         var ironOre = Unwrap(
             Good.Create(world.Id, "Iron Ore", GoodCategory.Raw, new Money(20), "unit", SizeClass.Medium, 0, false),

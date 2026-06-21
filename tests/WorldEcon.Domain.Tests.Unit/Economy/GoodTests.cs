@@ -38,4 +38,25 @@ public class GoodTests
     public void Create_RejectsNegativeShelfLife()
         => Good.Create(WorldId.New(), "X", GoodCategory.Misc, Money.Zero, "u", SizeClass.Small, -1, false)
             .IsError.Should().BeTrue();
+
+    [Test]
+    public void Create_SetsConsumptionPerCapitaBp()
+    {
+        var g = Good.Create(WorldId.New(), "Bread", GoodCategory.Food, new Money(30), "loaf",
+            SizeClass.Small, shelfLifeTicks: 4320, divisible: true, consumptionPerCapitaBp: 500).Value;
+        g.ConsumptionPerCapitaBp.Should().Be(500);
+    }
+
+    [Test]
+    public void Create_DefaultsConsumptionPerCapitaBpToZero()
+    {
+        var g = Good.Create(WorldId.New(), "Iron", GoodCategory.Material, new Money(200), "ingot",
+            SizeClass.Medium, 0, false).Value;
+        g.ConsumptionPerCapitaBp.Should().Be(0);
+    }
+
+    [Test]
+    public void Create_RejectsNegativeConsumptionPerCapitaBp()
+        => Good.Create(WorldId.New(), "X", GoodCategory.Misc, Money.Zero, "u", SizeClass.Small, 0, false, consumptionPerCapitaBp: -1)
+            .IsError.Should().BeTrue();
 }
