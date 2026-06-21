@@ -39,8 +39,8 @@ var app = Application.Create();
 app.Init();
 try
 {
-    var ui = new DialogUserInteraction(app);
-    using var shell = new TuiShell(ctx, registry, ui);
+    using var shell = new TuiShell(ctx, registry, app: app);
+    shell.Ui = new ShellUserInteraction(shell, app);
     app.Run(shell, null);
 }
 finally

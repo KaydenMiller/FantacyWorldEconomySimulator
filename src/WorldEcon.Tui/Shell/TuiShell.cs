@@ -1,4 +1,5 @@
 using System.Data;
+using Terminal.Gui.App;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
@@ -9,29 +10,43 @@ namespace WorldEcon.Tui.Shell;
 
 /// <summary>
 /// The k9s-style top-level window: a header, a <see cref="TableView"/> showing the current resource,
-/// a command bar (focused with <c>:</c>), and a status/hint bar. All Terminal.Gui usage lives here and
-/// in the sibling <see cref="DialogUserInteraction"/>; the rest of the app stays UI-agnostic.
+/// a command/prompt bar (focused with <c>:</c> for commands, or by an action asking for input via
+/// <see cref="PromptAsync"/>), and a status/hint bar. All Terminal.Gui usage lives here and in
+/// <see cref="ShellUserInteraction"/>; the rest of the app stays UI-agnostic.
+///
+/// Threading: Terminal.Gui is single-threaded and v2 installs a UI sync-context, so EF async must not
+/// block the UI thread. Command work is dispatched to a background thread; dialogs and view mutations
+/// marshal back via <see cref="IApplication.Invoke"/>. Text/number input does NOT use modal dialogs
+/// (a nested <c>Application.Run</c> dialog does not receive keystrokes in this TG build); instead the
+/// in-shell prompt bar collects input and resolves a <see cref="TaskCompletionSource{T}"/>. When no
+/// <see cref="IApplication"/> is supplied (headless tests) the shell runs everything inline.
 /// </summary>
 public sealed class TuiShell : Window
 {
+    private enum BarMode { None, Command, Prompt }
+
+    private readonly IApplication? _app;
     private readonly TuiContext _ctx;
     private readonly CommandRegistry _registry;
-    private readonly IUserInteraction _ui;
 
     private readonly Label _header;
     private readonly TableView _table;
-    private readonly TextField _commandBar;
-    private readonly Label _commandLabel;
+    private readonly TextField _bar;
+    private readonly Label _barLabel;
     private readonly Label _status;
 
     private IResource _currentResource;
     private ResourceTable _currentTable = new([], []);
 
-    public TuiShell(TuiContext ctx, CommandRegistry registry, IUserInteraction ui)
+    private BarMode _barMode = BarMode.None;
+    private TaskCompletionSource<string?>? _promptTcs;
+
+    public TuiShell(TuiContext ctx, CommandRegistry registry, IUserInteraction? ui = null, IApplication? app = null)
     {
         _ctx = ctx ?? throw new ArgumentNullException(nameof(ctx));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
-        _ui = ui ?? throw new ArgumentNullException(nameof(ui));
+        Ui = ui;
+        _app = app;
 
         // Default to the cities resource (falls back to the first registered resource).
         _currentResource = _registry.ResolveResource("cities") ?? _registry.Resources[0];
@@ -50,8 +65,8 @@ public sealed class TuiShell : Window
             MultiSelect = false,
         };
 
-        _commandLabel = new Label { X = 0, Y = Pos.AnchorEnd(2), Text = ":", Visible = false };
-        _commandBar = new TextField
+        _barLabel = new Label { X = 0, Y = Pos.AnchorEnd(2), Text = ":", Visible = false };
+        _bar = new TextField
         {
             X = 1,
             Y = Pos.AnchorEnd(2),
@@ -61,19 +76,24 @@ public sealed class TuiShell : Window
 
         _status = new Label { X = 0, Y = Pos.AnchorEnd(1), Width = Dim.Fill() };
 
-        Add(_header, _table, _commandLabel, _commandBar, _status);
+        Add(_header, _table, _barLabel, _bar, _status);
 
-        _commandBar.KeyDown += OnCommandBarKey;
+        _bar.KeyDown += OnBarKey;
         _table.KeyDown += OnTableKey;
 
-        // Build the initial view synchronously so the shell is usable the moment it is constructed
-        // (and so the headless smoke test can assert the table is populated without a run loop).
-        ReloadTable();
+        // Initial load runs synchronously: before Application.Run (no loop / sync-context yet), so
+        // blocking is safe and the table is populated the moment the shell is constructed.
+        _currentTable = _currentResource.LoadAsync(_ctx).GetAwaiter().GetResult();
+        ApplyTable(_currentTable);
         RefreshHeader();
         RefreshStatus();
 
         _table.SetFocus();
     }
+
+    /// <summary>The user-interaction implementation actions use. Set after construction in production
+    /// (it references this shell's prompt bar); injected directly in headless tests.</summary>
+    public IUserInteraction? Ui { get; set; }
 
     /// <summary>The resource currently displayed in the table.</summary>
     public IResource CurrentResource => _currentResource;
@@ -81,7 +101,7 @@ public sealed class TuiShell : Window
     /// <summary>The materialized table currently displayed (for tests/inspection).</summary>
     public ResourceTable CurrentTable => _currentTable;
 
-    /// <summary>The selected row's key, or null when the table is empty.</summary>
+    /// <summary>The selected row's key, or null when the table is empty. Read on the UI thread.</summary>
     public string? SelectedKey
     {
         get
@@ -91,20 +111,54 @@ public sealed class TuiShell : Window
         }
     }
 
+    // ---- in-shell prompt (used by ShellUserInteraction for text/number input) ----------------
+
+    /// <summary>
+    /// Shows the in-shell prompt bar and resolves with the entered text (Enter) or null (Esc).
+    /// Safe to call from a background thread: it marshals UI work via <see cref="Post"/> and the
+    /// returned task completes asynchronously when the user submits.
+    /// </summary>
+    public Task<string?> PromptAsync(string prompt, string? initial = null)
+    {
+        var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        Post(() =>
+        {
+            _promptTcs = tcs;
+            _barMode = BarMode.Prompt;
+            _barLabel.Text = ">";
+            _bar.Text = initial ?? string.Empty;
+            _barLabel.Visible = true;
+            _bar.Visible = true;
+            _status.Text = $" {prompt}   (Enter = accept, Esc = cancel)";
+            _bar.SetFocus();
+        });
+        return tcs.Task;
+    }
+
     // ---- Resource / data plumbing ------------------------------------------------------------
 
     /// <summary>Switches the displayed resource to <paramref name="resource"/> and reloads its table.</summary>
     public void SwitchResource(IResource resource)
     {
         _currentResource = resource;
-        ReloadTable();
-        RefreshStatus();
+        Dispatch(ReloadAndApplyAsync);
     }
 
-    private void ReloadTable()
+    private async Task ReloadAndApplyAsync()
     {
-        _currentTable = RunSync(() => _currentResource.LoadAsync(_ctx));
-        _table.Table = BuildTableSource(_currentTable);
+        var table = await _currentResource.LoadAsync(_ctx);
+        Post(() =>
+        {
+            ApplyTable(table);
+            RefreshHeader();
+            RefreshStatus();
+        });
+    }
+
+    private void ApplyTable(ResourceTable table)
+    {
+        _currentTable = table;
+        _table.Table = BuildTableSource(table);
         Title = $"WorldEcon — {_currentResource.Name}";
     }
 
@@ -139,7 +193,7 @@ public sealed class TuiShell : Window
         var rowActions = _registry.RowActionsFor(_currentResource.Name)
             .Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}");
 
-        var hints = new[] { ":cmd", "d details", "a advance", "S snapshot", "? help", "q quit" }
+        var hints = new[] { ":cmd", "hjkl move", "d details", "a advance", "S snapshot", "? help", "q quit" }
             .Concat(rowActions);
 
         _status.Text = " " + string.Join("  ", hints);
@@ -157,17 +211,20 @@ public sealed class TuiShell : Window
             return;
         }
 
-        if (key.KeyCode == KeyCode.Esc)
-        {
-            // Nothing to dismiss in the table view; let the framework handle it.
-            return;
-        }
-
         if (key == Key.Q.WithCtrl)
         {
             RequestStop();
             key.Handled = true;
             return;
+        }
+
+        // vim-style navigation: forward hjkl to the table as arrow keys.
+        switch (key.AsRune.Value)
+        {
+            case 'j': _table.NewKeyDownEvent(new Key(KeyCode.CursorDown)); key.Handled = true; return;
+            case 'k': _table.NewKeyDownEvent(new Key(KeyCode.CursorUp)); key.Handled = true; return;
+            case 'h': _table.NewKeyDownEvent(new Key(KeyCode.CursorLeft)); key.Handled = true; return;
+            case 'l': _table.NewKeyDownEvent(new Key(KeyCode.CursorRight)); key.Handled = true; return;
         }
 
         var ch = (char)key.AsRune.Value;
@@ -196,7 +253,6 @@ public sealed class TuiShell : Window
                 return true;
         }
 
-        // Global actions (advance, snapshot, …) by their Key.
         var global = _registry.GlobalActions.FirstOrDefault(a => a.Key == ch);
         if (global is not null)
         {
@@ -204,7 +260,6 @@ public sealed class TuiShell : Window
             return true;
         }
 
-        // Row actions registered for the current resource.
         var rowAction = _registry.RowActionsFor(_currentResource.Name).FirstOrDefault(a => a.Key == ch);
         if (rowAction is not null)
         {
@@ -216,41 +271,44 @@ public sealed class TuiShell : Window
     }
 
     private void RunGlobalAction(IGlobalAction action)
-    {
-        RunSync(() => action.ExecuteAsync(_ctx, _ui));
-        RunSync(_ctx.ReloadWorldAsync);
-        ReloadTable();
-        RefreshHeader();
-        RefreshStatus();
-    }
+        => Dispatch(async () =>
+        {
+            await action.ExecuteAsync(_ctx, Ui!);
+            await _ctx.ReloadWorldAsync();
+            await ReloadAndApplyAsync();
+        });
 
     private void RunRowAction(IRowAction action)
     {
-        var key = SelectedKey;
-        if (key is null)
+        var key = SelectedKey; // captured on the UI thread before dispatching
+        Dispatch(async () =>
         {
-            RunSync(() => _ui.ShowMessageAsync(action.Label, ["No row is selected."]));
-            return;
-        }
+            if (key is null)
+            {
+                await Ui!.ShowMessageAsync(action.Label, ["No row is selected."]);
+                return;
+            }
 
-        RunSync(() => action.ExecuteAsync(key, _ctx, _ui));
-        RunSync(_ctx.ReloadWorldAsync);
-        ReloadTable();
-        RefreshHeader();
-        RefreshStatus();
+            await action.ExecuteAsync(key, _ctx, Ui!);
+            await _ctx.ReloadWorldAsync();
+            await ReloadAndApplyAsync();
+        });
     }
 
     private void ShowDetails()
     {
-        var key = SelectedKey;
-        if (key is null)
+        var key = SelectedKey; // captured on the UI thread before dispatching
+        Dispatch(async () =>
         {
-            RunSync(() => _ui.ShowMessageAsync("Details", ["No row is selected."]));
-            return;
-        }
+            if (key is null)
+            {
+                await Ui!.ShowMessageAsync("Details", ["No row is selected."]);
+                return;
+            }
 
-        var lines = RunSync(() => _currentResource.DetailsAsync(key, _ctx));
-        RunSync(() => _ui.ShowMessageAsync($"{_currentResource.Name} details", lines));
+            var lines = await _currentResource.DetailsAsync(key, _ctx);
+            await Ui!.ShowMessageAsync($"{_currentResource.Name} details", lines);
+        });
     }
 
     private void ShowHelp()
@@ -259,6 +317,7 @@ public sealed class TuiShell : Window
         {
             "Commands:",
             "  :        open command bar (type a resource name, Enter to switch)",
+            "  hjkl     move (vim) — also arrow keys",
             "  d        details for the selected row",
             "  ?        this help",
             "  q / ^Q   quit",
@@ -283,48 +342,71 @@ public sealed class TuiShell : Window
             lines.Add($"  {r.Name}{aliases}");
         }
 
-        RunSync(() => _ui.ShowMessageAsync("Help", lines));
+        Dispatch(() => Ui!.ShowMessageAsync("Help", lines));
     }
 
-    // ---- Command bar -------------------------------------------------------------------------
+    // ---- Command / prompt bar ----------------------------------------------------------------
 
     private void ShowCommandBar()
     {
-        _commandBar.Text = string.Empty;
-        _commandLabel.Visible = true;
-        _commandBar.Visible = true;
-        _commandBar.SetFocus();
+        _barMode = BarMode.Command;
+        _barLabel.Text = ":";
+        _bar.Text = string.Empty;
+        _barLabel.Visible = true;
+        _bar.Visible = true;
+        _bar.SetFocus();
     }
 
-    private void HideCommandBar()
+    private void HideBar()
     {
-        _commandBar.Visible = false;
-        _commandLabel.Visible = false;
+        _barMode = BarMode.None;
+        _bar.Visible = false;
+        _barLabel.Visible = false;
+        RefreshStatus();
         _table.SetFocus();
     }
 
-    private void OnCommandBarKey(object? sender, Key key)
+    private void ResolvePrompt(string? value)
+    {
+        var tcs = _promptTcs;
+        _promptTcs = null;
+        tcs?.SetResult(value);
+    }
+
+    private void OnBarKey(object? sender, Key key)
     {
         if (key.KeyCode == KeyCode.Esc)
         {
-            HideCommandBar();
+            var mode = _barMode;
+            HideBar();
             key.Handled = true;
+            if (mode == BarMode.Prompt)
+                ResolvePrompt(null);
             return;
         }
 
         if (key.KeyCode == KeyCode.Enter)
         {
-            var token = (_commandBar.Text ?? string.Empty).Trim();
-            HideCommandBar();
+            var text = _bar.Text ?? string.Empty;
+            var mode = _barMode;
+            HideBar();
             key.Handled = true;
 
+            if (mode == BarMode.Prompt)
+            {
+                ResolvePrompt(text); // empty allowed; null only on Esc/cancel
+                return;
+            }
+
+            // Command mode: resolve a resource token.
+            var token = text.Trim();
             if (token.Length == 0)
                 return;
 
             var resource = _registry.ResolveResource(token);
             if (resource is null)
             {
-                RunSync(() => _ui.ShowMessageAsync("Unknown resource", [$"No resource matches '{token}'."]));
+                Dispatch(() => Ui!.ShowMessageAsync("Unknown resource", [$"No resource matches '{token}'."]));
                 return;
             }
 
@@ -332,11 +414,41 @@ public sealed class TuiShell : Window
         }
     }
 
-    // ---- async-over-sync helpers (everything here runs on the UI thread) ---------------------
+    // ---- threading helpers -------------------------------------------------------------------
 
-    private static T RunSync<T>(Func<Task<T>> work)
-        => Task.Run(work).GetAwaiter().GetResult();
+    /// <summary>
+    /// Runs command work off the UI thread (so EF async can't deadlock the UI sync-context). Dialogs
+    /// and view updates inside <paramref name="work"/> marshal back via <see cref="Post"/> / the UI
+    /// layer. In headless mode (no IApplication) the work runs inline.
+    /// </summary>
+    private void Dispatch(Func<Task> work)
+    {
+        if (_app is null)
+        {
+            work().GetAwaiter().GetResult();
+            return;
+        }
 
-    private static void RunSync(Func<Task> work)
-        => Task.Run(work).GetAwaiter().GetResult();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await work();
+            }
+            catch (Exception ex)
+            {
+                if (Ui is not null)
+                    await Ui.ShowMessageAsync("Error", [ex.Message]);
+            }
+        });
+    }
+
+    /// <summary>Runs <paramref name="action"/> on the UI thread (inline when headless).</summary>
+    private void Post(Action action)
+    {
+        if (_app is null)
+            action();
+        else
+            _app.Invoke(action);
+    }
 }
