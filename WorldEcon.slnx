@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/WorldEcon.SharedKernel/WorldEcon.SharedKernel.csproj" />
+    <Project Path="src/WorldEcon.Simulation/WorldEcon.Simulation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/WorldEcon.SharedKernel.Tests.Unit/WorldEcon.SharedKernel.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.Simulation.Tests.Unit/WorldEcon.Simulation.Tests.Unit.csproj" />
+  </Folder>
+</Solution>

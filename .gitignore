@@ -1,0 +1,10 @@
+bin/
+obj/
+*.user
+.vs/
+.idea/
+*.db
+*.db-wal
+*.db-shm
+[Tt]est[Rr]esults/
+artifacts/
