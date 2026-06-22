@@ -60,4 +60,51 @@ public class ShellSmokeTests
         }
         finally { File.Delete(path); }
     }
+
+    [Test]
+    public async Task Filter_NarrowsRows_AndClearRestores()
+    {
+        var path = await TestWorld.SeedTempDbAsync();
+        try
+        {
+            await using var ctx = TestWorld.NewContext(path);
+            var tui = await TuiContext.LoadAsync(ctx, path);
+            using var shell = new TuiShell(tui, new Navigator(), new FakeUserInteraction());
+
+            // Cities root has >=2 rows (Hammerfell + Riverwood in test seed).
+            var totalRows = shell.CurrentView.Rows.Count;
+            totalRows.Should().BeGreaterThan(1);
+
+            // Apply a filter that matches only Hammerfell.
+            shell.ApplyFilterForTest("hammer");
+            shell.FilteredRowCount.Should().Be(1);
+
+            // Clear the filter — all rows return.
+            shell.ApplyFilterForTest(null);
+            shell.FilteredRowCount.Should().Be(totalRows);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task HelpView_PushesNavFrame_AndBackPops()
+    {
+        var path = await TestWorld.SeedTempDbAsync();
+        try
+        {
+            await using var ctx = TestWorld.NewContext(path);
+            var tui = await TuiContext.LoadAsync(ctx, path);
+            using var shell = new TuiShell(tui, new Navigator(), new FakeUserInteraction());
+
+            shell.HandleActionKey('?').Should().BeTrue();
+            shell.Depth.Should().Be(2);
+            shell.CurrentView.Title.Should().Be("Help");
+            shell.CurrentView.Columns.Should().BeEquivalentTo(["Key", "Action"]);
+
+            shell.Back();
+            shell.Depth.Should().Be(1);
+            shell.CurrentView.Title.Should().Be("Cities");
+        }
+        finally { File.Delete(path); }
+    }
 }

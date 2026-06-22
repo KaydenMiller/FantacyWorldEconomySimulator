@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.RegularExpressions;
 using Terminal.Gui.App;
 using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
@@ -31,6 +32,8 @@ public sealed class TuiShell : Window
         public NavView View = view;
         public int Selection;
         public readonly Func<Task<NavView?>> Reload = reload;
+        public string? Filter;
+        public IReadOnlyList<NavRow>? UnfilteredRows; // null means no filter has been set yet
     }
 
     private readonly IApplication? _app;
@@ -48,7 +51,6 @@ public sealed class TuiShell : Window
     private BarMode _barMode = BarMode.None;
     private TaskCompletionSource<string?>? _promptTcs;
 
-    private string? _logFilter;
     private (LogScopeKind Kind, Guid Id, string Title)? _currentLogScope;
 
     private readonly SingleWordSuggestionGenerator _rootSuggest = new();
@@ -107,12 +109,19 @@ public sealed class TuiShell : Window
     /// <summary>Depth of the drill stack (1 = at a root).</summary>
     public int Depth => _stack.Count;
 
+    /// <summary>Test helper: applies a filter to the current frame and re-renders.</summary>
+    public void ApplyFilterForTest(string? pattern) => ApplyFilter(pattern);
+
+    /// <summary>Test helper: returns the number of rows currently visible (after filter).</summary>
+    public int FilteredRowCount => GetFilteredRows(_stack[^1]).Count;
+
     public string? SelectedKey
     {
         get
         {
             var row = _table.Value?.SelectedCell.Y ?? -1;
-            var rows = _stack[^1].View.Rows;
+            var frame = _stack[^1];
+            var rows = GetFilteredRows(frame);
             return row >= 0 && row < rows.Count ? rows[row].Key : null;
         }
     }
@@ -122,7 +131,8 @@ public sealed class TuiShell : Window
         get
         {
             var i = _table.Value?.SelectedCell.Y ?? -1;
-            var rows = _stack[^1].View.Rows;
+            var frame = _stack[^1];
+            var rows = GetFilteredRows(frame);
             return i >= 0 && i < rows.Count ? rows[i] : null;
         }
     }
@@ -132,14 +142,26 @@ public sealed class TuiShell : Window
     private void ApplyTop()
     {
         var frame = _stack[^1];
-        _table.Table = BuildTableSource(frame.View);
-        Title = $"WorldEcon — {frame.View.Title}";
-        _breadcrumb.Text = " " + string.Join("  ›  ", _stack.Select(f => f.View.Title));
+        var rows = GetFilteredRows(frame);
+        _table.Table = BuildTableSourceFromRows(frame.View, rows);
+        var filterSuffix = frame.Filter is { } f ? $"  /{f}/" : string.Empty;
+        Title = $"WorldEcon — {frame.View.Title}{filterSuffix}";
+        _breadcrumb.Text = " " + string.Join("  ›  ", _stack.Select(fr => fr.View.Title));
         RefreshHeader();
         RefreshStatus();
     }
 
-    private static DataTableSource BuildTableSource(NavView view)
+    private static IReadOnlyList<NavRow> GetFilteredRows(NavFrame frame)
+    {
+        if (frame.Filter is not { } pattern || frame.UnfilteredRows is null)
+            return frame.View.Rows;
+        Regex? re = null;
+        try { re = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)); }
+        catch { return frame.View.Rows; } // invalid regex: show all
+        return frame.UnfilteredRows.Where(r => r.Cells.Any(c => re.IsMatch(c))).ToList();
+    }
+
+    private static DataTableSource BuildTableSourceFromRows(NavView view, IReadOnlyList<NavRow> rows)
     {
         var dt = new DataTable();
         if (view.Columns.Count == 0)
@@ -148,7 +170,7 @@ public sealed class TuiShell : Window
             foreach (var col in view.Columns)
                 dt.Columns.Add(col);
 
-        foreach (var row in view.Rows)
+        foreach (var row in rows)
         {
             var cells = new object[dt.Columns.Count];
             for (var i = 0; i < cells.Length; i++)
@@ -166,8 +188,12 @@ public sealed class TuiShell : Window
 
     private void RefreshStatus()
     {
-        var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details", "l log", "/ filter", "a advance", "S snapshot", "? help", "q quit" };
-        if (SelectedRow?.Kind == NavKind.City)
+        var row = SelectedRow;
+        var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details" };
+        if (LogScopeFor(row?.Kind ?? NavKind.Leaf) is not null)
+            hints.Add("l log");
+        hints.AddRange(["/filter", "a advance", "S snapshot", "? help", "q quit"]);
+        if (row?.Kind == NavKind.City)
             hints.AddRange(_cityActions.Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}"));
         _status.Text = " " + string.Join("  ", hints);
     }
@@ -213,9 +239,29 @@ public sealed class TuiShell : Window
         _stack.RemoveAt(_stack.Count - 1);
         // If the new top is not a log view, clear stale log state so `:summary` targets the world.
         if (!_stack[^1].View.Title.StartsWith("Log — ", StringComparison.Ordinal))
-        {
             _currentLogScope = null;
-            _logFilter = null;
+        ApplyTop();
+    }
+
+    private void ApplyFilter(string? pattern)
+    {
+        var frame = _stack[^1];
+        if (string.IsNullOrEmpty(pattern))
+        {
+            frame.Filter = null;
+            frame.UnfilteredRows = null;
+        }
+        else
+        {
+            // Validate regex; show brief message and bail on invalid pattern
+            try { _ = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)); }
+            catch
+            {
+                Dispatch(() => Ui!.ShowMessageAsync("Filter", [$"Invalid regex: {pattern}"]));
+                return;
+            }
+            frame.UnfilteredRows ??= frame.View.Rows;
+            frame.Filter = pattern;
         }
         ApplyTop();
     }
@@ -262,20 +308,16 @@ public sealed class TuiShell : Window
             return;
         }
 
-        // '/' opens a regex filter prompt when viewing a log view.
-        if (key.AsRune.Value == '/' && Title.StartsWith("WorldEcon — Log — ", StringComparison.Ordinal))
+        // '/' opens a regex filter prompt on ANY view (k9s-style, client-side).
+        if (key.AsRune.Value == '/')
         {
             key.Handled = true;
             Dispatch(async () =>
             {
-                var pattern = await PromptAsync("/", null);
-                var filter = string.IsNullOrEmpty(pattern) ? null : pattern;
-                _logFilter = filter;
-                if (_currentLogScope is { } sc)
-                {
-                    var view = await _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, filter, _ctx);
-                    Post(() => { _stack[^1] = new NavFrame(view, () => _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, filter, _ctx)!); ApplyTop(); });
-                }
+                var frame = _stack[^1];
+                var currentFilter = frame.Filter;
+                var pattern = await PromptAsync("/", currentFilter);
+                Post(() => ApplyFilter(pattern));
             });
             return;
         }
@@ -356,7 +398,6 @@ public sealed class TuiShell : Window
         if (scope is null) return;
         var title = row.Cells.Count > 0 ? row.Cells[0] : row.Kind.ToString();
         _currentLogScope = (scope.Value, Guid.Parse(row.Key), title);
-        _logFilter = null;
         Dispatch(async () =>
         {
             var view = await _nav.LogViewForScopeAsync(scope.Value, Guid.Parse(row.Key), title, null, _ctx);
@@ -366,7 +407,7 @@ public sealed class TuiShell : Window
 
     private void PushView(NavView view, LogScopeKind kind, Guid scopeId, string title)
     {
-        _stack.Add(new NavFrame(view, () => _nav.LogViewForScopeAsync(kind, scopeId, title, _logFilter, _ctx)!));
+        _stack.Add(new NavFrame(view, () => _nav.LogViewForScopeAsync(kind, scopeId, title, null, _ctx)!));
         ApplyTop();
     }
 
@@ -399,27 +440,41 @@ public sealed class TuiShell : Window
 
     private void ShowHelp()
     {
-        var lines = new List<string>
+        static NavRow Row(string key, string action) =>
+            new(key, NavKind.Leaf, [key, action]);
+        static NavRow Sep() =>
+            new(string.Empty, NavKind.Leaf, [string.Empty, string.Empty]);
+
+        var rows = new List<NavRow>
         {
-            "Navigation:",
-            "  :        command bar — jump to a resource (autocomplete; Enter to go)",
-            "  hjk      move (vim) — also arrow keys  (l is repurposed — see below)",
-            "  Enter    drill into the selected row",
-            "  Esc/⌫    go back up a level",
-            "  d        details for the selected row",
-            "  l        open scoped log for the selected row",
-            "  /        regex-filter the current log view",
-            "  q / ^Q   quit",
-            "",
-            "Actions:",
-            "  a        advance time",
-            "  S        snapshot",
-            "  b/x/e    (on a city) buy out a good / disable / enable production",
-            "",
-            "Resources (':' targets):",
-            "  " + string.Join(", ", _nav.RootNames),
+            Row("--- Navigation ---", string.Empty),
+            Row(":", "command bar — jump to a resource (autocomplete; Enter to go)"),
+            Row("hjk / arrows", "move cursor"),
+            Row("Enter", "drill into the selected row"),
+            Row("Esc / Backspace", "go back up one level"),
+            Row("d", "details for the selected row"),
+            Row("l", "open scoped log (only on loggable rows)"),
+            Row("/", "regex-filter the current view (any view, client-side)"),
+            Row("q / Ctrl+Q", "quit"),
+            Sep(),
+            Row("--- Actions ---", string.Empty),
+            Row("a", "advance time"),
+            Row("S", "snapshot"),
+            Row("b", "(on a city) buy out a good"),
+            Row("x", "(on a city) disable production"),
+            Row("e", "(on a city) enable production"),
+            Sep(),
+            Row("--- Resources (: targets) ---", string.Empty),
         };
-        Dispatch(() => Ui!.ShowMessageAsync("Help", lines));
+        foreach (var name in _nav.RootNames)
+            rows.Add(Row(name, string.Empty));
+
+        var helpView = new NavView("Help", ["Key", "Action"], rows);
+        Post(() =>
+        {
+            _stack.Add(new NavFrame(helpView, () => Task.FromResult<NavView?>(helpView)));
+            ApplyTop();
+        });
     }
 
     // ---- command / prompt bar ----------------------------------------------------------------
@@ -502,10 +557,7 @@ public sealed class TuiShell : Window
                     return;
                 }
                 if (canonical == "log")
-                {
                     _currentLogScope = (LogScopeKind.World, _ctx.World.Id.Value, "World");
-                    _logFilter = null;
-                }
                 SetRoot(canonical);
                 return;
             }
@@ -515,10 +567,7 @@ public sealed class TuiShell : Window
             {
                 if (matches[0] == "summary") { RunSummary(); return; }
                 if (matches[0] == "log")
-                {
                     _currentLogScope = (LogScopeKind.World, _ctx.World.Id.Value, "World");
-                    _logFilter = null;
-                }
                 SetRoot(matches[0]);
             }
             else
