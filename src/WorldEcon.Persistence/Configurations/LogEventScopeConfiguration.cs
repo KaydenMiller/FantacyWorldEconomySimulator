@@ -10,6 +10,7 @@ public sealed class LogEventScopeConfiguration : IEntityTypeConfiguration<LogEve
     {
         b.ToTable("log_event_scopes");
         b.HasKey(x => x.Id);
+        b.Property(x => x.WorldId);
         b.Property(x => x.ScopeKind).HasConversion<string>();
         b.HasIndex(x => x.LogEventId);
         // The hot read: events visible at a given scope, newest first.
