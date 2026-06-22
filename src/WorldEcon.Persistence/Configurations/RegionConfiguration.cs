@@ -11,6 +11,7 @@ public sealed class RegionConfiguration : IEntityTypeConfiguration<Region>
         b.ToTable("regions");
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).IsRequired();
+        b.Property(x => x.Kind).HasConversion<string>();
         b.HasIndex(x => x.WorldId);
         b.HasIndex(x => x.CountryId);
         b.Ignore(x => x.DomainEvents);

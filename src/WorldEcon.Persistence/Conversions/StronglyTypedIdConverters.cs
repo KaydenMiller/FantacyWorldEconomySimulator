@@ -9,3 +9,6 @@ public sealed class CountryIdConverter() : ValueConverter<CountryId, Guid>(v => 
 public sealed class RegionIdConverter() : ValueConverter<RegionId, Guid>(v => v.Value, g => new RegionId(g));
 public sealed class SettlementIdConverter() : ValueConverter<SettlementId, Guid>(v => v.Value, g => new SettlementId(g));
 public sealed class RouteIdConverter() : ValueConverter<RouteId, Guid>(v => v.Value, g => new RouteId(g));
+public sealed class RegionContinentIdConverter() : ValueConverter<RegionContinentId, Guid>(v => v.Value, g => new RegionContinentId(g));
+public sealed class RegionContainmentIdConverter() : ValueConverter<RegionContainmentId, Guid>(v => v.Value, g => new RegionContainmentId(g));
+public sealed class TerritorialClaimIdConverter() : ValueConverter<TerritorialClaimId, Guid>(v => v.Value, g => new TerritorialClaimId(g));
