@@ -1,3 +1,5 @@
+using WorldEcon.Domain.Logging;
+
 namespace WorldEcon.Tui.Navigation;
 
 /// <summary>
@@ -21,4 +23,7 @@ public interface INavigator
 
     /// <summary>Quick "Field: value" lookup lines for a row.</summary>
     Task<IReadOnlyList<string>> DetailsAsync(NavRow row, TuiContext ctx);
+
+    /// <summary>Build a log NavView for an entity scope (newest first), optionally regex-filtered.</summary>
+    Task<NavView> LogViewForScopeAsync(LogScopeKind kind, Guid scopeId, string title, string? regex, TuiContext ctx);
 }
