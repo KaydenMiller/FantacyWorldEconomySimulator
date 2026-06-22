@@ -12,6 +12,8 @@ public sealed class ProductionNode : AggregateRoot<ProductionNodeId>
     public FacilityType Facility { get; private set; }
     public long ThroughputCap { get; private set; } // max concurrent active batches
     public bool Disabled { get; private set; }
+    public ShopId? ProducerShopId { get; private set; }
+    public void AssignProducerShop(ShopId shopId) => ProducerShopId = shopId;
 
     private ProductionNode() : base(default) { } // EF
 
