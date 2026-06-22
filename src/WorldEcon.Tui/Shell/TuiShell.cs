@@ -211,6 +211,12 @@ public sealed class TuiShell : Window
     {
         if (_stack.Count <= 1) return;
         _stack.RemoveAt(_stack.Count - 1);
+        // If the new top is not a log view, clear stale log state so `:summary` targets the world.
+        if (!_stack[^1].View.Title.StartsWith("Log — ", StringComparison.Ordinal))
+        {
+            _currentLogScope = null;
+            _logFilter = null;
+        }
         ApplyTop();
     }
 
@@ -263,11 +269,12 @@ public sealed class TuiShell : Window
             Dispatch(async () =>
             {
                 var pattern = await PromptAsync("/", null);
-                _logFilter = string.IsNullOrEmpty(pattern) ? null : pattern;
+                var filter = string.IsNullOrEmpty(pattern) ? null : pattern;
+                _logFilter = filter;
                 if (_currentLogScope is { } sc)
                 {
-                    var view = await _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, _logFilter, _ctx);
-                    Post(() => { _stack[^1] = new NavFrame(view, () => _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, _logFilter, _ctx)!); ApplyTop(); });
+                    var view = await _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, filter, _ctx);
+                    Post(() => { _stack[^1] = new NavFrame(view, () => _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, filter, _ctx)!); ApplyTop(); });
                 }
             });
             return;
@@ -396,10 +403,12 @@ public sealed class TuiShell : Window
         {
             "Navigation:",
             "  :        command bar — jump to a resource (autocomplete; Enter to go)",
-            "  hjkl     move (vim) — also arrow keys",
+            "  hjk      move (vim) — also arrow keys  (l is repurposed — see below)",
             "  Enter    drill into the selected row",
             "  Esc/⌫    go back up a level",
             "  d        details for the selected row",
+            "  l        open scoped log for the selected row",
+            "  /        regex-filter the current log view",
             "  q / ^Q   quit",
             "",
             "Actions:",
