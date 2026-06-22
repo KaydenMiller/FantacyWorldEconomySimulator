@@ -252,6 +252,8 @@ public sealed class TuiShell : Window
             return;
         }
 
+        // vim-style navigation in the table: forward hjkl to arrow keys. (Confirm dialogs use a y/n
+        // prompt rather than a button dialog, so hjkl button-switching isn't needed there.)
         switch (key.AsRune.Value)
         {
             case 'j': _table.NewKeyDownEvent(new Key(KeyCode.CursorDown)); RefreshStatus(); key.Handled = true; return;

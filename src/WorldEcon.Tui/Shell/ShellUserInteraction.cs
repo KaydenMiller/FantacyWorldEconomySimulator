@@ -46,10 +46,18 @@ internal sealed class ShellUserInteraction : IUserInteraction
         return Task.CompletedTask;
     }
 
-    public Task<bool> ConfirmAsync(string title, string message)
+    public async Task<bool> ConfirmAsync(string title, string message)
     {
-        var choice = InvokeOnUi(() => MessageBox.Query(_app, title, message, "Yes", "No"));
-        return Task.FromResult(choice == 0);
+        // Use the in-shell prompt bar (keyboard-driven, consistent with text/number input) rather than a
+        // MessageBox button dialog: built-in button dialogs in this TG v2 build don't support hjkl button
+        // switching. Type y/yes to confirm; anything else (incl. Enter/empty) or Esc-cancel means No.
+        var text = await _shell.PromptAsync($"{message} (y/N)", null);
+        if (text is null)
+            return false; // cancelled
+
+        var t = text.Trim();
+        return t.Equals("y", StringComparison.OrdinalIgnoreCase)
+            || t.Equals("yes", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Runs <paramref name="f"/> on the UI thread and blocks the caller until it completes.</summary>
