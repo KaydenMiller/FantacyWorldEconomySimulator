@@ -37,7 +37,8 @@ public static class LogMagnitudePolicy
         if (type == LogEventType.Restock && level != LogScopeKind.Shop)
             return false;
 
-        // Force override: claim changes are always visible at country and continent.
+        // Force override: claim changes are always visible at country and continent (regional politics,
+        // not world-historic). World scope is only reached if the event's magnitude clears the World floor.
         if (type == LogEventType.ClaimChanged && (level == LogScopeKind.Country || level == LogScopeKind.Continent))
             return true;
 

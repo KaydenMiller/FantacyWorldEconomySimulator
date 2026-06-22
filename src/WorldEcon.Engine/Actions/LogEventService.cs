@@ -145,9 +145,9 @@ public sealed class LogEventService
         var emitter = new LogEventEmitter(_db, world.Id);
         var ev = await emitter.EmitAsync(LogEventType.PartyAction, message, world.CurrentTick,
             LogScopeKind.Settlement, settlementId.Value, settlementId,
-            magnitude: LogMagnitude.Major, isPlayerAction: true, payloadJson: payloadJson);
+            magnitude: LogMagnitude.Major, isPlayerAction: true, payloadJson: payloadJson,
+            recordedAtUtc: recordedAtUtc);
         await _db.SaveChangesAsync();
-        _ = recordedAtUtc; // RecordedAtUtc is stamped by LogEvent.Create(UtcNow); kept for signature parity
         return ev;
     }
 

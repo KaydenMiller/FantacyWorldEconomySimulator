@@ -26,14 +26,15 @@ public sealed class LogEventEmitter
 
     public async Task<LogEvent> EmitAsync(LogEventType type, string message, Tick tick,
         LogScopeKind originKind, Guid originId, SettlementId? settlement = null,
-        LogMagnitude? magnitude = null, bool isPlayerAction = false, string payloadJson = "{}")
+        LogMagnitude? magnitude = null, bool isPlayerAction = false, string payloadJson = "{}",
+        DateTimeOffset? recordedAtUtc = null)
     {
         var mag = magnitude ?? LogMagnitudePolicy.DefaultMagnitude(type);
         await EnsureSequenceLoaded();
         long seq = _nextSequence++;
 
         var ev = LogEvent.Create(_worldId, seq, tick, type, mag, originKind, originId,
-            isPlayerAction, payloadJson, message).Value;
+            isPlayerAction, payloadJson, message, recordedAtUtc ?? DateTimeOffset.UtcNow).Value;
         _db.LogEvents.Add(ev);
 
         // Origin scope is always written.

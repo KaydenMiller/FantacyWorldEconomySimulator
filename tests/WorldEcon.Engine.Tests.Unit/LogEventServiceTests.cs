@@ -258,6 +258,63 @@ public class LogEventServiceTests
     }
 
     // -------------------------------------------------------------------------
+    // BuyFromShopsAsync
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public async Task BuyFromShops_DrainsShopsInOrder_AndEmitsPlayerAction()
+    {
+        GoodId goodId = default;
+        var seed = await SeedAsync((ctx, worldId, settlementId) =>
+        {
+            var good = Good.Create(worldId, "Health Potion", GoodCategory.Potion, new Money(5000), "vial", SizeClass.Small, 0, false).Value;
+            goodId = good.Id;
+            ctx.Goods.Add(good);
+
+            var shopA = Shop.Create(worldId, settlementId, "Apothecary", 2000, new Money(1000)).Value;
+            var shopB = Shop.Create(worldId, settlementId, "Bazaar", 2000, new Money(1000)).Value;
+            ctx.Shops.AddRange(shopA, shopB);
+
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, shopA.Id, good.Id, 30, new Money(5000)).Value);
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, shopB.Id, good.Id, 30, new Money(5000)).Value);
+        });
+
+        try
+        {
+            // Act: buy 50 from 60 total across two shops.
+            LogEvent ev;
+            await using (var ctx = NewContextOnFile(seed.Path))
+            {
+                var service = new LogEventService(ctx);
+                var result = await service.BuyFromShopsAsync(seed.WorldId, seed.SettlementId, goodId, 50, Utc);
+                result.IsError.Should().BeFalse();
+                ev = result.Value;
+            }
+
+            // Assert: correct event shape.
+            ev.IsPlayerAction.Should().BeTrue();
+            ev.Type.Should().Be(LogEventType.PartyAction);
+
+            // Assert: 10 units remain across both shop stockpiles (60 − 50).
+            await using (var ctx = NewContextOnFile(seed.Path))
+            {
+                var totalShopStock = await ctx.Stockpiles
+                    .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == goodId)
+                    .SumAsync(s => s.Quantity);
+                totalShopStock.Should().Be(10);
+
+                // Exactly one player-action log event persisted for this call.
+                (await ctx.LogEvents.CountAsync(e => e.IsPlayerAction && e.Type == LogEventType.PartyAction))
+                    .Should().Be(1);
+            }
+        }
+        finally
+        {
+            File.Delete(seed.Path);
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // LogEvent Sequence monotonicity across two calls
     // -------------------------------------------------------------------------
 
