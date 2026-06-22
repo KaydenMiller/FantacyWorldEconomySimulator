@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WorldEcon.Domain.Economy;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Currency;
 
 namespace WorldEcon.Persistence.Conversions;
 
@@ -16,6 +17,13 @@ public sealed class UInt64Converter() : ValueConverter<ulong, long>(v => uncheck
 public sealed class CalendarDefinitionConverter() : ValueConverter<CalendarDefinition, string>(
     c => JsonSerializer.Serialize(c, Options),
     s => JsonSerializer.Deserialize<CalendarDefinition>(s, Options)!)
+{
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.General);
+}
+
+public sealed class CurrencyDefinitionConverter() : ValueConverter<CurrencyDefinition, string>(
+    c => JsonSerializer.Serialize(c, Options),
+    s => JsonSerializer.Deserialize<CurrencyDefinition>(s, Options)!)
 {
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.General);
 }

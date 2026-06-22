@@ -1,6 +1,7 @@
 using ErrorOr;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Currency;
 using WorldEcon.SharedKernel.Domain;
 
 namespace WorldEcon.Domain.Geography;
@@ -10,6 +11,7 @@ public sealed class World : AggregateRoot<WorldId>
     public string Name { get; private set; }
     public ulong Seed { get; }
     public CalendarDefinition Calendar { get; }
+    public CurrencyDefinition Currency { get; private set; }
     public Tick CurrentTick { get; private set; }
     public string RulesetVersion { get; private set; }
 
@@ -27,6 +29,7 @@ public sealed class World : AggregateRoot<WorldId>
     {
         Name = null!;
         Calendar = null!;
+        Currency = null!;
         RulesetVersion = null!;
     }
 
@@ -36,6 +39,7 @@ public sealed class World : AggregateRoot<WorldId>
         Name = name;
         Seed = seed;
         Calendar = calendar;
+        Currency = CurrencyDefinition.Default;
         CurrentTick = currentTick;
         RulesetVersion = rulesetVersion;
         ElasticityExponent = DefaultElasticityExponent;

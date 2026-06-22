@@ -15,6 +15,7 @@ public sealed class WorldConfiguration : IEntityTypeConfiguration<World>
         b.Property(x => x.Seed).HasConversion<UInt64Converter>();
         b.Property(x => x.CurrentTick).HasConversion<TickConverter>();
         b.Property(x => x.Calendar).HasConversion<CalendarDefinitionConverter>();
+        b.Property(x => x.Currency).HasConversion<CurrencyDefinitionConverter>();
         b.Property(x => x.RulesetVersion).IsRequired();
         b.Ignore(x => x.DomainEvents);
     }
