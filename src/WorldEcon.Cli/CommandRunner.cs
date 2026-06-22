@@ -532,11 +532,13 @@ internal static class CommandRunner
         var world = await ctx.Worlds.FirstOrDefaultAsync();
         if (world is null) { Console.Error.WriteLine("Error: no world found."); return 1; }
 
-        var (kind, id) = await ResolveScope(ctx, world.Id, args[2], args[3]);
+        var (kind, id, knownKind) = await ResolveScope(ctx, world.Id, args[2], args[3]);
+        if (!knownKind) { Console.Error.WriteLine($"Error: unknown scope kind '{args[2]}'. Expected: world|continent|country|region|city."); return 1; }
         if (id is null) { Console.Error.WriteLine($"Error: {args[2]} '{args[3]}' not found."); return 1; }
 
         string? regex = OptValue(args, "--regex");
         int limit = int.TryParse(OptValue(args, "--limit"), out var n) ? n : 50;
+        if (limit < 1) { Console.Error.WriteLine("Error: --limit must be a positive integer."); return 1; }
 
         var events = await new LogQueryService(ctx).QueryAsync(world.Id, kind, id.Value, regex, limit);
         Console.WriteLine($"Log for {args[2]} '{args[3]}' (newest first):");
@@ -559,11 +561,13 @@ internal static class CommandRunner
         var world = await ctx.Worlds.FirstOrDefaultAsync();
         if (world is null) { Console.Error.WriteLine("Error: no world found."); return 1; }
 
-        var (kind, id) = await ResolveScope(ctx, world.Id, args[2], args[3]);
+        var (kind, id, knownKind) = await ResolveScope(ctx, world.Id, args[2], args[3]);
+        if (!knownKind) { Console.Error.WriteLine($"Error: unknown scope kind '{args[2]}'. Expected: world|continent|country|region|city."); return 1; }
         if (id is null) { Console.Error.WriteLine($"Error: {args[2]} '{args[3]}' not found."); return 1; }
 
         long from = long.TryParse(OptValue(args, "--from"), out var f) ? f : 0;
         long to = long.TryParse(OptValue(args, "--to"), out var t) ? t : world.CurrentTick.Value;
+        if (from > to) { Console.Error.WriteLine($"Error: --from ({from}) must not be greater than --to ({to})."); return 1; }
 
         var sum = await new SummaryService(ctx).SummarizeAsync(world.Id, kind, id.Value,
             new WorldEcon.SharedKernel.Tick(from), new WorldEcon.SharedKernel.Tick(to));
@@ -581,34 +585,39 @@ internal static class CommandRunner
         return 0;
     }
 
-    private static string? OptValue(string[] args, string flag)
+    private static string? OptValue(string[] args, string flag, int startIndex = 4)
     {
-        var i = Array.IndexOf(args, flag);
-        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+        for (int i = startIndex; i < args.Length - 1; i++)
+            if (args[i] == flag) return args[i + 1];
+        return null;
     }
 
-    private static async Task<(LogScopeKind Kind, Guid? Id)> ResolveScope(
+    private static async Task<(LogScopeKind Kind, Guid? Id, bool KnownKind)> ResolveScope(
         WorldDbContext ctx, WorldId worldId, string kindToken, string name)
     {
         switch (kindToken.ToLowerInvariant())
         {
             case "world":
-                return (LogScopeKind.World, worldId.Value);
+                return (LogScopeKind.World, worldId.Value, true);
             case "continent":
                 return (LogScopeKind.Continent,
-                    (await ctx.Continents.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+                    (await ctx.Continents.Where(x => x.WorldId == worldId).ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value,
+                    true);
             case "country":
                 return (LogScopeKind.Country,
-                    (await ctx.Countries.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+                    (await ctx.Countries.Where(x => x.WorldId == worldId).ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value,
+                    true);
             case "region":
                 return (LogScopeKind.Region,
-                    (await ctx.Regions.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+                    (await ctx.Regions.Where(x => x.WorldId == worldId).ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value,
+                    true);
             case "city":
             case "settlement":
                 return (LogScopeKind.Settlement,
-                    (await ctx.Settlements.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+                    (await ctx.Settlements.Where(x => x.WorldId == worldId).ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value,
+                    true);
             default:
-                return (LogScopeKind.World, null);
+                return (LogScopeKind.World, null, false);
         }
 
         static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
