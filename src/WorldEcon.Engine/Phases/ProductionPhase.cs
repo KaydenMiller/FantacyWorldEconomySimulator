@@ -154,7 +154,11 @@ public sealed class ProductionPhase : ISimulationPhase
         var byId = fromDb.ToDictionary(w => w.Id);
         foreach (var local in ctx.Db.WorkOrders.Local.Where(w => w.WorldId == worldId && !w.Completed))
             byId[local.Id] = local;
-        return byId.Values.ToList();
+        // Final !Completed filter is essential: the DB query above matches on the *unsaved* DB value
+        // (Completed=0), but EF identity-resolution returns the tracked instance — which may already be
+        // Completed=true from an earlier day in this same multi-day advance. Without this filter that
+        // order re-enters dueOrders and MarkComplete() throws "already complete". (Mirrors TradePhase.)
+        return byId.Values.Where(w => !w.Completed).ToList();
     }
 
     private static async Task<Stockpile> GetOrCreateMarketStockpile(
