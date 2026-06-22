@@ -149,6 +149,20 @@ public sealed class TuiShell : Window
         _breadcrumb.Text = " " + string.Join("  ›  ", _stack.Select(fr => fr.View.Title));
         RefreshHeader();
         RefreshStatus();
+
+        // Restore the saved cursor position, clamped to the visible row count.
+        if (_app is not null)
+        {
+            try
+            {
+                var count = rows.Count;
+                var target = Math.Clamp(frame.Selection, 0, Math.Max(0, count - 1));
+                _table.SetSelection(0, target, false, null);
+                _table.EnsureCursorIsVisible();
+                _table.SetNeedsDraw();
+            }
+            catch { /* headless or no driver — ignore */ }
+        }
     }
 
     private static IReadOnlyList<NavRow> GetFilteredRows(NavFrame frame)
@@ -268,9 +282,12 @@ public sealed class TuiShell : Window
 
     private async Task RefreshCurrentAsync()
     {
+        // Capture current cursor before reloading so ApplyTop restores it.
+        var savedSelection = _table.Value?.SelectedCell.Y ?? 0;
         var v = await _stack[^1].Reload();
         Post(() =>
         {
+            _stack[^1].Selection = savedSelection;
             if (v is not null) _stack[^1].View = v;
             ApplyTop();
         });
