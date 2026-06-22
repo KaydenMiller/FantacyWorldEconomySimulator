@@ -40,19 +40,21 @@ public sealed class ConsumptionPhase : ISimulationPhase
         {
             if (!consumable.TryGetValue(stock.GoodId, out var good))
                 continue;
-            if (stock.Quantity <= 0)
-                continue;
             if (!settlements.TryGetValue(new SettlementId(stock.OwnerId), out var settlement))
                 continue;
 
             // NOTE: Population is used as an abstract demand multiplier; demographic detail
             // (age/needs cohorts) is deferred.
+            // NOTE: Settlements with NO stockpile row for a good are not covered here;
+            // only existing rows are iterated (out of scope for this fix).
             long demand = FixedMath.MulBp(settlement.Population, good.ConsumptionPerCapitaBp);
             long consume = Math.Min(demand, stock.Quantity);
+            // Withdraw is guarded so a zero-quantity stockpile is economically a no-op.
             if (consume > 0)
                 stock.Withdraw(consume).OrThrow("population consumption");
 
-            if (consume < demand)
+            // Emit Stockout for both partial and total shortfalls (including empty stock).
+            if (demand > 0 && consume < demand)
                 await ctx.Log.EmitAsync(LogEventType.Stockout,
                     $"{good.Name} ran short of demand in {settlement.Name}", tick,
                     LogScopeKind.Settlement, settlement.Id.Value, settlement.Id);
