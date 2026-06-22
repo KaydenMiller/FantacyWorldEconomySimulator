@@ -38,6 +38,14 @@ public sealed class TradePhase : ISimulationPhase
                 .ToListAsync())
             .ToDictionary(g => g.Id);
 
+        // Name lookups so log messages read in human terms (not raw GUIDs).
+        var settlementNames = (await ctx.Db.Settlements
+                .Where(s => s.WorldId == worldId)
+                .ToListAsync())
+            .ToDictionary(s => s.Id, s => s.Name);
+        string GoodName(GoodId id) => goods.TryGetValue(id, out var g) ? g.Name : id.Value.ToString();
+        string SettlementName(SettlementId id) => settlementNames.TryGetValue(id, out var n) ? n : id.Value.ToString();
+
         // ---- Step A: deliver arrived caravans. ----
         // ArriveTick is a value-converted type, so the tick comparison is filtered in memory.
         var undelivered = await LoadUndeliveredCaravans(ctx, worldId);
@@ -59,8 +67,8 @@ public sealed class TradePhase : ISimulationPhase
 
             caravan.MarkDelivered();
             await ctx.Log.EmitAsync(LogEventType.MerchantArrived,
-                $"Caravan delivered {caravan.Quantity} units (good {caravan.GoodId.Value})", tick,
-                LogScopeKind.Merchant, caravan.OwnerId.Value,
+                $"Caravan delivered {caravan.Quantity} {GoodName(caravan.GoodId)} to {SettlementName(caravan.DestinationId)}",
+                tick, LogScopeKind.Merchant, caravan.OwnerId.Value,
                 merchant?.Seat);
         }
 
@@ -157,8 +165,8 @@ public sealed class TradePhase : ISimulationPhase
             ctx.Db.Caravans.Add(newCaravan);
             inFlight.Add(newCaravan); // one caravan per merchant per run
             await ctx.Log.EmitAsync(LogEventType.MerchantDeparted,
-                $"Caravan dispatched {quantity} units toward settlement {bestDest.Settlement.Value}", tick,
-                LogScopeKind.Merchant, merchant.Id.Value, merchant.Seat);
+                $"Caravan dispatched {quantity} {GoodName(bestGoodId)} from {SettlementName(merchant.Seat)} to {SettlementName(bestDest.Settlement)}",
+                tick, LogScopeKind.Merchant, merchant.Id.Value, merchant.Seat);
 
             // NOTE: transport cost affects only the decision threshold, not a separate gold sink;
             // risk-from-danger and multi-good cargo are deferred.
