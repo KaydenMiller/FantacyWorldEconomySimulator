@@ -162,7 +162,7 @@ public sealed class LogEventService
     private async Task<Shop> GetOrCreatePublicMarketShop(WorldId worldId, SettlementId settlementId)
     {
         var local = _db.Shops.Local.FirstOrDefault(sh =>
-            sh.SettlementId == settlementId && sh.Kind == ShopKind.PublicMarket);
+            sh.WorldId == worldId && sh.SettlementId == settlementId && sh.Kind == ShopKind.PublicMarket);
         if (local is not null) return local;
         var existing = await _db.Shops.FirstOrDefaultAsync(sh =>
             sh.WorldId == worldId && sh.SettlementId == settlementId && sh.Kind == ShopKind.PublicMarket);
