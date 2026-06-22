@@ -18,8 +18,10 @@ public sealed class LogQueryService
     public async Task<IReadOnlyList<LogEvent>> QueryAsync(
         WorldId worldId, LogScopeKind scopeKind, Guid scopeId, string? regex, int limit)
     {
-        // Pull more than `limit` when a regex will thin the page, so we still return up to `limit` matches.
-        int fetch = regex is null ? limit : Math.Max(limit * 8, limit);
+        // Pull more than `limit` when a regex will thin the page, so we still return up to `limit`
+        // matches. This is a heuristic window, not a guarantee — matches deeper than `limit * 8`
+        // scope rows are not returned (acceptable for v1 browsing).
+        int fetch = regex is null ? limit : limit * 8;
 
         var scopeRows = await _db.LogEventScopes
             .Where(x => x.WorldId == worldId && x.ScopeKind == scopeKind && x.ScopeId == scopeId)
@@ -39,7 +41,8 @@ public sealed class LogQueryService
 
         if (regex is not null)
         {
-            var rx = new Regex(regex, RegexOptions.IgnoreCase);
+            // matchTimeout guards against catastrophic backtracking from user-supplied patterns (TUI/CLI).
+            var rx = new Regex(regex, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
             events = events.Where(e => rx.IsMatch(e.Message));
         }
 
