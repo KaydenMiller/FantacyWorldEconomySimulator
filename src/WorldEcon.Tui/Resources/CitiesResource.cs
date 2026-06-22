@@ -40,9 +40,9 @@ public sealed class CitiesResource : IResource
             return [$"Settlement {key} not found."];
 
         var region = await ctx.Db.Regions.FirstOrDefaultAsync(r => r.Id == s.RegionId);
-        var country = region is null
-            ? null
-            : await ctx.Db.Countries.FirstOrDefaultAsync(c => c.Id == region.CountryId);
+        var country = region?.CountryId is { } cid
+            ? await ctx.Db.Countries.FirstOrDefaultAsync(c => c.Id == cid)
+            : null;
         var continent = country is null
             ? null
             : await ctx.Db.Continents.FirstOrDefaultAsync(c => c.Id == country.ContinentId);

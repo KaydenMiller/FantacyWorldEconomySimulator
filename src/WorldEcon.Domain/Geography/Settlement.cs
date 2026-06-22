@@ -12,13 +12,14 @@ public sealed class Settlement : AggregateRoot<SettlementId>
     public int X { get; private set; }              // display coordinate only (spec §9.1)
     public int Y { get; private set; }
     public long Population { get; private set; }
+    public SettlementState State { get; private set; }
     public Provenance Provenance { get; private set; }
 
     // Parameterless ctor for EF Core materialization.
     private Settlement() : base(default) => Name = null!;
 
     private Settlement(SettlementId id, WorldId worldId, RegionId regionId, string name,
-        SettlementType type, int x, int y, long population, Provenance provenance) : base(id)
+        SettlementType type, int x, int y, long population, SettlementState state, Provenance provenance) : base(id)
     {
         WorldId = worldId;
         RegionId = regionId;
@@ -27,6 +28,7 @@ public sealed class Settlement : AggregateRoot<SettlementId>
         X = x;
         Y = y;
         Population = population;
+        State = state;
         Provenance = provenance;
     }
 
@@ -39,6 +41,8 @@ public sealed class Settlement : AggregateRoot<SettlementId>
             return Error.Validation("settlement.population.negative", "Population must not be negative.");
 
         return new Settlement(SettlementId.New(), worldId, regionId, name.Trim(),
-            type, x, y, population, Provenance.Authored);
+            type, x, y, population, SettlementState.Active, Provenance.Authored);
     }
+
+    public void SetState(SettlementState state) => State = state;
 }
