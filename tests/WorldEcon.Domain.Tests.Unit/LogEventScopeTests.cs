@@ -19,6 +19,14 @@ public class LogEventScopeTests
     }
 
     [Test]
+    public void Create_WithZeroSequence_Succeeds()
+    {
+        var scope = LogEventScope.Create(WorldId.New(), LogEventId.New(), LogScopeKind.Shop, Guid.NewGuid(), sequence: 0);
+        scope.IsError.Should().BeFalse();
+        scope.Value.Sequence.Should().Be(0);
+    }
+
+    [Test]
     public void Create_WithNegativeSequence_Fails()
     {
         var scope = LogEventScope.Create(WorldId.New(), LogEventId.New(), LogScopeKind.Settlement, Guid.NewGuid(), -1);
