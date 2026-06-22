@@ -48,6 +48,8 @@ public sealed class Shop : AggregateRoot<ShopId>
     {
         if (string.IsNullOrWhiteSpace(name))
             return Error.Validation("shop.name.blank", "Shop name must not be blank.");
+        if (kind == ShopKind.Retail)
+            return Error.Validation("shop.kind.invalid", "CreateVendor is for Producer or PublicMarket shops; use Create for Retail.");
 
         return new Shop(ShopId.New(), worldId, settlementId, name.Trim(), 0, Money.Zero, kind);
     }

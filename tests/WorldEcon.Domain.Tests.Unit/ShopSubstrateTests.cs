@@ -27,6 +27,30 @@ public class ShopSubstrateTests
     }
 
     [Test]
+    public void Shop_CreateVendor_RejectsRetailKind()
+    {
+        var result = Shop.CreateVendor(World, Settle, "Corner Store", ShopKind.Retail);
+        result.IsError.Should().BeTrue();
+        result.FirstError.Code.Should().Be("shop.kind.invalid");
+    }
+
+    [Test]
+    public void Shop_CreateVendor_RejectsBlankName()
+    {
+        Shop.CreateVendor(World, Settle, "  ", ShopKind.Producer).IsError.Should().BeTrue();
+    }
+
+    [Test]
+    public void ProductionNode_AssignProducerShop_IsWriteOnce()
+    {
+        var node = ProductionNode.Create(World, Settle, RecipeId.New(), FacilityType.Smithy, 1).Value;
+        var first = ShopId.New();
+        node.AssignProducerShop(first);
+        node.AssignProducerShop(ShopId.New()); // ignored
+        node.ProducerShopId.Should().Be(first);
+    }
+
+    [Test]
     public void ProductionNode_AssignProducerShop_Sets()
     {
         var node = ProductionNode.Create(World, Settle, RecipeId.New(), FacilityType.Smithy, 1).Value;

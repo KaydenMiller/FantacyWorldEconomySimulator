@@ -13,7 +13,14 @@ public sealed class ProductionNode : AggregateRoot<ProductionNodeId>
     public long ThroughputCap { get; private set; } // max concurrent active batches
     public bool Disabled { get; private set; }
     public ShopId? ProducerShopId { get; private set; }
-    public void AssignProducerShop(ShopId shopId) => ProducerShopId = shopId;
+
+    /// <summary>Links this node to its producer-shop. Write-once: a node fronts exactly one shop, so a
+    /// second call is ignored.</summary>
+    public void AssignProducerShop(ShopId shopId)
+    {
+        if (ProducerShopId.HasValue) return;
+        ProducerShopId = shopId;
+    }
 
     private ProductionNode() : base(default) { } // EF
 
