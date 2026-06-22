@@ -1,57 +1,63 @@
 using FluentAssertions;
+using WorldEcon.Tui.Navigation;
 using WorldEcon.Tui.Shell;
 
 namespace WorldEcon.Tui.Tests.Unit;
 
 /// <summary>
-/// Headless smoke test for the Terminal.Gui shell. We do NOT enter the interactive run loop (there is
-/// no TTY in CI), and Terminal.Gui v2.4 has no fake/headless driver. Instead we construct the shell's
-/// views directly — Terminal.Gui v2 allows building a <c>Window</c>/<c>TableView</c> tree without
-/// <c>Application.Init</c> — and assert the initial resource table is populated and that the
-/// non-Terminal.Gui key glue maps characters to the right registry actions.
-///
-/// Full interactive UI behaviour (rendering, focus, modal dialogs) is verified manually by running
-/// <c>dotnet run --project src/WorldEcon.Tui -- &lt;dbPath&gt;</c>.
+/// Headless smoke test for the Terminal.Gui drill shell. We do NOT enter the interactive run loop
+/// (no TTY in CI, and Terminal.Gui 2.4 exposes no fake driver). Instead we construct the shell with no
+/// <see cref="Terminal.Gui.App.IApplication"/> (so it runs inline) and drive its public, Terminal.Gui-free
+/// glue: the initial root view, key mapping, and drill/back stack. Full interactive UI (rendering,
+/// focus, modal/prompt dialogs, autocomplete) is verified manually under tmux.
 /// </summary>
 public class ShellSmokeTests
 {
     [Test]
-    public async Task Shell_Constructs_And_PopulatesInitialCitiesTable()
+    public async Task Shell_StartsAtCitiesRoot_AndDrillsAndGoesBack()
     {
         var path = await TestWorld.SeedTempDbAsync();
         try
         {
             await using var ctx = TestWorld.NewContext(path);
             var tui = await TuiContext.LoadAsync(ctx, path);
-            var registry = CommandRegistry.CreateDefault();
-            var ui = new FakeUserInteraction();
+            using var shell = new TuiShell(tui, new Navigator(), new FakeUserInteraction());
 
-            // Build the shell views without an interactive run loop.
-            using var shell = new TuiShell(tui, registry, ui);
+            shell.Depth.Should().Be(1);
+            shell.CurrentView.Title.Should().Be("Cities");
+            shell.CurrentView.Rows.Should().NotBeEmpty();
+            shell.CurrentView.Rows.Should().OnlyContain(r => r.Kind == NavKind.City);
 
-            // Defaults to the cities resource and loads its rows up front.
-            shell.CurrentResource.Name.Should().Be("cities");
-            shell.CurrentTable.Columns.Should().Contain("Name");
-            shell.CurrentTable.Rows.Should().NotBeEmpty();
-            shell.SelectedKey.Should().NotBeNull();
+            // Drill first city -> category chooser; Back -> root.
+            shell.DrillSelected();
+            shell.Depth.Should().Be(2);
+            shell.CurrentView.Rows.Should().OnlyContain(r => r.Kind == NavKind.CityCategory);
 
-            // The non-Terminal.Gui key glue resolves known keys (details, help, global + row actions).
-            shell.HandleActionKey('d').Should().BeTrue();   // details
-            shell.HandleActionKey('?').Should().BeTrue();   // help
-            shell.HandleActionKey('a').Should().BeTrue();   // AdvanceAction (global)
-            shell.HandleActionKey('b').Should().BeTrue();   // BuyOutAction (cities row action)
-            shell.HandleActionKey('z').Should().BeFalse();  // unknown key
+            shell.Back();
+            shell.Depth.Should().Be(1);
+            shell.CurrentView.Title.Should().Be("Cities");
 
-            // Switching resources reloads the table.
-            var goods = registry.ResolveResource("goods");
-            goods.Should().NotBeNull();
-            shell.SwitchResource(goods!);
-            shell.CurrentResource.Name.Should().Be("goods");
-            shell.CurrentTable.Rows.Should().NotBeEmpty();
+            shell.SetRoot("goods");
+            shell.CurrentView.Title.Should().Be("Goods");
+            shell.Depth.Should().Be(1);
         }
-        finally
+        finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task HandleActionKey_MapsKnownKeys()
+    {
+        var path = await TestWorld.SeedTempDbAsync();
+        try
         {
-            File.Delete(path);
+            await using var ctx = TestWorld.NewContext(path);
+            var tui = await TuiContext.LoadAsync(ctx, path);
+            using var shell = new TuiShell(tui, new Navigator(), new FakeUserInteraction());
+
+            shell.HandleActionKey('?').Should().BeTrue();   // help
+            shell.HandleActionKey('a').Should().BeTrue();   // advance (global)
+            shell.HandleActionKey('z').Should().BeFalse();  // unknown
         }
+        finally { File.Delete(path); }
     }
 }

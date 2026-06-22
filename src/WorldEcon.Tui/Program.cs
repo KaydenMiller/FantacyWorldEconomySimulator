@@ -33,13 +33,13 @@ catch (InvalidOperationException ex)
     return 1;
 }
 
-var registry = CommandRegistry.CreateDefault();
+var navigator = new WorldEcon.Tui.Navigation.Navigator();
 
 var app = Application.Create();
 app.Init();
 try
 {
-    using var shell = new TuiShell(ctx, registry, app: app);
+    using var shell = new TuiShell(ctx, navigator, app: app);
     shell.Ui = new ShellUserInteraction(shell, app);
     app.Run(shell, null);
 }
