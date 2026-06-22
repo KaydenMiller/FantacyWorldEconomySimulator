@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Engine.Logging;
 using WorldEcon.Persistence;
 using WorldEcon.Simulation.Random;
 using WorldEcon.Simulation.Time;
@@ -19,12 +20,17 @@ public sealed class SimulationContext
         World = world;
         Rng = rng;
         Calendar = calendar;
+        Log = new LogEventEmitter(db, world.Id);
     }
 
     public WorldDbContext Db { get; }
     public World World { get; }
     public IRngStreams Rng { get; }
     public CalendarSystem Calendar { get; }
+
+    /// <summary>The log-event writer for this advance. Phases emit through this; the engine's single
+    /// end-of-advance SaveChanges persists the rows.</summary>
+    public LogEventEmitter Log { get; }
 
     /// <summary>
     /// Loads the single <see cref="World"/> by id (tracked, so mutations persist on save) and
