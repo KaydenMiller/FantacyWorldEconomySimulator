@@ -227,9 +227,9 @@ public sealed class Navigator : INavigator
     {
         var names = await Lookups.SettlementNamesAsync(ctx);
         var merchants = await ctx.Db.Merchants.CountAsync(m => m.Seat == settlementId);
-        var shops = await ctx.Db.Shops.CountAsync(s => s.SettlementId == settlementId);
+        var shops = await ctx.Db.Shops.CountAsync(s => s.WorldId == ctx.World.Id && s.SettlementId == settlementId);
         var factories = await ctx.Db.ProductionNodes.CountAsync(n => n.SettlementId == settlementId);
-        var settlementShopIds = (await ctx.Db.Shops.Where(sh => sh.SettlementId == settlementId).ToListAsync())
+        var settlementShopIds = (await ctx.Db.Shops.Where(sh => sh.WorldId == ctx.World.Id && sh.SettlementId == settlementId).ToListAsync())
             .Select(sh => sh.Id.Value).ToHashSet();
         var market = (await AllStockpiles(ctx)).Count(s => s.OwnerKind == StockpileOwnerKind.Shop && settlementShopIds.Contains(s.OwnerId) && s.Quantity > 0);
 
@@ -268,13 +268,12 @@ public sealed class Navigator : INavigator
     /// <summary>Marketplace board for a settlement: one row per shop's offer of each good.</summary>
     public async Task<NavView> MarketBoardAsync(SettlementId settlementId, TuiContext ctx)
     {
-        var goodNames = await Lookups.GoodNamesAsync(ctx);
         var goods = (await ctx.Db.Goods.Where(g => g.WorldId == ctx.World.Id).ToListAsync())
             .ToDictionary(g => g.Id);
-        var shops = (await ctx.Db.Shops.Where(s => s.SettlementId == settlementId).ToListAsync())
+        var shops = (await ctx.Db.Shops.Where(s => s.WorldId == ctx.World.Id && s.SettlementId == settlementId).ToListAsync())
             .ToDictionary(s => s.Id.Value, s => s);
         var stocks = (await ctx.Db.Stockpiles
-                .Where(s => s.OwnerKind == StockpileOwnerKind.Shop)
+                .Where(s => s.WorldId == ctx.World.Id && s.OwnerKind == StockpileOwnerKind.Shop)
                 .ToListAsync())
             .Where(s => shops.ContainsKey(s.OwnerId) && s.Quantity > 0)
             .ToList();

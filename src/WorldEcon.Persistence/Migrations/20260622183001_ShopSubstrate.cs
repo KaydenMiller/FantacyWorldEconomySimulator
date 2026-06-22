@@ -72,6 +72,8 @@ WHERE OwnerKind = 'SettlementMarket';");
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // Schema-only: this does NOT reverse the Up data migration (the re-owning of
+            // SettlementMarket stockpiles into PublicMarket shops). ShopSubstrate is forward-only.
             migrationBuilder.DropIndex(
                 name: "IX_shops_SettlementId_Kind",
                 table: "shops");

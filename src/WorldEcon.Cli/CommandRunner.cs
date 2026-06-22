@@ -276,7 +276,7 @@ internal static class CommandRunner
         var stockWorld = await ctx.Worlds.FirstOrDefaultAsync();
         var stockCurrency = stockWorld?.Currency ?? CurrencyDefinition.Default;
 
-        var shopIds = (await ctx.Shops.Where(sh => sh.SettlementId == settlement.Id).ToListAsync())
+        var shopIds = (await ctx.Shops.Where(sh => sh.WorldId == settlement.WorldId && sh.SettlementId == settlement.Id).ToListAsync())
             .Select(sh => sh.Id.Value).ToHashSet();
         var stockGroups = (await ctx.Stockpiles
                 .Where(s => s.OwnerKind == WorldEcon.Domain.Economy.StockpileOwnerKind.Shop)
