@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine.Phases;
@@ -75,6 +76,9 @@ public sealed class ProductionPhase : ISimulationPhase
             }
 
             workOrder.MarkComplete();
+            await ctx.Log.EmitAsync(LogEventType.ProductionChanged,
+                $"Production completed at a facility in {(await ctx.Db.Settlements.FirstAsync(x => x.Id == node.SettlementId)).Name}",
+                tick, LogScopeKind.Factory, node.Id.Value, node.SettlementId);
         }
 
         // 3. Start new batches.

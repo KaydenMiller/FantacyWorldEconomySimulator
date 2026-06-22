@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine.Phases;
@@ -50,6 +51,11 @@ public sealed class ConsumptionPhase : ISimulationPhase
             long consume = Math.Min(demand, stock.Quantity);
             if (consume > 0)
                 stock.Withdraw(consume).OrThrow("population consumption");
+
+            if (consume < demand)
+                await ctx.Log.EmitAsync(LogEventType.Stockout,
+                    $"{good.Name} ran short of demand in {settlement.Name}", tick,
+                    LogScopeKind.Settlement, settlement.Id.Value, settlement.Id);
         }
     }
 
