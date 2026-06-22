@@ -70,11 +70,12 @@ public class LogEventServiceTests
                 result.Value.Type.Should().Be(LogEventType.PartyAction);
             }
 
-            // Assert: stockpile exists with correct quantity.
+            // Assert: stockpile exists in public-market shop with correct quantity.
             await using (var ctx = NewContextOnFile(seed.Path))
             {
+                var pub = await ctx.Shops.FirstAsync(s => s.Kind == ShopKind.PublicMarket);
                 var stock = await ctx.Stockpiles
-                    .FirstAsync(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.GoodId == goodId);
+                    .FirstAsync(s => s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == pub.Id.Value && s.GoodId == goodId);
                 stock.Quantity.Should().Be(100);
 
                 (await ctx.LogEvents.CountAsync(e => e.IsPlayerAction && e.Type == LogEventType.PartyAction))
@@ -120,8 +121,9 @@ public class LogEventServiceTests
             // Assert: quantity is 0, not negative; two player-action log events recorded.
             await using (var ctx = NewContextOnFile(seed.Path))
             {
+                var pub = await ctx.Shops.FirstAsync(s => s.Kind == ShopKind.PublicMarket);
                 var stock = await ctx.Stockpiles
-                    .FirstAsync(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.GoodId == goodId);
+                    .FirstAsync(s => s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == pub.Id.Value && s.GoodId == goodId);
                 stock.Quantity.Should().Be(0);
 
                 var events = await ctx.LogEvents.OrderBy(e => e.Sequence).ToListAsync();
@@ -159,7 +161,9 @@ public class LogEventServiceTests
             ctx.ProductionNodes.Add(node);
 
             // Plenty of inputs available so production would otherwise start.
-            ctx.Stockpiles.Add(Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, ore.Id, 100, new Money(20)).Value);
+            var oreShop = Shop.Create(worldId, settlementId, "Ore Supply", 0, Money.Zero).Value;
+            ctx.Shops.Add(oreShop);
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, oreShop.Id, ore.Id, 100, new Money(20)).Value);
         });
 
         try
@@ -222,7 +226,9 @@ public class LogEventServiceTests
             var node = ProductionNode.Create(worldId, settlementId, recipe.Id, FacilityType.Smithy, 1).Value;
             ctx.ProductionNodes.Add(node);
 
-            ctx.Stockpiles.Add(Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, ore.Id, 100, new Money(20)).Value);
+            var oreShop2 = Shop.Create(worldId, settlementId, "Ore Supply", 0, Money.Zero).Value;
+            ctx.Shops.Add(oreShop2);
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, oreShop2.Id, ore.Id, 100, new Money(20)).Value);
         });
 
         try

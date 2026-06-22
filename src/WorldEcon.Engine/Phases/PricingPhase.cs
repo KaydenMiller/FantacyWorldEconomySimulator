@@ -6,7 +6,7 @@ using WorldEcon.SharedKernel;
 namespace WorldEcon.Engine.Phases;
 
 /// <summary>
-/// Daily market-pricing phase: prices each SettlementMarket stockpile from a supply/demand ratio.
+/// Daily market-pricing phase: prices each shop stockpile in a settlement from a supply/demand ratio.
 /// Demand = population consumption + industrial input demand (one cycle's worth across the
 /// settlement's production nodes). The scarcity ratio (demand/supply, in bp) is raised to the
 /// world's integer elasticity exponent and clamped to the world's [min,max] multiplier, then

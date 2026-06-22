@@ -7,9 +7,8 @@ using WorldEcon.SharedKernel;
 namespace WorldEcon.Engine.Phases;
 
 /// <summary>
-/// Daily consumption phase: population draws down SettlementMarket stock of consumable goods at
-/// a per-capita rate. Scoped to the world and iterating stockpiles in stable id order for
-/// determinism.
+/// Daily consumption phase: population draws down shop stock of consumable goods across a
+/// settlement's shops at a per-capita rate. Scoped to the world.
 /// </summary>
 public sealed class ConsumptionPhase : ISimulationPhase
 {

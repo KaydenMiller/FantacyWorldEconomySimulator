@@ -229,7 +229,9 @@ public sealed class Navigator : INavigator
         var merchants = await ctx.Db.Merchants.CountAsync(m => m.Seat == settlementId);
         var shops = await ctx.Db.Shops.CountAsync(s => s.SettlementId == settlementId);
         var factories = await ctx.Db.ProductionNodes.CountAsync(n => n.SettlementId == settlementId);
-        var market = (await AllStockpiles(ctx)).Count(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.OwnerId == settlementId.Value);
+        var settlementShopIds = (await ctx.Db.Shops.Where(sh => sh.SettlementId == settlementId).ToListAsync())
+            .Select(sh => sh.Id.Value).ToHashSet();
+        var market = (await AllStockpiles(ctx)).Count(s => s.OwnerKind == StockpileOwnerKind.Shop && settlementShopIds.Contains(s.OwnerId) && s.Quantity > 0);
 
         string K(string cat) => $"{settlementId.Value}|{cat}";
         var rows = new List<NavRow>
@@ -257,7 +259,9 @@ public sealed class Navigator : INavigator
             case "factories":
                 return await FactoriesView(ctx, (await AllNodes(ctx)).Where(n => n.SettlementId == settlementId).ToList(), $"{name} / Factories");
             case "market":
-                var goods = (await AllStockpiles(ctx)).Where(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.OwnerId == settlementId.Value).ToList();
+                var settlementShopIdsForMarket = (await ctx.Db.Shops.Where(sh => sh.SettlementId == settlementId).ToListAsync())
+                    .Select(sh => sh.Id.Value).ToHashSet();
+                var goods = (await AllStockpiles(ctx)).Where(s => s.OwnerKind == StockpileOwnerKind.Shop && settlementShopIdsForMarket.Contains(s.OwnerId)).ToList();
                 return await StockpileGoodsView(ctx, goods, $"{name} / Market", includeMarketPrice: true);
             default:
                 return null;

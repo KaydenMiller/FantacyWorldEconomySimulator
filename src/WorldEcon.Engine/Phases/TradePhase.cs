@@ -55,13 +55,13 @@ public sealed class TradePhase : ISimulationPhase
             .ToList();
         foreach (var caravan in arrived)
         {
+            // Look up the destination price BEFORE depositing (the public-market shop may be new
+            // and have MarketPrice=0; the aggregate over existing shops gives the correct price).
+            long destPrice = await SeatRefPrice(ctx, caravan.DestinationId, caravan.GoodId, goods[caravan.GoodId]);
+
             var destShop = await ShopMarket.GetOrCreatePublicMarketShop(ctx, caravan.DestinationId);
             var destStock = await ShopMarket.StockpileInShop(ctx, destShop.Id, caravan.GoodId);
             destStock.Deposit(caravan.Quantity, caravan.UnitCostBasis, _valuation);
-
-            long destPrice = destStock.MarketPrice.Units > 0
-                ? destStock.MarketPrice.Units
-                : goods[caravan.GoodId].BaseValue.Units;
 
             var merchant = await FindMerchant(ctx, worldId, caravan.OwnerId);
             merchant?.Earn(new Money(caravan.Quantity * destPrice));

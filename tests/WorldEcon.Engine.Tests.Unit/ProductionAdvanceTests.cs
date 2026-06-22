@@ -49,7 +49,8 @@ public class ProductionAdvanceTests
         }, 0, 1440).Value;
 
         var node = ProductionNode.Create(world.Id, settlement.Id, recipe.Id, FacilityType.Smithy, 1).Value;
-        var market = Stockpile.Create(world.Id, StockpileOwnerKind.SettlementMarket, settlement.Id.Value, ore.Id, 100, new Money(20)).Value;
+        var oreShop = Shop.Create(world.Id, settlement.Id, "Ore Store", 0, Money.Zero).Value;
+        var market = Stockpile.CreateForShop(world.Id, oreShop.Id, ore.Id, 100, new Money(20)).Value;
 
         await using var ctx = NewContextOnFile(path);
         await ctx.Database.MigrateAsync();
@@ -61,6 +62,7 @@ public class ProductionAdvanceTests
         ctx.Goods.AddRange(ore, ingot);
         ctx.Recipes.Add(recipe);
         ctx.ProductionNodes.Add(node);
+        ctx.Shops.Add(oreShop);
         ctx.Stockpiles.Add(market);
         await ctx.SaveChangesAsync();
 
@@ -79,7 +81,7 @@ public class ProductionAdvanceTests
     {
         await using var ctx = NewContextOnFile(path);
         var stock = await ctx.Stockpiles
-            .Where(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.GoodId == ingotId)
+            .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == ingotId)
             .FirstOrDefaultAsync();
         return stock?.Quantity ?? 0;
     }

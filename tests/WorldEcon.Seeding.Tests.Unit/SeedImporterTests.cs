@@ -90,18 +90,19 @@ public class SeedImporterTests
                 var riverwood = (await ctx.Settlements.ToListAsync()).Single(s => s.Name == "Riverwood");
                 var hammerfell = (await ctx.Settlements.ToListAsync()).Single(s => s.Name == "Hammerfell");
 
-                // Shop + shop-owned stockpile.
-                var shop = await ctx.Shops.SingleAsync();
+                // Retail shop + its shop-owned stockpile.
+                var shop = await ctx.Shops.SingleAsync(s => s.Kind == ShopKind.Retail);
                 shop.Name.Should().Be("Trading Post");
                 shop.SettlementId.Should().Be(hammerfell.Id);
-                var shopStock = await ctx.Stockpiles.SingleAsync(s => s.OwnerKind == StockpileOwnerKind.Shop);
-                shopStock.OwnerId.Should().Be(shop.Id.Value);
+                var shopStock = await ctx.Stockpiles.SingleAsync(s => s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == shop.Id.Value);
                 shopStock.Quantity.Should().Be(60);
                 shopStock.CostBasis.Units.Should().Be(180);
 
-                // Market stockpile (owner = settlement).
-                var marketStock = await ctx.Stockpiles.SingleAsync(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket);
-                marketStock.OwnerId.Should().Be(hammerfell.Id.Value);
+                // Market section → public-market shop (substrate: SettlementMarket retired).
+                var pubMarket = await ctx.Shops.SingleAsync(s => s.Kind == ShopKind.PublicMarket);
+                pubMarket.Name.Should().Be("Town Market");
+                pubMarket.SettlementId.Should().Be(hammerfell.Id);
+                var marketStock = await ctx.Stockpiles.SingleAsync(s => s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == pubMarket.Id.Value);
                 marketStock.Quantity.Should().Be(25);
 
                 // Endowment + production node in Riverwood, facility taken from recipe.

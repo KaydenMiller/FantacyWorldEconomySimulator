@@ -39,13 +39,14 @@ public class PhaseLoggingTests
         var s = await LogTestWorld.CreateAsync();
         try
         {
-            // Seed a consumable good and a SettlementMarket stockpile with quantity 0.
+            // Seed a consumable good and an empty shop stockpile with quantity 0.
             // The settlement (Hammerfell) has population 50000 so demand > 0.
             var good = Good.Create(s.World.Id, "Grain", GoodCategory.Food, new Money(10), "sack",
                 SizeClass.Medium, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
             s.Db.Goods.Add(good);
-            var emptyStock = Stockpile.Create(s.World.Id, StockpileOwnerKind.SettlementMarket,
-                s.Settlement.Id.Value, good.Id, 0, new Money(10)).Value;
+            var emptyShop = Shop.Create(s.World.Id, s.Settlement.Id, "Granary", 0, Money.Zero).Value;
+            s.Db.Shops.Add(emptyShop);
+            var emptyStock = Stockpile.CreateForShop(s.World.Id, emptyShop.Id, good.Id, 0, new Money(10)).Value;
             s.Db.Stockpiles.Add(emptyStock);
             await s.Db.SaveChangesAsync();
 
@@ -64,12 +65,13 @@ public class PhaseLoggingTests
         var s = await LogTestWorld.CreateAsync();
         try
         {
-            // Consumable good with a market stockpile that has stock to consume.
+            // Consumable good with a shop stockpile that has stock to consume.
             var good = Good.Create(s.World.Id, "Grain", GoodCategory.Food, new Money(10), "sack",
                 SizeClass.Medium, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
             s.Db.Goods.Add(good);
-            var stock = Stockpile.Create(s.World.Id, StockpileOwnerKind.SettlementMarket,
-                s.Settlement.Id.Value, good.Id, 200, new Money(10)).Value;
+            var granary = Shop.Create(s.World.Id, s.Settlement.Id, "Granary", 0, Money.Zero).Value;
+            s.Db.Shops.Add(granary);
+            var stock = Stockpile.CreateForShop(s.World.Id, granary.Id, good.Id, 200, new Money(10)).Value;
             s.Db.Stockpiles.Add(stock);
             await s.Db.SaveChangesAsync();
 

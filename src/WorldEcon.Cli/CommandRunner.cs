@@ -276,27 +276,37 @@ internal static class CommandRunner
         var stockWorld = await ctx.Worlds.FirstOrDefaultAsync();
         var stockCurrency = stockWorld?.Currency ?? CurrencyDefinition.Default;
 
-        var stockpiles = (await ctx.Stockpiles
-                .Where(s => s.OwnerKind == WorldEcon.Domain.Economy.StockpileOwnerKind.SettlementMarket
-                            && s.OwnerId == settlement.Id.Value)
+        var shopIds = (await ctx.Shops.Where(sh => sh.SettlementId == settlement.Id).ToListAsync())
+            .Select(sh => sh.Id.Value).ToHashSet();
+        var stockGroups = (await ctx.Stockpiles
+                .Where(s => s.OwnerKind == WorldEcon.Domain.Economy.StockpileOwnerKind.Shop)
                 .ToListAsync())
-            .OrderBy(s => goodsById.TryGetValue(s.GoodId, out var n) ? n : string.Empty, StringComparer.Ordinal)
+            .Where(s => shopIds.Contains(s.OwnerId))
+            .GroupBy(s => s.GoodId)
+            .Select(g => new
+            {
+                GoodId = g.Key,
+                Qty = g.Sum(x => x.Quantity),
+                MinCost = g.Min(x => x.CostBasis.Units),
+                Price = g.Select(x => x.MarketPrice.Units).FirstOrDefault(p => p > 0)
+            })
+            .OrderBy(x => goodsById.TryGetValue(x.GoodId, out var n) ? n : string.Empty, StringComparer.Ordinal)
             .ToList();
 
-        Console.WriteLine($"Market stockpiles in {settlement.Name}:");
+        Console.WriteLine($"Shop stock in {settlement.Name}:");
         Console.WriteLine();
 
-        if (stockpiles.Count == 0)
+        if (stockGroups.Count == 0)
         {
-            Console.WriteLine("  (no market stockpiles)");
+            Console.WriteLine("  (no shop stockpiles)");
             return 0;
         }
 
-        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"CostBasis",12} {"MarketPrice",14}");
-        foreach (var sp in stockpiles)
+        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"Min Price",12} {"Price",14}");
+        foreach (var sg in stockGroups)
         {
-            var name = goodsById.TryGetValue(sp.GoodId, out var n) ? n : "(unknown)";
-            Console.WriteLine($"  {name,-16} {sp.Quantity,10} {stockCurrency.Format(sp.CostBasis),12} {stockCurrency.Format(sp.MarketPrice),14}");
+            var name = goodsById.TryGetValue(sg.GoodId, out var n) ? n : "(unknown)";
+            Console.WriteLine($"  {name,-16} {sg.Qty,10} {stockCurrency.Format(new WorldEcon.SharedKernel.Money(sg.MinCost)),12} {stockCurrency.Format(new WorldEcon.SharedKernel.Money(sg.Price)),14}");
         }
         return 0;
     }
