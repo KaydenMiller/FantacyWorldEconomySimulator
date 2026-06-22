@@ -10,6 +10,7 @@ using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
 using WorldEcon.Persistence.Snapshots;
 using WorldEcon.Seeding;
+using WorldEcon.Simulation.Time;
 
 namespace WorldEcon.Cli;
 
@@ -206,18 +207,15 @@ internal static class CommandRunner
         return 0;
     }
 
-    // ---- advance <dbPath> <ticks> ----
+    // ---- advance <dbPath> <duration> ----
+    // <duration> is either a bare integer (raw ticks/minutes) or <n><unit> where unit is:
+    //   m=minute, h=hour, d=day, w=week, M=month, y=year  (case-sensitive: m≠M)
     private static async Task<int> CmdAdvance(string[] args)
     {
         if (args.Length < 3)
-            return MissingArgs("advance <dbPath> <ticks>");
+            return MissingArgs("advance <dbPath> <duration>  (e.g. 1440, 1d, 2w, 1M — m=minute, M=month)");
 
         var path = args[1];
-        if (!long.TryParse(args[2], out var ticks) || ticks < 0)
-        {
-            Console.Error.WriteLine($"Error: ticks must be a non-negative integer, got '{args[2]}'.");
-            return 1;
-        }
 
         await using var ctx = OpenContext(path);
         ctx.Database.Migrate();
@@ -226,6 +224,14 @@ internal static class CommandRunner
         if (world is null)
         {
             Console.Error.WriteLine("Error: no world found in database. Run 'new' first.");
+            return 1;
+        }
+
+        var calendar = new CalendarSystem(world.Calendar);
+        if (!calendar.TryParseDurationToTicks(args[2], out var ticks))
+        {
+            Console.Error.WriteLine(
+                $"Error: invalid duration '{args[2]}'. Use ticks or <n>m/h/d/w/M/y (m=minute, M=month).");
             return 1;
         }
 
@@ -645,7 +651,8 @@ internal static class CommandRunner
         Console.WriteLine("  import   <jsonPath> <dbPath>               Create + migrate DB and import a JSON world seed.");
         Console.WriteLine("  list     <dbPath>                          List settlements, goods, and shops.");
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
-        Console.WriteLine("  advance  <dbPath> <ticks>                  Advance in-world time by <ticks> minute-ticks.");
+        Console.WriteLine("  advance  <dbPath> <duration>               Advance in-world time. <duration> is a bare integer (ticks/minutes)");
+        Console.WriteLine("                                             or <n><unit> where unit: m=minute h=hour d=day w=week M=month y=year.");
         Console.WriteLine("  stock    <dbPath> <settlement>             Show a settlement's market stockpiles.");
         Console.WriteLine("  merchants <dbPath>                         List representative merchants and their seats.");
         Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered).");

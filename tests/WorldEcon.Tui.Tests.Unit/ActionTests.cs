@@ -18,7 +18,7 @@ public class ActionTests
             var tui = await TuiContext.LoadAsync(ctx);
             var startTick = tui.World.CurrentTick.Value;
 
-            var ui = new FakeUserInteraction().EnqueueNumber(1440);
+            var ui = new FakeUserInteraction().EnqueueText("1440");
             await new AdvanceAction().ExecuteAsync(tui, ui);
 
             tui.World.CurrentTick.Value.Should().Be(startTick + 1440);

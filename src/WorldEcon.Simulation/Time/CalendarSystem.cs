@@ -95,6 +95,67 @@ public sealed class CalendarSystem
     private long AbsDay(int year, int month, int day)
         => (long)year * _daysPerYear + _monthStartDay[month - 1] + (day - 1);
 
+    /// <summary>
+    /// Parses a duration string into a number of ticks (minutes) using this calendar's definition.
+    /// Accepted forms:
+    /// <list type="bullet">
+    ///   <item><description>Bare integer (optionally prefixed with +): raw tick count.</description></item>
+    ///   <item><description><c>&lt;n&gt;m</c> – minutes (1 tick per minute).</description></item>
+    ///   <item><description><c>&lt;n&gt;h</c> – hours (minutesPerHour ticks).</description></item>
+    ///   <item><description><c>&lt;n&gt;d</c> – days (hoursPerDay × minutesPerHour ticks).</description></item>
+    ///   <item><description><c>&lt;n&gt;w</c> – weeks (daysPerWeek × minutesPerDay ticks).</description></item>
+    ///   <item><description><c>&lt;n&gt;M</c> – months (daysPerMonth × minutesPerDay ticks; uses first month's day count).</description></item>
+    ///   <item><description><c>&lt;n&gt;y</c> – years (daysPerYear × minutesPerDay ticks).</description></item>
+    /// </list>
+    /// Unit suffixes are case-sensitive: <c>m</c> = minute, <c>M</c> = month.
+    /// Returns <c>false</c> for empty input, unknown units, malformed strings, or non-positive values.
+    /// </summary>
+    public bool TryParseDurationToTicks(string? input, out long ticks)
+    {
+        ticks = 0;
+        if (string.IsNullOrWhiteSpace(input))
+            return false;
+
+        var s = input.Trim();
+
+        // Check if last character is a unit suffix (letter, case-sensitive).
+        char last = s[s.Length - 1];
+        if (char.IsLetter(last))
+        {
+            // Must be exactly one suffix char.
+            var numPart = s.Substring(0, s.Length - 1);
+            if (!long.TryParse(numPart, out var n) || n <= 0)
+                return false;
+
+            long minutesPerDay = (long)_def.HoursPerDay * _def.MinutesPerHour;
+            long daysPerWeek = _def.Weekdays.Count;
+            // Use the first month's day count as "days per month" (all months are uniform in default calendar).
+            long daysPerMonth = _def.Months.Count > 0 ? _def.Months[0].Days : _daysPerYear / _def.Months.Count;
+
+            ticks = last switch
+            {
+                'm' => n,                                                     // minutes
+                'h' => n * _def.MinutesPerHour,                               // hours
+                'd' => n * minutesPerDay,                                     // days
+                'w' => n * daysPerWeek * minutesPerDay,                       // weeks
+                'M' => n * daysPerMonth * minutesPerDay,                      // months
+                'y' => n * (long)_daysPerYear * minutesPerDay,                // years
+                _ => -1,
+            };
+
+            return ticks > 0; // unknown unit returns -1, which is not > 0
+        }
+
+        // No unit suffix: bare integer = raw ticks.
+        if (long.TryParse(s, out var rawTicks) && rawTicks > 0)
+        {
+            ticks = rawTicks;
+            return true;
+        }
+
+        return false;
+    }
+
     private static bool InSeason(int month, int day, SeasonDef s)
     {
         int v = month * 100 + day;
