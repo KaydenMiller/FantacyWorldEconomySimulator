@@ -53,10 +53,16 @@ public sealed class ConsumptionPhase : ISimulationPhase
             if (consume > 0)
                 stock.Withdraw(consume).OrThrow("population consumption");
 
+            // Log what the population actually ate (Routine), so goods don't vanish without a trace.
+            if (consume > 0)
+                await ctx.Log.EmitAsync(LogEventType.Consumed,
+                    $"Population consumed {consume} {good.Name} in {settlement.Name}", tick,
+                    LogScopeKind.Settlement, settlement.Id.Value, settlement.Id);
+
             // Emit Stockout for both partial and total shortfalls (including empty stock).
             if (demand > 0 && consume < demand)
                 await ctx.Log.EmitAsync(LogEventType.Stockout,
-                    $"{good.Name} ran short of demand in {settlement.Name}", tick,
+                    $"{good.Name} ran short of demand in {settlement.Name} (ate {consume} of {demand} needed)", tick,
                     LogScopeKind.Settlement, settlement.Id.Value, settlement.Id);
         }
     }

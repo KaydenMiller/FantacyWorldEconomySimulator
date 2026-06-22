@@ -12,5 +12,5 @@ public enum LogEventType
     Trade = 0, MerchantArrived = 1, MerchantDeparted = 2, MerchantGained = 3, MerchantLost = 4,
     ProductionChanged = 5, Stockout = 6, Spoilage = 7, Restock = 8,
     SettlementFounded = 9, SettlementRuined = 10, ClaimChanged = 11, RouteOpened = 12, RouteClosed = 13,
-    PartyAction = 14,
+    PartyAction = 14, Consumed = 15,
 }

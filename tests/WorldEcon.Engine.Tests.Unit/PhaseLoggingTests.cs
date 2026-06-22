@@ -58,6 +58,36 @@ public class PhaseLoggingTests
         finally { await LogTestWorld.DisposeAsync(s); }
     }
 
+    [Test]
+    public async Task Consumption_EmitsConsumed_WhenPopulationEatsStock()
+    {
+        var s = await LogTestWorld.CreateAsync();
+        try
+        {
+            // Consumable good with a market stockpile that has stock to consume.
+            var good = Good.Create(s.World.Id, "Grain", GoodCategory.Food, new Money(10), "sack",
+                SizeClass.Medium, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
+            s.Db.Goods.Add(good);
+            var stock = Stockpile.Create(s.World.Id, StockpileOwnerKind.SettlementMarket,
+                s.Settlement.Id.Value, good.Id, 200, new Money(10)).Value;
+            s.Db.Stockpiles.Add(stock);
+            await s.Db.SaveChangesAsync();
+
+            var sim = await SimulationContext.LoadAsync(s.Db, s.World.Id);
+            await new TickEngine(StandardPhases.All()).AdvanceAsync(sim, Tick.DefaultMinutesPerDay);
+
+            var consumed = await s.Db.LogEvents
+                .Where(e => e.Type == LogEventType.Consumed)
+                .ToListAsync();
+            consumed.Should().NotBeEmpty();
+            consumed.Should().Contain(e =>
+                e.OriginKind == LogScopeKind.Settlement
+                && e.OriginId == s.Settlement.Id.Value
+                && e.Message.Contains("Grain"));
+        }
+        finally { await LogTestWorld.DisposeAsync(s); }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Regression: shop-owned spoilage is logged at the shop scope
     // ─────────────────────────────────────────────────────────────────────────

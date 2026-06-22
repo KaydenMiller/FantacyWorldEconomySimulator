@@ -8,7 +8,8 @@ public static class LogMagnitudePolicy
 {
     public static LogMagnitude DefaultMagnitude(LogEventType type) => type switch
     {
-        LogEventType.Trade or LogEventType.Restock or LogEventType.Spoilage => LogMagnitude.Routine,
+        LogEventType.Trade or LogEventType.Restock or LogEventType.Spoilage
+            or LogEventType.Consumed => LogMagnitude.Routine,
         LogEventType.MerchantArrived or LogEventType.MerchantDeparted
             or LogEventType.MerchantGained or LogEventType.MerchantLost
             or LogEventType.ProductionChanged or LogEventType.Stockout => LogMagnitude.Notable,
