@@ -10,6 +10,9 @@ public sealed class LogEventScopeConfiguration : IEntityTypeConfiguration<LogEve
     {
         b.ToTable("log_event_scopes");
         b.HasKey(x => x.Id);
+        // Required: LogEventScope has no navigation to LogEvent, so EF does not infer WorldId by
+        // convention here (unlike aggregates EF reaches via a relationship). Mapping it explicitly
+        // keeps the WorldId column — which the migration's data-copy SQL and scope reads depend on.
         b.Property(x => x.WorldId);
         b.Property(x => x.ScopeKind).HasConversion<string>();
         b.HasIndex(x => x.LogEventId);
