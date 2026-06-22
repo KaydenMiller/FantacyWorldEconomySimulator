@@ -51,7 +51,7 @@ public class ConsumptionPerishabilityTests
     {
         await using var ctx = NewContextOnFile(path);
         return await ctx.Stockpiles
-            .Where(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.GoodId == goodId)
+            .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == goodId)
             .FirstOrDefaultAsync();
     }
 
@@ -65,7 +65,9 @@ public class ConsumptionPerishabilityTests
                 SizeClass.Small, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
             goodId = good.Id;
             ctx.Goods.Add(good);
-            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, good.Id, 500, new Money(25)).Value;
+            var shop = Shop.Create(worldId, settlementId, "Market", 0, Money.Zero).Value;
+            ctx.Shops.Add(shop);
+            var market = Stockpile.CreateForShop(worldId, shop.Id, good.Id, 500, new Money(25)).Value;
             ctx.Stockpiles.Add(market);
         });
 
@@ -95,7 +97,9 @@ public class ConsumptionPerishabilityTests
                 SizeClass.Small, shelfLifeTicks: 4320, divisible: true).Value;
             goodId = good.Id;
             ctx.Goods.Add(good);
-            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, good.Id, 300, new Money(25)).Value;
+            var shop = Shop.Create(worldId, settlementId, "Market", 0, Money.Zero).Value;
+            ctx.Shops.Add(shop);
+            var market = Stockpile.CreateForShop(worldId, shop.Id, good.Id, 300, new Money(25)).Value;
             ctx.Stockpiles.Add(market);
         });
 
@@ -121,7 +125,9 @@ public class ConsumptionPerishabilityTests
                 SizeClass.Medium, shelfLifeTicks: 0, divisible: false, consumptionPerCapitaBp: 0).Value;
             goodId = good.Id;
             ctx.Goods.Add(good);
-            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, good.Id, 500, new Money(180)).Value;
+            var shop = Shop.Create(worldId, settlementId, "Market", 0, Money.Zero).Value;
+            ctx.Shops.Add(shop);
+            var market = Stockpile.CreateForShop(worldId, shop.Id, good.Id, 500, new Money(180)).Value;
             ctx.Stockpiles.Add(market);
         });
 

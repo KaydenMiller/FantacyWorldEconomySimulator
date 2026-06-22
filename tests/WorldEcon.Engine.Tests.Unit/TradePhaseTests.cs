@@ -45,11 +45,11 @@ public class TradePhaseTests
         var good = Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(baseValue), "loaf",
             SizeClass.Small, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 0).Value;
 
-        var aMarket = Stockpile.Create(world.Id, StockpileOwnerKind.SettlementMarket, a.Id.Value,
-            good.Id, aQty, new Money(baseValue)).Value;
+        var aShop = Shop.Create(world.Id, a.Id, "A Market", 0, Money.Zero).Value;
+        var bShop = Shop.Create(world.Id, b.Id, "B Market", 0, Money.Zero).Value;
+        var aMarket = Stockpile.CreateForShop(world.Id, aShop.Id, good.Id, aQty, new Money(baseValue)).Value;
         aMarket.SetMarketPrice(new Money(aPrice));
-        var bMarket = Stockpile.Create(world.Id, StockpileOwnerKind.SettlementMarket, b.Id.Value,
-            good.Id, bQty, new Money(baseValue)).Value;
+        var bMarket = Stockpile.CreateForShop(world.Id, bShop.Id, good.Id, bQty, new Money(baseValue)).Value;
         bMarket.SetMarketPrice(new Money(bPrice));
 
         var merchant = RepresentativeMerchant.Create(world.Id, a.Id, new Money(merchantCapital),
@@ -66,6 +66,8 @@ public class TradePhaseTests
         ctx.Routes.Add(routeAb);
         ctx.Routes.Add(routeBa);
         ctx.Goods.Add(good);
+        ctx.Shops.Add(aShop);
+        ctx.Shops.Add(bShop);
         ctx.Stockpiles.Add(aMarket);
         ctx.Stockpiles.Add(bMarket);
         ctx.Merchants.Add(merchant);
@@ -102,8 +104,9 @@ public class TradePhaseTests
             caravan.GoodId.Should().Be(seed.GoodId);
             caravan.Quantity.Should().Be(50); // capacity-bound
 
+            var aShopId = (await ctx.Shops.SingleAsync(sh => sh.SettlementId == seed.A)).Id.Value;
             var aMarket = await ctx.Stockpiles.SingleAsync(s =>
-                s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.OwnerId == seed.A.Value);
+                s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == aShopId);
             aMarket.Quantity.Should().Be(50); // 100 - 50
 
             var merchant = await ctx.Merchants.SingleAsync(m => m.Id == seed.MerchantId);
@@ -127,8 +130,9 @@ public class TradePhaseTests
             await using var ctx = NewContextOnFile(seed.Path);
             (await ctx.Caravans.CountAsync(c => c.WorldId == seed.WorldId)).Should().Be(0);
 
+            var aShopId = (await ctx.Shops.SingleAsync(sh => sh.SettlementId == seed.A)).Id.Value;
             var aMarket = await ctx.Stockpiles.SingleAsync(s =>
-                s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.OwnerId == seed.A.Value);
+                s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == aShopId);
             aMarket.Quantity.Should().Be(100);
         }
         finally { File.Delete(seed.Path); }
@@ -156,9 +160,13 @@ public class TradePhaseTests
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
 
             await using var ctx = NewContextOnFile(seed.Path);
-            var bMarket = await ctx.Stockpiles.SingleAsync(s =>
-                s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.OwnerId == seed.B.Value);
-            bMarket.Quantity.Should().Be(10); // started at 0, +10
+            // TradePhase deposits to the public-market shop at destination B.
+            var bShops = await ctx.Shops.Where(sh => sh.SettlementId == seed.B).ToListAsync();
+            var bStockpiles = await ctx.Stockpiles
+                .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == seed.GoodId)
+                .ToListAsync();
+            var bTotal = bStockpiles.Where(s => bShops.Any(sh => sh.Id.Value == s.OwnerId)).Sum(s => s.Quantity);
+            bTotal.Should().Be(10); // started at 0, +10 from caravan delivery
 
             var caravan = await ctx.Caravans.SingleAsync(c => c.Id == preCaravan!.Id);
             caravan.Delivered.Should().BeTrue();

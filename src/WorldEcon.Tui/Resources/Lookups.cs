@@ -36,7 +36,7 @@ internal static class Lookups
         => kind switch
         {
             StockpileOwnerKind.Shop => shopNames.TryGetValue(ownerId, out var s) ? s : ownerId.ToString(),
-            StockpileOwnerKind.SettlementMarket =>
+            StockpileOwnerKind.SettlementMarket => // retired enum value; kept for historic parse compatibility
                 settlementNames.TryGetValue(ownerId, out var s) ? s : ownerId.ToString(),
             _ => ownerId.ToString(),
         };

@@ -55,12 +55,13 @@ public sealed class TradePhase : ISimulationPhase
             .ToList();
         foreach (var caravan in arrived)
         {
-            var destStock = await GetOrCreateMarketStockpile(ctx, caravan.DestinationId, caravan.GoodId);
-            destStock.Deposit(caravan.Quantity, caravan.UnitCostBasis, _valuation);
+            // Look up the destination price BEFORE depositing (the public-market shop may be new
+            // and have MarketPrice=0; the aggregate over existing shops gives the correct price).
+            long destPrice = await SeatRefPrice(ctx, caravan.DestinationId, caravan.GoodId, goods[caravan.GoodId]);
 
-            long destPrice = destStock.MarketPrice.Units > 0
-                ? destStock.MarketPrice.Units
-                : goods[caravan.GoodId].BaseValue.Units;
+            var destShop = await ShopMarket.GetOrCreatePublicMarketShop(ctx, caravan.DestinationId);
+            var destStock = await ShopMarket.StockpileInShop(ctx, destShop.Id, caravan.GoodId);
+            destStock.Deposit(caravan.Quantity, caravan.UnitCostBasis, _valuation);
 
             var merchant = await FindMerchant(ctx, worldId, caravan.OwnerId);
             merchant?.Earn(new Money(caravan.Quantity * destPrice));
@@ -98,64 +99,52 @@ public sealed class TradePhase : ISimulationPhase
             if (reachable.Count == 0)
                 continue;
 
-            var seatStocks = (await LoadMarketStockpilesAt(ctx, worldId, merchant.Seat))
-                .Where(s => s.Quantity > 0)
-                .ToList();
-            if (seatStocks.Count == 0)
+            // Goods available at the seat (aggregate across shops).
+            var seatSupply = new List<(GoodId Good, long Qty, long Price)>();
+            foreach (var good in goods.Values.OrderBy(g => g.Id.Value))
+            {
+                var stocks = await ShopMarket.StockpilesForGood(ctx, merchant.Seat, good.Id);
+                long qty = stocks.Sum(x => x.Quantity);
+                if (qty <= 0) continue;
+                long price = stocks.Select(x => x.MarketPrice.Units).FirstOrDefault(p => p > 0);
+                if (price == 0) price = good.BaseValue.Units;
+                seatSupply.Add((good.Id, qty, price));
+            }
+            if (seatSupply.Count == 0)
                 continue;
 
-            // Find the best (good, destination) by profit-per-unit.
-            Stockpile? bestSeatStock = null;
-            ReachableSettlement? bestDest = null;
             GoodId bestGoodId = default;
-            long bestProfit = long.MinValue;
-            long bestSeatPrice = 0;
-
-            foreach (var seatStock in seatStocks)
+            ReachableSettlement? bestDest = null;
+            long bestProfit = long.MinValue, bestSeatPrice = 0, bestSeatQty = 0;
+            foreach (var offer in seatSupply)
             {
-                if (!goods.TryGetValue(seatStock.GoodId, out var good))
-                    continue;
-
-                long seatPrice = seatStock.MarketPrice.Units > 0
-                    ? seatStock.MarketPrice.Units
-                    : good.BaseValue.Units;
-
                 foreach (var dest in reachable.OrderBy(d => d.Settlement.Value))
                 {
-                    var destStock = await FindMarketStockpile(ctx, worldId, dest.Settlement, seatStock.GoodId);
-                    long destPrice = destStock is not null && destStock.MarketPrice.Units > 0
-                        ? destStock.MarketPrice.Units
-                        : good.BaseValue.Units;
-
+                    long destPrice = await SeatRefPrice(ctx, dest.Settlement, offer.Good, goods[offer.Good]);
                     long transportPerUnit = dest.Distance * TransportCostUnitsPerDistance;
-                    long profitPerUnit = destPrice - seatPrice - transportPerUnit;
-
-                    // Tie-break: good.Id.Value then dest.Settlement.Value (latter via OrderBy above).
+                    long profitPerUnit = destPrice - offer.Price - transportPerUnit;
                     bool better = profitPerUnit > bestProfit
-                        || (profitPerUnit == bestProfit && bestSeatStock is not null
-                            && IsBetterTieBreak(seatStock.GoodId, dest, bestGoodId, bestDest!));
+                        || (profitPerUnit == bestProfit && bestDest is not null
+                            && IsBetterTieBreak(offer.Good, dest, bestGoodId, bestDest));
                     if (better)
                     {
-                        bestProfit = profitPerUnit;
-                        bestSeatStock = seatStock;
-                        bestDest = dest;
-                        bestGoodId = seatStock.GoodId;
-                        bestSeatPrice = seatPrice;
+                        bestProfit = profitPerUnit; bestGoodId = offer.Good; bestDest = dest;
+                        bestSeatPrice = offer.Price; bestSeatQty = offer.Qty;
                     }
                 }
             }
-
-            if (bestSeatStock is null || bestDest is null || bestProfit <= 0)
+            if (bestDest is null || bestProfit <= 0)
                 continue;
 
-            long affordable = bestSeatPrice == 0
-                ? merchant.CargoCapacity
-                : merchant.Capital.Units / bestSeatPrice;
-            long quantity = Math.Min(merchant.CargoCapacity, Math.Min(bestSeatStock.Quantity, affordable));
+            long affordable = bestSeatPrice == 0 ? merchant.CargoCapacity : merchant.Capital.Units / bestSeatPrice;
+            long quantity = Math.Min(merchant.CargoCapacity, Math.Min(bestSeatQty, affordable));
             if (quantity < 1)
                 continue;
 
-            bestSeatStock.Withdraw(quantity).OrThrow("trade seat-market purchase");
+            long got = await ShopMarket.WithdrawAcrossShops(ctx, merchant.Seat, bestGoodId, quantity);
+            quantity = got; // in case of a race with same-tick depletion
+            if (quantity < 1)
+                continue;
             merchant.Spend(new Money(quantity * bestSeatPrice));
 
             long travelTicks = bestDest.Distance * TravelTicksPerDistance;
@@ -182,6 +171,13 @@ public sealed class TradePhase : ISimulationPhase
         return candDest.Settlement.Value.CompareTo(bestDest.Settlement.Value) < 0;
     }
 
+    private static async Task<long> SeatRefPrice(SimulationContext ctx, SettlementId settlement, GoodId goodId, Good good)
+    {
+        var stocks = await ShopMarket.StockpilesForGood(ctx, settlement, goodId);
+        long price = stocks.Select(x => x.MarketPrice.Units).FirstOrDefault(p => p > 0);
+        return price > 0 ? price : good.BaseValue.Units;
+    }
+
     /// <summary>
     /// All undelivered caravans for the world, combining saved DB rows with the local tracked set
     /// (within-advance mutations not yet saved), deduplicated by id.
@@ -204,62 +200,5 @@ public sealed class TradePhase : ISimulationPhase
         if (local is not null)
             return local;
         return await ctx.Db.Merchants.FirstOrDefaultAsync(m => m.WorldId == worldId && m.Id == ownerId);
-    }
-
-    private static async Task<List<Stockpile>> LoadMarketStockpilesAt(
-        SimulationContext ctx, WorldId worldId, SettlementId settlement)
-    {
-        var fromDb = await ctx.Db.Stockpiles
-            .Where(s => s.WorldId == worldId
-                && s.OwnerKind == StockpileOwnerKind.SettlementMarket
-                && s.OwnerId == settlement.Value)
-            .ToListAsync();
-        var byId = fromDb.ToDictionary(s => s.Id);
-        foreach (var local in ctx.Db.Stockpiles.Local.Where(s =>
-            s.WorldId == worldId
-            && s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlement.Value))
-            byId[local.Id] = local;
-        return byId.Values.OrderBy(s => s.Id.Value).ToList();
-    }
-
-    private static async Task<Stockpile?> FindMarketStockpile(
-        SimulationContext ctx, WorldId worldId, SettlementId settlement, GoodId goodId)
-    {
-        var local = ctx.Db.Stockpiles.Local.FirstOrDefault(s =>
-            s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlement.Value
-            && s.GoodId == goodId);
-        if (local is not null)
-            return local;
-        return await ctx.Db.Stockpiles.FirstOrDefaultAsync(s =>
-            s.WorldId == worldId
-            && s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlement.Value
-            && s.GoodId == goodId);
-    }
-
-    private static async Task<Stockpile> GetOrCreateMarketStockpile(
-        SimulationContext ctx, SettlementId settlementId, GoodId goodId)
-    {
-        // Check the local tracked set first so within-advance creations are visible before SaveChanges.
-        var local = ctx.Db.Stockpiles.Local.FirstOrDefault(s =>
-            s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlementId.Value
-            && s.GoodId == goodId);
-        if (local is not null)
-            return local;
-
-        var existing = await ctx.Db.Stockpiles.FirstOrDefaultAsync(s =>
-            s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlementId.Value
-            && s.GoodId == goodId);
-        if (existing is not null)
-            return existing;
-
-        var created = Stockpile.Create(
-            ctx.World.Id, StockpileOwnerKind.SettlementMarket, settlementId.Value, goodId, 0, Money.Zero).Value;
-        ctx.Db.Stockpiles.Add(created);
-        return created;
     }
 }

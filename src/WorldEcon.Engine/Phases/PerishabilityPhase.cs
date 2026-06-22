@@ -59,11 +59,7 @@ public sealed class PerishabilityPhase : ISimulationPhase
             if (loss <= 0)
                 continue;
 
-            if (stock.OwnerKind == StockpileOwnerKind.SettlementMarket)
-                await ctx.Log.EmitAsync(LogEventType.Spoilage,
-                    $"{good.Name} spoiled in a market ({loss} units)", tick,
-                    LogScopeKind.Settlement, stock.OwnerId, new SettlementId(stock.OwnerId));
-            else if (stock.OwnerKind == StockpileOwnerKind.Shop
+            if (stock.OwnerKind == StockpileOwnerKind.Shop
                 && shopsByOwnerId.TryGetValue(stock.OwnerId, out var shop))
                 await ctx.Log.EmitAsync(LogEventType.Spoilage,
                     $"{good.Name} spoiled at {shop.Name} ({loss} units)", tick,

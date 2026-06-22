@@ -51,11 +51,11 @@ public class ProductionPhaseTests
         await engine.AdvanceAsync(sim, ticks);
     }
 
-    private static async Task<Stockpile?> MarketStockpileAsync(string path, GoodId goodId)
+    private static async Task<Stockpile?> ShopStockpileAsync(string path, GoodId goodId)
     {
         await using var ctx = NewContextOnFile(path);
         return await ctx.Stockpiles
-            .Where(s => s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.GoodId == goodId)
+            .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == goodId)
             .FirstOrDefaultAsync();
     }
 
@@ -76,14 +76,14 @@ public class ProductionPhaseTests
         {
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
 
-            var stock = await MarketStockpileAsync(seed.Path, oreId);
+            var stock = await ShopStockpileAsync(seed.Path, oreId);
             stock.Should().NotBeNull();
             stock!.Quantity.Should().Be(50);
             stock.CostBasis.Should().Be(new Money(20));
 
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
 
-            var stock2 = await MarketStockpileAsync(seed.Path, oreId);
+            var stock2 = await ShopStockpileAsync(seed.Path, oreId);
             stock2!.Quantity.Should().Be(100);
         }
         finally
@@ -115,15 +115,16 @@ public class ProductionPhaseTests
             var node = ProductionNode.Create(worldId, settlementId, recipe.Id, FacilityType.Smithy, 1).Value;
             ctx.ProductionNodes.Add(node);
 
-            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, ore.Id, 100, new Money(20)).Value;
-            ctx.Stockpiles.Add(market);
+            var oreShop = Shop.Create(worldId, settlementId, "Ore Store", 0, Money.Zero).Value;
+            ctx.Shops.Add(oreShop);
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, oreShop.Id, ore.Id, 100, new Money(20)).Value);
         });
 
         try
         {
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
 
-            var oreStock = await MarketStockpileAsync(seed.Path, oreId);
+            var oreStock = await ShopStockpileAsync(seed.Path, oreId);
             oreStock!.Quantity.Should().Be(90);
 
             await using (var ctx = NewContextOnFile(seed.Path))
@@ -134,7 +135,7 @@ public class ProductionPhaseTests
 
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
 
-            var ingotStock = await MarketStockpileAsync(seed.Path, ingotId);
+            var ingotStock = await ShopStockpileAsync(seed.Path, ingotId);
             ingotStock.Should().NotBeNull();
             ingotStock!.Quantity.Should().Be(1);
             ingotStock.CostBasis.Should().Be(new Money(200));
@@ -174,8 +175,9 @@ public class ProductionPhaseTests
             ctx.ProductionNodes.Add(node);
 
             // Plenty of inputs available, but the node is disabled.
-            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, ore.Id, 100, new Money(20)).Value;
-            ctx.Stockpiles.Add(market);
+            var oreShop = Shop.Create(worldId, settlementId, "Ore Store", 0, Money.Zero).Value;
+            ctx.Shops.Add(oreShop);
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, oreShop.Id, ore.Id, 100, new Money(20)).Value);
         });
 
         try
@@ -185,7 +187,7 @@ public class ProductionPhaseTests
             await using var ctx = NewContextOnFile(seed.Path);
             (await ctx.WorkOrders.AnyAsync()).Should().BeFalse();
             // Inputs untouched because no batch started.
-            var oreStock = await MarketStockpileAsync(seed.Path, oreId);
+            var oreStock = await ShopStockpileAsync(seed.Path, oreId);
             oreStock!.Quantity.Should().Be(100);
         }
         finally
@@ -215,8 +217,9 @@ public class ProductionPhaseTests
             var node = ProductionNode.Create(worldId, settlementId, recipe.Id, FacilityType.Smithy, 1).Value;
             ctx.ProductionNodes.Add(node);
 
-            var market = Stockpile.Create(worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, ore.Id, 5, new Money(20)).Value;
-            ctx.Stockpiles.Add(market);
+            var oreShop = Shop.Create(worldId, settlementId, "Ore Store", 0, Money.Zero).Value;
+            ctx.Shops.Add(oreShop);
+            ctx.Stockpiles.Add(Stockpile.CreateForShop(worldId, oreShop.Id, ore.Id, 5, new Money(20)).Value);
         });
 
         try
@@ -225,7 +228,7 @@ public class ProductionPhaseTests
 
             await using var ctx = NewContextOnFile(seed.Path);
             (await ctx.WorkOrders.AnyAsync()).Should().BeFalse();
-            var oreStock = await MarketStockpileAsync(seed.Path, oreId);
+            var oreStock = await ShopStockpileAsync(seed.Path, oreId);
             oreStock!.Quantity.Should().Be(5);
         }
         finally

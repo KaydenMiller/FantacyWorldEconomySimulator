@@ -159,24 +159,36 @@ public sealed class LogEventService
 
     private static string Name(Settlement? settlement, SettlementId id) => settlement?.Name ?? id.Value.ToString();
 
+    private async Task<Shop> GetOrCreatePublicMarketShop(WorldId worldId, SettlementId settlementId)
+    {
+        var local = _db.Shops.Local.FirstOrDefault(sh =>
+            sh.WorldId == worldId && sh.SettlementId == settlementId && sh.Kind == ShopKind.PublicMarket);
+        if (local is not null) return local;
+        var existing = await _db.Shops.FirstOrDefaultAsync(sh =>
+            sh.WorldId == worldId && sh.SettlementId == settlementId && sh.Kind == ShopKind.PublicMarket);
+        if (existing is not null) return existing;
+        var created = Shop.CreateVendor(worldId, settlementId, "Town Market", ShopKind.PublicMarket).Value;
+        _db.Shops.Add(created);
+        return created;
+    }
+
     private async Task<Stockpile?> FindMarketStockpile(WorldId worldId, SettlementId settlementId, GoodId goodId)
     {
+        var pub = await GetOrCreatePublicMarketShop(worldId, settlementId);
         var local = _db.Stockpiles.Local.FirstOrDefault(s =>
-            s.OwnerKind == StockpileOwnerKind.SettlementMarket && s.OwnerId == settlementId.Value && s.GoodId == goodId);
-        if (local is not null)
-            return local;
+            s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == pub.Id.Value && s.GoodId == goodId);
+        if (local is not null) return local;
         return await _db.Stockpiles.FirstOrDefaultAsync(s =>
-            s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlementId.Value && s.GoodId == goodId);
+            s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop
+            && s.OwnerId == pub.Id.Value && s.GoodId == goodId);
     }
 
     private async Task<Stockpile> GetOrCreateMarketStockpile(WorldId worldId, SettlementId settlementId, GoodId goodId)
     {
         var existing = await FindMarketStockpile(worldId, settlementId, goodId);
-        if (existing is not null)
-            return existing;
-        var created = Stockpile.Create(
-            worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value, goodId, 0, Money.Zero).Value;
+        if (existing is not null) return existing;
+        var pub = await GetOrCreatePublicMarketShop(worldId, settlementId);
+        var created = Stockpile.CreateForShop(worldId, pub.Id, goodId, 0, Money.Zero).Value;
         _db.Stockpiles.Add(created);
         return created;
     }

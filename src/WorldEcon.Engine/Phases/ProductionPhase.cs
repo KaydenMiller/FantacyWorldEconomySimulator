@@ -28,6 +28,11 @@ public sealed class ProductionPhase : ISimulationPhase
 
         var worldId = ctx.World.Id;
 
+        var settlementNames = (await ctx.Db.Settlements
+                .Where(s => s.WorldId == worldId)
+                .ToListAsync())
+            .ToDictionary(s => s.Id, s => s.Name);
+
         // 1. Raw extraction.
         var endowments = await ctx.Db.ResourceEndowments
             .Where(e => e.WorldId == worldId && e.Abundance > 0)
@@ -35,19 +40,17 @@ public sealed class ProductionPhase : ISimulationPhase
         foreach (var endow in endowments.OrderBy(e => e.Id.Value))
         {
             var good = await ctx.Db.Goods.FirstAsync(g => g.Id == endow.GoodId);
-            var market = await GetOrCreateMarketStockpile(ctx, endow.SettlementId, endow.GoodId);
+            var mineName = settlementNames.TryGetValue(endow.SettlementId, out var sn) ? sn : "Mine";
+            var shop = await ShopMarket.GetOrCreateProducerShop(ctx, endow, $"{mineName} Mine");
+            var stock = await ShopMarket.StockpileInShop(ctx, shop.Id, endow.GoodId);
             // NOTE: raw extraction cost = good base value; labor-based costing deferred.
-            market.Deposit(endow.Abundance, good.BaseValue, _valuation);
+            stock.Deposit(endow.Abundance, good.BaseValue, _valuation);
         }
 
         // 2. Complete due batches.
         // CompleteTick is a value-converted type, so the tick comparison is filtered in memory.
         // Merge DB rows with the local tracked set so batches created earlier in this same
         // multi-day advance (still unsaved) are also completed.
-        var settlementNames = (await ctx.Db.Settlements
-                .Where(s => s.WorldId == worldId)
-                .ToListAsync())
-            .ToDictionary(s => s.Id, s => s.Name);
 
         var incompleteOrders = await LoadIncompleteWorkOrders(ctx, worldId);
         var dueOrders = incompleteOrders
@@ -76,8 +79,10 @@ public sealed class ProductionPhase : ISimulationPhase
                     ? FixedMath.MulDiv(workOrder.CommittedInputCost.Units, g.BaseValue.Units * o.Quantity, totalWeight)
                     : FixedMath.DivRound(workOrder.CommittedInputCost.Units, totalOutputUnits);
                 var perUnit = new Money(FixedMath.DivRound(share, o.Quantity));
-                var market = await GetOrCreateMarketStockpile(ctx, node.SettlementId, o.Good);
-                market.Deposit(o.Quantity, perUnit, _valuation);
+                var nodeShop = await ShopMarket.GetOrCreateProducerShop(ctx, node,
+                    $"{(settlementNames.TryGetValue(node.SettlementId, out var sn) ? sn : "Factory")} {node.Facility}");
+                var outStock = await ShopMarket.StockpileInShop(ctx, nodeShop.Id, o.Good);
+                outStock.Deposit(o.Quantity, perUnit, _valuation);
             }
 
             workOrder.MarkComplete();
@@ -107,27 +112,34 @@ public sealed class ProductionPhase : ISimulationPhase
             var recipe = await ctx.Db.Recipes.FirstAsync(r => r.Id == node.RecipeId);
             var inputs = recipe.Inputs.ToList();
 
-            var inputStocks = new List<(RecipeLine Line, Stockpile Stock)>();
+            // Check inputs are available across the settlement's shops.
             bool allAvailable = true;
             foreach (var line in inputs)
             {
-                var stock = await GetOrCreateMarketStockpile(ctx, node.SettlementId, line.Good);
-                if (stock.Quantity < line.Quantity)
+                if (await ShopMarket.TotalSupply(ctx, node.SettlementId, line.Good) < line.Quantity)
                 {
                     allAvailable = false;
                     break;
                 }
-                inputStocks.Add((line, stock));
             }
-
             if (!allAvailable)
                 continue;
 
             long committed = 0;
-            foreach (var (line, stock) in inputStocks)
+            foreach (var line in inputs)
             {
-                stock.Withdraw(line.Quantity).OrThrow("production input reservation");
-                committed += line.Quantity * stock.CostBasis.Units;
+                // Weighted cost of what we withdraw, sourced across shops in id order.
+                var sources = await ShopMarket.StockpilesForGood(ctx, node.SettlementId, line.Good);
+                long need = line.Quantity;
+                foreach (var src in sources)
+                {
+                    if (need <= 0) break;
+                    if (src.Quantity <= 0) continue;
+                    long take = Math.Min(need, src.Quantity);
+                    committed += take * src.CostBasis.Units;
+                    src.Withdraw(take).OrThrow("production input reservation");
+                    need -= take;
+                }
             }
 
             var order = WorkOrder.Create(
@@ -161,28 +173,4 @@ public sealed class ProductionPhase : ISimulationPhase
         return byId.Values.Where(w => !w.Completed).ToList();
     }
 
-    private static async Task<Stockpile> GetOrCreateMarketStockpile(
-        SimulationContext ctx, SettlementId settlementId, GoodId goodId)
-    {
-        // Check the local tracked set first so within-advance creations (e.g. raw extraction
-        // followed by consumption in the same run) are visible before SaveChanges.
-        var local = ctx.Db.Stockpiles.Local.FirstOrDefault(s =>
-            s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlementId.Value
-            && s.GoodId == goodId);
-        if (local is not null)
-            return local;
-
-        var existing = await ctx.Db.Stockpiles.FirstOrDefaultAsync(s =>
-            s.OwnerKind == StockpileOwnerKind.SettlementMarket
-            && s.OwnerId == settlementId.Value
-            && s.GoodId == goodId);
-        if (existing is not null)
-            return existing;
-
-        var created = Stockpile.Create(
-            ctx.World.Id, StockpileOwnerKind.SettlementMarket, settlementId.Value, goodId, 0, Money.Zero).Value;
-        ctx.Db.Stockpiles.Add(created);
-        return created;
-    }
 }

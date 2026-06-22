@@ -30,8 +30,8 @@ public class PricingPhaseTests
         var settlement = Settlement.Create(world.Id, region.Id, "Town", SettlementType.Village, 1, 1, population).Value;
         var good = Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(baseValue), "loaf",
             SizeClass.Small, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: consumptionPerCapitaBp).Value;
-        var market = Stockpile.Create(world.Id, StockpileOwnerKind.SettlementMarket, settlement.Id.Value,
-            good.Id, marketQuantity, new Money(baseValue)).Value;
+        var shop = Shop.Create(world.Id, settlement.Id, "Market Shop", 0, Money.Zero).Value;
+        var market = Stockpile.CreateForShop(world.Id, shop.Id, good.Id, marketQuantity, new Money(baseValue)).Value;
 
         await using var ctx = NewContextOnFile(path);
         await ctx.Database.MigrateAsync();
@@ -41,6 +41,7 @@ public class PricingPhaseTests
         ctx.Regions.Add(region);
         ctx.Settlements.Add(settlement);
         ctx.Goods.Add(good);
+        ctx.Shops.Add(shop);
         ctx.Stockpiles.Add(market);
         await ctx.SaveChangesAsync();
 
@@ -60,7 +61,7 @@ public class PricingPhaseTests
     {
         await using var ctx = NewContextOnFile(path);
         var sp = await ctx.Stockpiles
-            .Where(s => s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.SettlementMarket)
+            .Where(s => s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop)
             .FirstAsync();
         return sp.MarketPrice;
     }
@@ -134,8 +135,8 @@ public class PricingPhaseTests
         }, laborCost: 0, ticksToProduce: 1).Value;
         var node = ProductionNode.Create(world.Id, settlement.Id, recipe.Id, FacilityType.Bakery, throughputCap: 1).Value;
 
-        var market = Stockpile.Create(world.Id, StockpileOwnerKind.SettlementMarket, settlement.Id.Value,
-            input.Id, inputQuantity, new Money(100)).Value;
+        var inputShop = Shop.Create(world.Id, settlement.Id, "Input Shop", 0, Money.Zero).Value;
+        var market = Stockpile.CreateForShop(world.Id, inputShop.Id, input.Id, inputQuantity, new Money(100)).Value;
 
         await using var ctx = NewContextOnFile(path);
         await ctx.Database.MigrateAsync();
@@ -148,6 +149,7 @@ public class PricingPhaseTests
         ctx.Goods.Add(output);
         ctx.Recipes.Add(recipe);
         ctx.ProductionNodes.Add(node);
+        ctx.Shops.Add(inputShop);
         ctx.Stockpiles.Add(market);
         await ctx.SaveChangesAsync();
 

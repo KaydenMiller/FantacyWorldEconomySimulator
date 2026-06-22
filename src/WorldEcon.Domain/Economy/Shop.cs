@@ -15,16 +15,19 @@ public sealed class Shop : AggregateRoot<ShopId>
     public string Name { get; private set; }
     public int MarkupBp { get; private set; }
     public Money Till { get; private set; }
+    public ShopKind Kind { get; private set; }
 
     private Shop() : base(default) { Name = null!; } // EF
 
-    private Shop(ShopId id, WorldId worldId, SettlementId settlementId, string name, int markupBp, Money till) : base(id)
+    private Shop(ShopId id, WorldId worldId, SettlementId settlementId, string name, int markupBp,
+        Money till, ShopKind kind) : base(id)
     {
         WorldId = worldId;
         SettlementId = settlementId;
         Name = name;
         MarkupBp = markupBp;
         Till = till;
+        Kind = kind;
     }
 
     public static ErrorOr<Shop> Create(WorldId worldId, SettlementId settlementId, string name, int markupBp, Money till)
@@ -36,7 +39,19 @@ public sealed class Shop : AggregateRoot<ShopId>
         if (till.IsNegative)
             return Error.Validation("shop.till.negative", "Till must not be negative.");
 
-        return new Shop(ShopId.New(), worldId, settlementId, name.Trim(), markupBp, till);
+        return new Shop(ShopId.New(), worldId, settlementId, name.Trim(), markupBp, till, ShopKind.Retail);
+    }
+
+    /// <summary>Creates a non-retail vendor (Producer or PublicMarket) with no markup and an empty till.
+    /// Phase 1: Till/Markup are dormant; these vendors only hold inventory.</summary>
+    public static ErrorOr<Shop> CreateVendor(WorldId worldId, SettlementId settlementId, string name, ShopKind kind)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return Error.Validation("shop.name.blank", "Shop name must not be blank.");
+        if (kind == ShopKind.Retail)
+            return Error.Validation("shop.kind.invalid", "CreateVendor is for Producer or PublicMarket shops; use Create for Retail.");
+
+        return new Shop(ShopId.New(), worldId, settlementId, name.Trim(), 0, Money.Zero, kind);
     }
 
     /// <summary>Sale price = cost + cost×markup; margin reported absolute and in basis points (over cost).</summary>
