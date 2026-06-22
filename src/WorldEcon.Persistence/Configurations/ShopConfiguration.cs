@@ -13,8 +13,10 @@ public sealed class ShopConfiguration : IEntityTypeConfiguration<Shop>
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).IsRequired();
         b.Property(x => x.Till).HasConversion<MoneyConverter>();
+        b.Property(x => x.Kind).HasConversion<string>();
         b.HasIndex(x => x.WorldId);
         b.HasIndex(x => x.SettlementId);
+        b.HasIndex(x => new { x.SettlementId, x.Kind });
         b.Ignore(x => x.DomainEvents);
     }
 }

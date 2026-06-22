@@ -14,6 +14,7 @@ public sealed class ProductionNodeConfiguration : IEntityTypeConfiguration<Produ
         b.HasIndex(x => x.WorldId);
         b.HasIndex(x => x.SettlementId);
         b.HasIndex(x => x.RecipeId);
+        b.HasIndex(x => x.ProducerShopId);
         b.Ignore(x => x.DomainEvents);
     }
 }

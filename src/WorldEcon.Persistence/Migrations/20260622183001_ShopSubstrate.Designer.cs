@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WorldEcon.Persistence;
 
@@ -10,9 +11,11 @@ using WorldEcon.Persistence;
 namespace WorldEcon.Persistence.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260622183001_ShopSubstrate")]
+    partial class ShopSubstrate
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");

@@ -12,6 +12,7 @@ public sealed class ResourceEndowmentConfiguration : IEntityTypeConfiguration<Re
         b.HasKey(x => x.Id);
         b.HasIndex(x => x.WorldId);
         b.HasIndex(x => x.SettlementId);
+        b.HasIndex(x => x.ProducerShopId);
         b.Ignore(x => x.DomainEvents);
     }
 }
