@@ -10,6 +10,7 @@ using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
 using WorldEcon.Persistence.Snapshots;
 using WorldEcon.Seeding;
+using WorldEcon.SharedKernel.Currency;
 using WorldEcon.Simulation.Time;
 
 namespace WorldEcon.Cli;
@@ -117,7 +118,9 @@ internal static class CommandRunner
         await using var ctx = OpenContext(path);
         ctx.Database.Migrate();
 
-        Console.WriteLine("(Money values are in minor currency units.)");
+        var listWorld = await ctx.Worlds.FirstOrDefaultAsync();
+        var listCurrency = listWorld?.Currency ?? CurrencyDefinition.Default;
+
         Console.WriteLine();
 
         var settlements = await ctx.Settlements.ToListAsync();
@@ -129,7 +132,7 @@ internal static class CommandRunner
         var goods = await ctx.Goods.ToListAsync();
         Console.WriteLine("Goods:");
         foreach (var g in goods.OrderBy(g => g.Name, StringComparer.Ordinal))
-            Console.WriteLine($"  {g.Name} | {g.Category} | baseValue {g.BaseValue.Units}");
+            Console.WriteLine($"  {g.Name} | {g.Category} | baseValue {listCurrency.Format(g.BaseValue)}");
         Console.WriteLine();
 
         var shops = await ctx.Shops.ToListAsync();
@@ -188,7 +191,8 @@ internal static class CommandRunner
         }
 
         var value = result.Value;
-        Console.WriteLine($"Prices for '{value.GoodName}' in {settlement.Name} (Money values are in minor currency units):");
+        var currency = world.Currency;
+        Console.WriteLine($"Prices for '{value.GoodName}' in {settlement.Name}:");
         Console.WriteLine();
 
         if (value.Shops.Count == 0)
@@ -197,12 +201,12 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"ShopName",-16} {"Stock",6} {"CostBasis",10} {"SalePrice",10} {"Margin(abs)",12} {"Margin(%)",10}");
+        Console.WriteLine($"  {"ShopName",-16} {"Stock",6} {"CostBasis",12} {"SalePrice",12} {"Margin(abs)",14} {"Margin(%)",10}");
         foreach (var line in value.Shops)
         {
             var marginPct = line.MarginBp / 100.0;
             Console.WriteLine(
-                $"  {line.ShopName,-16} {line.Stock,6} {line.UnitCostBasis.Units,10} {line.SalePrice.Units,10} {line.MarginAbs.Units,12} {marginPct,9:0.##}%");
+                $"  {line.ShopName,-16} {line.Stock,6} {currency.Format(line.UnitCostBasis),12} {currency.Format(line.SalePrice),12} {currency.Format(line.MarginAbs),14} {marginPct,9:0.##}%");
         }
         return 0;
     }
@@ -269,6 +273,8 @@ internal static class CommandRunner
         }
 
         var goodsById = (await ctx.Goods.ToListAsync()).ToDictionary(g => g.Id, g => g.Name);
+        var stockWorld = await ctx.Worlds.FirstOrDefaultAsync();
+        var stockCurrency = stockWorld?.Currency ?? CurrencyDefinition.Default;
 
         var stockpiles = (await ctx.Stockpiles
                 .Where(s => s.OwnerKind == WorldEcon.Domain.Economy.StockpileOwnerKind.SettlementMarket
@@ -277,7 +283,7 @@ internal static class CommandRunner
             .OrderBy(s => goodsById.TryGetValue(s.GoodId, out var n) ? n : string.Empty, StringComparer.Ordinal)
             .ToList();
 
-        Console.WriteLine($"Market stockpiles in {settlement.Name} (Money values are in minor currency units):");
+        Console.WriteLine($"Market stockpiles in {settlement.Name}:");
         Console.WriteLine();
 
         if (stockpiles.Count == 0)
@@ -286,11 +292,11 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"CostBasis",10} {"MarketPrice",12}");
+        Console.WriteLine($"  {"Good",-16} {"Quantity",10} {"CostBasis",12} {"MarketPrice",14}");
         foreach (var sp in stockpiles)
         {
             var name = goodsById.TryGetValue(sp.GoodId, out var n) ? n : "(unknown)";
-            Console.WriteLine($"  {name,-16} {sp.Quantity,10} {sp.CostBasis.Units,10} {sp.MarketPrice.Units,12}");
+            Console.WriteLine($"  {name,-16} {sp.Quantity,10} {stockCurrency.Format(sp.CostBasis),12} {stockCurrency.Format(sp.MarketPrice),14}");
         }
         return 0;
     }
@@ -312,7 +318,10 @@ internal static class CommandRunner
             .ThenBy(m => m.Id.Value)
             .ToList();
 
-        Console.WriteLine("Merchants (Money values are in minor currency units):");
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        var currency = world?.Currency ?? CurrencyDefinition.Default;
+
+        Console.WriteLine("Merchants:");
         Console.WriteLine();
 
         if (merchants.Count == 0)
@@ -325,7 +334,7 @@ internal static class CommandRunner
         foreach (var m in merchants)
         {
             var seat = settlementById.TryGetValue(m.Seat, out var n) ? n : "(unknown)";
-            Console.WriteLine($"  {seat,-16} {m.Capital.Units,12} {m.CargoCapacity,14} {m.Reach,8}");
+            Console.WriteLine($"  {seat,-16} {currency.Format(m.Capital),12} {m.CargoCapacity,14} {m.Reach,8}");
         }
         return 0;
     }
@@ -342,13 +351,15 @@ internal static class CommandRunner
 
         var settlementById = (await ctx.Settlements.ToListAsync()).ToDictionary(s => s.Id, s => s.Name);
         var goodById = (await ctx.Goods.ToListAsync()).ToDictionary(g => g.Id, g => g.Name);
+        var caravanWorld = await ctx.Worlds.FirstOrDefaultAsync();
+        var caravanCurrency = caravanWorld?.Currency ?? CurrencyDefinition.Default;
 
         var caravans = (await ctx.Caravans.ToListAsync())
             .OrderBy(c => c.ArriveTick.Value)
             .ThenBy(c => c.Id.Value)
             .ToList();
 
-        Console.WriteLine("Caravans (Money values are in minor currency units):");
+        Console.WriteLine("Caravans:");
         Console.WriteLine();
 
         if (caravans.Count == 0)
@@ -357,7 +368,7 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"Origin",-12} {"Dest",-12} {"Good",-14} {"Qty",6} {"UnitCost",9} {"Depart",10} {"Arrive",10} {"Delivered",10}");
+        Console.WriteLine($"  {"Origin",-12} {"Dest",-12} {"Good",-14} {"Qty",6} {"UnitCost",12} {"Depart",10} {"Arrive",10} {"Delivered",10}");
         foreach (var c in caravans)
         {
             var origin = settlementById.TryGetValue(c.OriginId, out var o) ? o : "(unknown)";
@@ -365,7 +376,7 @@ internal static class CommandRunner
             var good = goodById.TryGetValue(c.GoodId, out var g) ? g : "(unknown)";
             var delivered = c.Delivered ? "yes" : "no";
             Console.WriteLine(
-                $"  {origin,-12} {dest,-12} {good,-14} {c.Quantity,6} {c.UnitCostBasis.Units,9} {c.DepartTick.Value,10} {c.ArriveTick.Value,10} {delivered,10}");
+                $"  {origin,-12} {dest,-12} {good,-14} {c.Quantity,6} {caravanCurrency.Format(c.UnitCostBasis),12} {c.DepartTick.Value,10} {c.ArriveTick.Value,10} {delivered,10}");
         }
         return 0;
     }

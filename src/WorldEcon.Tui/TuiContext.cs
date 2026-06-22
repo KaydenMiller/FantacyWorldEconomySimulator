@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence;
+using WorldEcon.SharedKernel;
 using WorldEcon.Simulation.Time;
 
 namespace WorldEcon.Tui;
@@ -28,6 +29,9 @@ public sealed class TuiContext
     public string? DbPath { get; }
 
     public CalendarSystem Calendar { get; }
+
+    /// <summary>Formats a <see cref="Money"/> value using the world's currency (e.g. "3g 2s 1c").</summary>
+    public string FormatMoney(Money money) => World.Currency.Format(money);
 
     /// <summary>e.g. "Y1 M1 D11 00:00 (tick 14400)".</summary>
     public string CurrentDateLabel

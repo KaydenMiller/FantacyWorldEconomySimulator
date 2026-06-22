@@ -269,7 +269,7 @@ public sealed class Navigator : INavigator
         var names = await Lookups.SettlementNamesAsync(ctx);
         var rows = merchants
             .Select(m => new NavRow(m.Id.Value.ToString(), NavKind.Merchant,
-                [names.Resolve(m.Seat.Value), m.Capital.Units.ToString(), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
+                [names.Resolve(m.Seat.Value), ctx.FormatMoney(m.Capital), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
         return new NavView(title, ["Seat", "Capital", "Capacity", "Reach"], rows);
     }
 
@@ -278,7 +278,7 @@ public sealed class Navigator : INavigator
         var names = await Lookups.SettlementNamesAsync(ctx);
         var rows = shops
             .Select(s => new NavRow(s.Id.Value.ToString(), NavKind.Shop,
-                [s.Name, names.Resolve(s.SettlementId.Value), (s.MarkupBp / 100).ToString() + "%", s.Till.Units.ToString()])).ToList();
+                [s.Name, names.Resolve(s.SettlementId.Value), (s.MarkupBp / 100).ToString() + "%", ctx.FormatMoney(s.Till)])).ToList();
         return new NavView(title, ["Name", "Settlement", "Markup", "Till"], rows);
     }
 
@@ -309,11 +309,11 @@ public sealed class Navigator : INavigator
         if (includeMarketPrice)
         {
             var rows = ordered.Select(s => new NavRow(s.GoodId.Value.ToString(), NavKind.Good,
-                [goodNames.Resolve(s.GoodId.Value), s.Quantity.ToString(), s.CostBasis.Units.ToString(), s.MarketPrice.Units.ToString()])).ToList();
+                [goodNames.Resolve(s.GoodId.Value), s.Quantity.ToString(), ctx.FormatMoney(s.CostBasis), ctx.FormatMoney(s.MarketPrice)])).ToList();
             return new NavView(title, ["Good", "Qty", "CostBasis", "MarketPrice"], rows);
         }
         var rows2 = ordered.Select(s => new NavRow(s.GoodId.Value.ToString(), NavKind.Good,
-            [goodNames.Resolve(s.GoodId.Value), s.Quantity.ToString(), s.CostBasis.Units.ToString()])).ToList();
+            [goodNames.Resolve(s.GoodId.Value), s.Quantity.ToString(), ctx.FormatMoney(s.CostBasis)])).ToList();
         return new NavView(title, ["Good", "Qty", "CostBasis"], rows2);
     }
 
@@ -334,7 +334,7 @@ public sealed class Navigator : INavigator
         var goods = (await ctx.Db.Goods.Where(g => g.WorldId == ctx.World.Id).ToListAsync())
             .OrderBy(g => g.Name, StringComparer.Ordinal).ThenBy(g => g.Id.Value).ToList();
         var rows = goods.Select(g => new NavRow(g.Id.Value.ToString(), NavKind.Good,
-            [g.Name, g.Category.ToString(), g.BaseValue.Units.ToString()])).ToList();
+            [g.Name, g.Category.ToString(), ctx.FormatMoney(g.BaseValue)])).ToList();
         return new NavView("Goods", ["Name", "Category", "BaseValue"], rows);
     }
 
@@ -476,7 +476,7 @@ public sealed class Navigator : INavigator
         if (m is null) return [$"Merchant {id.Value} not found."];
         var names = await Lookups.SettlementNamesAsync(ctx);
         var caravans = await ctx.Db.Caravans.CountAsync(c => c.OwnerId == id && !c.Delivered);
-        return [$"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {m.Capital.Units}", $"Cargo capacity: {m.CargoCapacity}", $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
+        return [$"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}", $"Cargo capacity: {m.CargoCapacity}", $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> ShopDetails(TuiContext ctx, ShopId id)
@@ -485,7 +485,7 @@ public sealed class Navigator : INavigator
         if (s is null) return [$"Shop {id.Value} not found."];
         var names = await Lookups.SettlementNamesAsync(ctx);
         var goods = (await AllStockpiles(ctx)).Count(x => x.OwnerKind == StockpileOwnerKind.Shop && x.OwnerId == id.Value);
-        return [$"Name: {s.Name}", $"Settlement: {names.Resolve(s.SettlementId.Value)}", $"Markup: {s.MarkupBp / 100}%", $"Till: {s.Till.Units}", $"Distinct goods: {goods}", $"Id: {s.Id.Value}"];
+        return [$"Name: {s.Name}", $"Settlement: {names.Resolve(s.SettlementId.Value)}", $"Markup: {s.MarkupBp / 100}%", $"Till: {ctx.FormatMoney(s.Till)}", $"Distinct goods: {goods}", $"Id: {s.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> FactoryDetails(TuiContext ctx, ProductionNodeId id)
@@ -503,14 +503,14 @@ public sealed class Navigator : INavigator
         if (c is null) return [$"Caravan {id.Value} not found."];
         var settlementNames = await Lookups.SettlementNamesAsync(ctx);
         var goodNames = await Lookups.GoodNamesAsync(ctx);
-        return [$"Origin: {settlementNames.Resolve(c.OriginId.Value)}", $"Dest: {settlementNames.Resolve(c.DestinationId.Value)}", $"Good: {goodNames.Resolve(c.GoodId.Value)}", $"Qty: {c.Quantity}", $"Unit cost: {c.UnitCostBasis.Units}", $"Depart: {c.DepartTick.Value}", $"Arrive: {c.ArriveTick.Value}", $"Delivered: {(c.Delivered ? "yes" : "no")}", $"Id: {c.Id.Value}"];
+        return [$"Origin: {settlementNames.Resolve(c.OriginId.Value)}", $"Dest: {settlementNames.Resolve(c.DestinationId.Value)}", $"Good: {goodNames.Resolve(c.GoodId.Value)}", $"Qty: {c.Quantity}", $"Unit cost: {ctx.FormatMoney(c.UnitCostBasis)}", $"Depart: {c.DepartTick.Value}", $"Arrive: {c.ArriveTick.Value}", $"Delivered: {(c.Delivered ? "yes" : "no")}", $"Id: {c.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> GoodDetails(TuiContext ctx, GoodId id)
     {
         var g = await ctx.Db.Goods.FirstOrDefaultAsync(x => x.Id == id);
         if (g is null) return [$"Good {id.Value} not found."];
-        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Base value: {g.BaseValue.Units}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
+        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> RecipeDetails(TuiContext ctx, RecipeId id)
