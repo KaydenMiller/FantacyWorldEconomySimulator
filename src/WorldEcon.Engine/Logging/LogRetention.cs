@@ -22,10 +22,13 @@ public static class LogRetention
         long routineCutoff = now.Value - RoutineMaxAgeTicks;
         long notableCutoff = now.Value - NotableMaxAgeTicks;
 
-        // WorldId equality + bool translate in SQL; the tick range check is value-converted, so do it
-        // in memory after materializing the (bounded, retention-capped) candidate set.
+        // WorldId equality, bool, and constant-enum comparisons translate to SQL.  Only Routine/Notable
+        // are prunable; Major/Historic are never pruned and accumulate unbounded by design, so we
+        // exclude them here to avoid loading them on every advance.  The tick range check is
+        // value-converted, so it is applied in memory after materializing this bounded candidate set.
         var candidates = await db.LogEvents
-            .Where(e => e.WorldId == worldId && !e.IsPlayerAction)
+            .Where(e => e.WorldId == worldId && !e.IsPlayerAction
+                        && (e.Magnitude == LogMagnitude.Routine || e.Magnitude == LogMagnitude.Notable))
             .ToListAsync();
 
         var prunable = candidates.Where(e => e.Magnitude switch
