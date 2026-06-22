@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Tui.Actions;
-using WorldEcon.Tui.Resources;
 
 namespace WorldEcon.Tui.Tests.Unit;
 
@@ -48,8 +47,8 @@ public class ActionTests
             {
                 var tui = await TuiContext.LoadAsync(ctx);
 
-                var cities = await new CitiesResource().LoadAsync(tui);
-                hammerfellKey = cities.Rows.Single(r => r.Cells[0] == "Hammerfell").Key;
+                var hammerfell = await ctx.Settlements.SingleAsync(s => s.Name == "Hammerfell");
+                hammerfellKey = hammerfell.Id.Value.ToString();
 
                 var potion = await ctx.Goods.SingleAsync(g => g.Name == "Health Potion");
                 potionId = potion.Id;
