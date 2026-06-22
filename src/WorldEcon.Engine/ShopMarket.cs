@@ -34,7 +34,7 @@ public static class ShopMarket
         var existing = (await ShopsIn(ctx, settlementId)).FirstOrDefault(sh => sh.Kind == ShopKind.PublicMarket);
         if (existing is not null)
             return existing;
-        var created = Shop.CreateVendor(ctx.World.Id, settlementId, "Town Market", ShopKind.PublicMarket).Value;
+        var created = NewVendor(ctx.World.Id, settlementId, "Town Market", ShopKind.PublicMarket);
         ctx.Db.Shops.Add(created);
         return created;
     }
@@ -47,8 +47,13 @@ public static class ShopMarket
             var shop = await FindShop(ctx, id);
             if (shop is not null)
                 return shop;
+            // Invariant: shops are never deleted, so a set ProducerShopId must resolve. If it does not,
+            // creating a replacement would orphan output (AssignProducerShop is write-once and would
+            // silently no-op). Fail loudly instead of vanishing production.
+            throw new InvalidOperationException(
+                $"Producer shop {id.Value} for node {node.Id.Value} is missing; shop deletion is not supported.");
         }
-        var created = Shop.CreateVendor(ctx.World.Id, node.SettlementId, name, ShopKind.Producer).Value;
+        var created = NewVendor(ctx.World.Id, node.SettlementId, name, ShopKind.Producer);
         ctx.Db.Shops.Add(created);
         node.AssignProducerShop(created.Id);
         return created;
@@ -62,11 +67,21 @@ public static class ShopMarket
             var shop = await FindShop(ctx, id);
             if (shop is not null)
                 return shop;
+            throw new InvalidOperationException(
+                $"Producer shop {id.Value} for endowment {endowment.Id.Value} is missing; shop deletion is not supported.");
         }
-        var created = Shop.CreateVendor(ctx.World.Id, endowment.SettlementId, name, ShopKind.Producer).Value;
+        var created = NewVendor(ctx.World.Id, endowment.SettlementId, name, ShopKind.Producer);
         ctx.Db.Shops.Add(created);
         endowment.AssignProducerShop(created.Id);
         return created;
+    }
+
+    /// <summary>Creates a vendor shop, falling back to the kind name if the supplied name is blank so the
+    /// validating factory never errors (callers pass derived names that are statically non-blank).</summary>
+    private static Shop NewVendor(WorldId worldId, SettlementId settlementId, string name, ShopKind kind)
+    {
+        var safeName = string.IsNullOrWhiteSpace(name) ? kind.ToString() : name;
+        return Shop.CreateVendor(worldId, settlementId, safeName, kind).Value;
     }
 
     private static async Task<Shop?> FindShop(SimulationContext ctx, ShopId id)
@@ -83,17 +98,19 @@ public static class ShopMarket
     /// stockpile-id order (so depletion is deterministic).</summary>
     public static async Task<List<Stockpile>> StockpilesForGood(SimulationContext ctx, SettlementId settlementId, GoodId goodId)
     {
-        var shopIds = (await ShopsIn(ctx, settlementId)).ToDictionary(sh => sh.Id.Value, sh => sh.Id.Value);
+        var shopIds = new HashSet<Guid>((await ShopsIn(ctx, settlementId)).Select(sh => sh.Id.Value));
+        var shopIdList = shopIds.ToList(); // for SQL Contains (raw Guid column translates)
         var worldId = ctx.World.Id;
         var fromDb = await ctx.Db.Stockpiles
-            .Where(s => s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == goodId)
+            .Where(s => s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop
+                && s.GoodId == goodId && shopIdList.Contains(s.OwnerId))
             .ToListAsync();
         var byId = fromDb.ToDictionary(s => s.Id);
         foreach (var local in ctx.Db.Stockpiles.Local.Where(s =>
-            s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop && s.GoodId == goodId))
+            s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop
+            && s.GoodId == goodId && shopIds.Contains(s.OwnerId)))
             byId[local.Id] = local;
         return byId.Values
-            .Where(s => shopIds.ContainsKey(s.OwnerId))
             .OrderBy(s => s.OwnerId).ThenBy(s => s.Id.Value)
             .ToList();
     }
@@ -121,6 +138,8 @@ public static class ShopMarket
     /// Returns the amount actually taken (≤ quantity).</summary>
     public static async Task<long> WithdrawAcrossShops(SimulationContext ctx, SettlementId settlementId, GoodId goodId, long quantity)
     {
+        if (quantity <= 0)
+            return 0;
         long remaining = quantity;
         long taken = 0;
         foreach (var stock in await StockpilesForGood(ctx, settlementId, goodId))
