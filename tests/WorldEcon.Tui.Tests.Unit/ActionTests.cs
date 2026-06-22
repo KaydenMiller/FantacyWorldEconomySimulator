@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
+using WorldEcon.Domain.Logging;
 using WorldEcon.Tui.Actions;
 
 namespace WorldEcon.Tui.Tests.Unit;
@@ -66,7 +67,7 @@ public class ActionTests
             await using (var fresh = TestWorld.NewContext(path))
             {
                 (await ShopStockOf(fresh, potionId)).Should().Be(stockBefore - 10);
-                (await fresh.DmActions.CountAsync()).Should().Be(1);
+                (await fresh.LogEvents.CountAsync(e => e.IsPlayerAction)).Should().Be(1);
             }
         }
         finally

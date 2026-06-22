@@ -31,7 +31,7 @@ public sealed class BuyOutAction : IRowAction
             return;
         }
 
-        var result = await new DmActionService(ctx.Db).BuyFromShopsAsync(
+        var result = await new LogEventService(ctx.Db).BuyFromShopsAsync(
             ctx.World.Id, settlementId, good.Id, quantity.Value, DateTimeOffset.UtcNow);
 
         if (result.IsError)
@@ -40,6 +40,6 @@ public sealed class BuyOutAction : IRowAction
             return;
         }
 
-        await ui.ShowMessageAsync("Buy out good", [result.Value.Description]);
+        await ui.ShowMessageAsync("Buy out good", [result.Value.Message]);
     }
 }

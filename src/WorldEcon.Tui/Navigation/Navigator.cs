@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
-using WorldEcon.Domain.Actions;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.Tui.Resources;
 
 namespace WorldEcon.Tui.Navigation;
@@ -362,11 +362,11 @@ public sealed class Navigator : INavigator
 
     private async Task<NavView> ActionsView(TuiContext ctx)
     {
-        var actions = (await ctx.Db.DmActions.Where(a => a.WorldId == ctx.World.Id).ToListAsync())
-            .OrderBy(a => a.Sequence).ToList();
-        var rows = actions.Select(a => new NavRow(a.Id.Value.ToString(), NavKind.Action,
-            [a.Sequence.ToString(), a.AppliedTick.Value.ToString(), a.Kind.ToString(), a.Description])).ToList();
-        return new NavView("Actions", ["Seq", "Tick", "Kind", "Description"], rows);
+        var events = (await ctx.Db.LogEvents.Where(e => e.WorldId == ctx.World.Id && e.IsPlayerAction).ToListAsync())
+            .OrderBy(e => e.Sequence).ToList();
+        var rows = events.Select(e => new NavRow(e.Id.Value.ToString(), NavKind.Action,
+            [e.Sequence.ToString(), e.OccurredTick.Value.ToString(), e.Type.ToString(), e.Message])).ToList();
+        return new NavView("Actions", ["Seq", "Tick", "Type", "Message"], rows);
     }
 
     // ---- details builders ---------------------------------------------------------------------

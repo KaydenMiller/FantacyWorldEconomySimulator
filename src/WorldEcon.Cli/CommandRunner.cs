@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using WorldEcon.Application.Queries;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.Engine;
 using WorldEcon.Engine.Actions;
 using WorldEcon.Persistence;
@@ -378,7 +379,7 @@ internal static class CommandRunner
         var (world, settlement, good, fail) = await ResolveWorldSettlementGood(ctx, args[2], args[3]);
         if (fail != 0) return fail;
 
-        var service = new DmActionService(ctx);
+        var service = new LogEventService(ctx);
         var result = await service.BuyFromShopsAsync(world!.Id, settlement!.Id, good!.Id, qty, DateTimeOffset.UtcNow);
         return PrintActionResult(result);
     }
@@ -401,7 +402,7 @@ internal static class CommandRunner
         var (world, settlement, good, fail) = await ResolveWorldSettlementGood(ctx, args[2], args[3]);
         if (fail != 0) return fail;
 
-        var service = new DmActionService(ctx);
+        var service = new LogEventService(ctx);
         var result = await service.AdjustMarketStockAsync(world!.Id, settlement!.Id, good!.Id, delta, DateTimeOffset.UtcNow);
         return PrintActionResult(result);
     }
@@ -419,7 +420,7 @@ internal static class CommandRunner
         var (world, settlement, fail) = await ResolveWorldSettlement(ctx, args[2]);
         if (fail != 0) return fail;
 
-        var service = new DmActionService(ctx);
+        var service = new LogEventService(ctx);
         var result = await service.SetSettlementProductionDisabledAsync(world!.Id, settlement!.Id, disabled, DateTimeOffset.UtcNow);
         return PrintActionResult(result);
     }
@@ -433,21 +434,14 @@ internal static class CommandRunner
         await using var ctx = OpenContext(args[1]);
         ctx.Database.Migrate();
 
-        var actions = (await ctx.DmActions.ToListAsync())
-            .OrderBy(a => a.Sequence)
+        var events = (await ctx.LogEvents.Where(e => e.IsPlayerAction).ToListAsync())
+            .OrderBy(e => e.Sequence)
             .ToList();
-
-        Console.WriteLine("DM action log:");
+        Console.WriteLine("Party/DM actions:");
         Console.WriteLine();
-
-        if (actions.Count == 0)
-        {
-            Console.WriteLine("  (no actions logged)");
-            return 0;
-        }
-
-        foreach (var a in actions)
-            Console.WriteLine($"  #{a.Sequence} @tick{a.AppliedTick.Value} {a.Kind} — {a.Description}");
+        if (events.Count == 0) { Console.WriteLine("  (none)"); return 0; }
+        foreach (var e in events)
+            Console.WriteLine($"  #{e.Sequence,-4} tick {e.OccurredTick.Value,-8} {e.Message}");
         return 0;
     }
 
@@ -490,7 +484,7 @@ internal static class CommandRunner
         return (world, settlement, good, 0);
     }
 
-    private static int PrintActionResult(ErrorOr.ErrorOr<WorldEcon.Domain.Actions.DmAction> result)
+    private static int PrintActionResult(ErrorOr.ErrorOr<WorldEcon.Domain.Logging.LogEvent> result)
     {
         if (result.IsError)
         {
@@ -498,7 +492,7 @@ internal static class CommandRunner
             return 1;
         }
 
-        Console.WriteLine(result.Value.Description);
+        Console.WriteLine(result.Value.Message);
         return 0;
     }
 
