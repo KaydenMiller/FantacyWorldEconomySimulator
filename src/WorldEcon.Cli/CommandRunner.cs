@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using WorldEcon.Application.Logging;
 using WorldEcon.Application.Queries;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
@@ -40,6 +41,8 @@ internal static class CommandRunner
                 "disable" => await CmdSetDisabled(args, true),
                 "enable" => await CmdSetDisabled(args, false),
                 "actions" => await CmdActions(args),
+                "log" => await CmdLog(args),
+                "summary" => await CmdSummary(args),
                 _ => Unknown(args[0]),
             };
         }
@@ -517,6 +520,100 @@ internal static class CommandRunner
         return 0;
     }
 
+    // ---- log <dbPath> <kind> <name> [--regex <pattern>] [--limit <n>] ----
+    private static async Task<int> CmdLog(string[] args)
+    {
+        if (args.Length < 4)
+            return MissingArgs("log <dbPath> <world|continent|country|region|city> <name> [--regex <p>] [--limit <n>]");
+
+        var path = args[1];
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        if (world is null) { Console.Error.WriteLine("Error: no world found."); return 1; }
+
+        var (kind, id) = await ResolveScope(ctx, world.Id, args[2], args[3]);
+        if (id is null) { Console.Error.WriteLine($"Error: {args[2]} '{args[3]}' not found."); return 1; }
+
+        string? regex = OptValue(args, "--regex");
+        int limit = int.TryParse(OptValue(args, "--limit"), out var n) ? n : 50;
+
+        var events = await new LogQueryService(ctx).QueryAsync(world.Id, kind, id.Value, regex, limit);
+        Console.WriteLine($"Log for {args[2]} '{args[3]}' (newest first):");
+        Console.WriteLine();
+        if (events.Count == 0) { Console.WriteLine("  (no events)"); return 0; }
+        foreach (var e in events)
+            Console.WriteLine($"  tick {e.OccurredTick.Value,-8} {e.Magnitude,-8} {e.Type,-18} {e.Message}");
+        return 0;
+    }
+
+    // ---- summary <dbPath> <kind> <name> [--from <tick>] [--to <tick>] ----
+    private static async Task<int> CmdSummary(string[] args)
+    {
+        if (args.Length < 4)
+            return MissingArgs("summary <dbPath> <world|continent|country|region|city> <name> [--from <tick>] [--to <tick>]");
+
+        var path = args[1];
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        if (world is null) { Console.Error.WriteLine("Error: no world found."); return 1; }
+
+        var (kind, id) = await ResolveScope(ctx, world.Id, args[2], args[3]);
+        if (id is null) { Console.Error.WriteLine($"Error: {args[2]} '{args[3]}' not found."); return 1; }
+
+        long from = long.TryParse(OptValue(args, "--from"), out var f) ? f : 0;
+        long to = long.TryParse(OptValue(args, "--to"), out var t) ? t : world.CurrentTick.Value;
+
+        var sum = await new SummaryService(ctx).SummarizeAsync(world.Id, kind, id.Value,
+            new WorldEcon.SharedKernel.Tick(from), new WorldEcon.SharedKernel.Tick(to));
+
+        Console.WriteLine($"Summary for {args[2]} '{args[3]}' over ticks {from}..{to}:");
+        Console.WriteLine($"  total events: {sum.TotalEvents}");
+        foreach (var kv in sum.CountByType.OrderBy(k => k.Key.ToString(), StringComparer.Ordinal))
+            Console.WriteLine($"    {kv.Key,-18} {kv.Value}");
+        if (sum.Notable.Count > 0)
+        {
+            Console.WriteLine("  notable:");
+            foreach (var e in sum.Notable)
+                Console.WriteLine($"    tick {e.OccurredTick.Value,-8} {e.Type,-18} {e.Message}");
+        }
+        return 0;
+    }
+
+    private static string? OptValue(string[] args, string flag)
+    {
+        var i = Array.IndexOf(args, flag);
+        return i >= 0 && i + 1 < args.Length ? args[i + 1] : null;
+    }
+
+    private static async Task<(LogScopeKind Kind, Guid? Id)> ResolveScope(
+        WorldDbContext ctx, WorldId worldId, string kindToken, string name)
+    {
+        switch (kindToken.ToLowerInvariant())
+        {
+            case "world":
+                return (LogScopeKind.World, worldId.Value);
+            case "continent":
+                return (LogScopeKind.Continent,
+                    (await ctx.Continents.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+            case "country":
+                return (LogScopeKind.Country,
+                    (await ctx.Countries.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+            case "region":
+                return (LogScopeKind.Region,
+                    (await ctx.Regions.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+            case "city":
+            case "settlement":
+                return (LogScopeKind.Settlement,
+                    (await ctx.Settlements.ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value);
+            default:
+                return (LogScopeKind.World, null);
+        }
+
+        static bool Eq(string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static int Unknown(string cmd)
     {
         Console.Error.WriteLine($"Unknown command: {cmd}");
@@ -549,5 +646,9 @@ internal static class CommandRunner
         Console.WriteLine("  disable  <dbPath> <settlement>             Party disables all production in a settlement.");
         Console.WriteLine("  enable   <dbPath> <settlement>             Party restores all production in a settlement.");
         Console.WriteLine("  actions  <dbPath>                          List the DM/party action log.");
+        Console.WriteLine("  log      <dbPath> <kind> <name>            Show the activity log for a scope (world|continent|country|region|city).");
+        Console.WriteLine("           [--regex <p>] [--limit <n>]       Optional regex filter and page limit (default 50).");
+        Console.WriteLine("  summary  <dbPath> <kind> <name>            Show event counts by type for a scope.");
+        Console.WriteLine("           [--from <tick>] [--to <tick>]     Optional tick window (default: full history).");
     }
 }
