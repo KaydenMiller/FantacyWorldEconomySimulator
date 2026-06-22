@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 
 namespace WorldEcon.Persistence.Conversions;
 
@@ -12,3 +13,5 @@ public sealed class RouteIdConverter() : ValueConverter<RouteId, Guid>(v => v.Va
 public sealed class RegionContinentIdConverter() : ValueConverter<RegionContinentId, Guid>(v => v.Value, g => new RegionContinentId(g));
 public sealed class RegionContainmentIdConverter() : ValueConverter<RegionContainmentId, Guid>(v => v.Value, g => new RegionContainmentId(g));
 public sealed class TerritorialClaimIdConverter() : ValueConverter<TerritorialClaimId, Guid>(v => v.Value, g => new TerritorialClaimId(g));
+public sealed class LogEventIdConverter() : ValueConverter<LogEventId, Guid>(v => v.Value, g => new LogEventId(g));
+public sealed class LogEventScopeIdConverter() : ValueConverter<LogEventScopeId, Guid>(v => v.Value, g => new LogEventScopeId(g));
