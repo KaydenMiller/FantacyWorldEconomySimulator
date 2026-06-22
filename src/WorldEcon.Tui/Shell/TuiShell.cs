@@ -50,6 +50,7 @@ public sealed class TuiShell : Window
     private readonly List<NavFrame> _stack = [];
     private BarMode _barMode = BarMode.None;
     private TaskCompletionSource<string?>? _promptTcs;
+    private int _sortColumn = -1; // -1 = no sort; cycles on 'o'
 
     private (LogScopeKind Kind, Guid Id, string Title)? _currentLogScope;
 
@@ -165,14 +166,27 @@ public sealed class TuiShell : Window
         }
     }
 
-    private static IReadOnlyList<NavRow> GetFilteredRows(NavFrame frame)
+    private IReadOnlyList<NavRow> GetFilteredRows(NavFrame frame)
     {
+        IReadOnlyList<NavRow> rows;
         if (frame.Filter is not { } pattern || frame.UnfilteredRows is null)
-            return frame.View.Rows;
-        Regex? re = null;
-        try { re = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)); }
-        catch { return frame.View.Rows; } // invalid regex: show all
-        return frame.UnfilteredRows.Where(r => r.Cells.Any(c => re.IsMatch(c))).ToList();
+        {
+            rows = frame.View.Rows;
+        }
+        else
+        {
+            Regex? re = null;
+            try { re = new Regex(pattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1)); }
+            catch { return frame.View.Rows; } // invalid regex: show all
+            rows = frame.UnfilteredRows.Where(r => r.Cells.Any(c => re.IsMatch(c))).ToList();
+        }
+
+        // Apply column sort if active (Ordinal string sort; Number-aware is not required for Phase 1).
+        if (_sortColumn >= 0 && _sortColumn < frame.View.Columns.Count)
+            rows = rows.OrderBy(r => _sortColumn < r.Cells.Count ? r.Cells[_sortColumn] : string.Empty,
+                StringComparer.Ordinal).ToList();
+
+        return rows;
     }
 
     private static DataTableSource BuildTableSourceFromRows(NavView view, IReadOnlyList<NavRow> rows)
@@ -206,7 +220,7 @@ public sealed class TuiShell : Window
         var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details" };
         if (LogScopeFor(row?.Kind ?? NavKind.Leaf) is not null)
             hints.Add("l log");
-        hints.AddRange(["/filter", "a advance", "S snapshot", "? help", "q quit"]);
+        hints.AddRange(["/filter", "o sort", "a advance", "S snapshot", "? help", "q quit"]);
         if (row?.Kind == NavKind.City)
             hints.AddRange(_cityActions.Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}"));
         _status.Text = " " + string.Join("  ", hints);
@@ -221,6 +235,7 @@ public sealed class TuiShell : Window
             var v = await _nav.RootAsync(canonicalRootName, _ctx);
             Post(() =>
             {
+                _sortColumn = -1;
                 _stack.Clear();
                 _stack.Add(new NavFrame(v, () => _nav.RootAsync(canonicalRootName, _ctx)!));
                 ApplyTop();
@@ -240,6 +255,7 @@ public sealed class TuiShell : Window
             Post(() =>
             {
                 _stack[^1].Selection = selection;
+                _sortColumn = -1;
                 _stack.Add(new NavFrame(child, () => _nav.DrillAsync(row, _ctx)));
                 ApplyTop();
             });
@@ -254,6 +270,7 @@ public sealed class TuiShell : Window
         // If the new top is not a log view, clear stale log state so `:summary` targets the world.
         if (!_stack[^1].View.Title.StartsWith("Log — ", StringComparison.Ordinal))
             _currentLogScope = null;
+        _sortColumn = -1;
         ApplyTop();
     }
 
@@ -336,6 +353,15 @@ public sealed class TuiShell : Window
                 var pattern = await PromptAsync("/", currentFilter);
                 Post(() => ApplyFilter(pattern));
             });
+            return;
+        }
+
+        // 'o' cycles the sort column of the current view (Ordinal string sort; reset per-frame).
+        if (key.AsRune.Value == 'o')
+        {
+            var cols = _stack[^1].View.Columns.Count;
+            if (cols > 0) { _sortColumn = (_sortColumn + 1) % cols; ApplyTop(); }
+            key.Handled = true;
             return;
         }
 
@@ -424,6 +450,7 @@ public sealed class TuiShell : Window
 
     private void PushView(NavView view, LogScopeKind kind, Guid scopeId, string title)
     {
+        _sortColumn = -1;
         _stack.Add(new NavFrame(view, () => _nav.LogViewForScopeAsync(kind, scopeId, title, null, _ctx)!));
         ApplyTop();
     }
@@ -477,6 +504,7 @@ public sealed class TuiShell : Window
             Row("--- Actions ---", string.Empty),
             Row("a", "advance time"),
             Row("S", "snapshot"),
+            Row("o", "cycle sort column (Ordinal; resets per frame)"),
             Row("b", "(on a city) buy out a good"),
             Row("x", "(on a city) disable production"),
             Row("e", "(on a city) enable production"),

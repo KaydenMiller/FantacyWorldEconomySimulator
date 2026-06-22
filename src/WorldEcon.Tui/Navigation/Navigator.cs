@@ -259,13 +259,46 @@ public sealed class Navigator : INavigator
             case "factories":
                 return await FactoriesView(ctx, (await AllNodes(ctx)).Where(n => n.SettlementId == settlementId).ToList(), $"{name} / Factories");
             case "market":
-                var settlementShopIdsForMarket = (await ctx.Db.Shops.Where(sh => sh.SettlementId == settlementId).ToListAsync())
-                    .Select(sh => sh.Id.Value).ToHashSet();
-                var goods = (await AllStockpiles(ctx)).Where(s => s.OwnerKind == StockpileOwnerKind.Shop && settlementShopIdsForMarket.Contains(s.OwnerId)).ToList();
-                return await StockpileGoodsView(ctx, goods, $"{name} / Market", includeMarketPrice: true);
+                return await MarketBoardAsync(settlementId, ctx);
             default:
                 return null;
         }
+    }
+
+    /// <summary>Marketplace board for a settlement: one row per shop's offer of each good.</summary>
+    public async Task<NavView> MarketBoardAsync(SettlementId settlementId, TuiContext ctx)
+    {
+        var goodNames = await Lookups.GoodNamesAsync(ctx);
+        var goods = (await ctx.Db.Goods.Where(g => g.WorldId == ctx.World.Id).ToListAsync())
+            .ToDictionary(g => g.Id);
+        var shops = (await ctx.Db.Shops.Where(s => s.SettlementId == settlementId).ToListAsync())
+            .ToDictionary(s => s.Id.Value, s => s);
+        var stocks = (await ctx.Db.Stockpiles
+                .Where(s => s.OwnerKind == StockpileOwnerKind.Shop)
+                .ToListAsync())
+            .Where(s => shops.ContainsKey(s.OwnerId) && s.Quantity > 0)
+            .ToList();
+
+        var rows = stocks
+            .Select(s =>
+            {
+                var shop = shops[s.OwnerId];
+                var good = goods.TryGetValue(s.GoodId, out var g) ? g : null;
+                return new NavRow(s.Id.Value.ToString(), NavKind.Leaf, new[]
+                {
+                    good?.Name ?? s.GoodId.Value.ToString(),
+                    good?.Category.ToString() ?? "",
+                    shop.Name,
+                    s.Quantity.ToString(),
+                    ctx.FormatMoney(s.CostBasis),   // Min Price = cost basis (break-even)
+                    ctx.FormatMoney(s.MarketPrice),
+                });
+            })
+            .OrderBy(r => r.Cells[0], StringComparer.Ordinal).ThenBy(r => r.Cells[2], StringComparer.Ordinal)
+            .ToList();
+
+        var name = (await Lookups.SettlementNamesAsync(ctx)).Resolve(settlementId.Value);
+        return new NavView($"{name} / Market", ["Good", "Category", "Shop", "Qty", "Min Price", "Price"], rows);
     }
 
     private async Task<NavView> MerchantsView(TuiContext ctx, List<RepresentativeMerchant> merchants, string title)
