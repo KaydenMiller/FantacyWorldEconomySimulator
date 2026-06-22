@@ -128,14 +128,20 @@ public sealed class SeedImporter(WorldDbContext db)
             }
         }
 
-        // Settlement market stockpiles (owner = the settlement itself).
-        foreach (var m in NonNull(s.Market))
+        // Settlement market stockpiles → the settlement's public-market shop (substrate: no
+        // SettlementMarket pool). Created once per settlement that declares a market.
+        var marketEntries = NonNull(s.Market).ToList();
+        if (marketEntries.Count > 0)
         {
-            var stockpile = Unwrap(Stockpile.Create(
-                worldId, StockpileOwnerKind.SettlementMarket, settlementId.Value,
-                ResolveGood(goodsByName, m.Good, $"market in '{s.Name}'"),
-                m.Quantity, new Money(m.UnitCostBasis)));
-            db.Stockpiles.Add(stockpile);
+            var pub = Unwrap(Shop.CreateVendor(worldId, settlementId, "Town Market", ShopKind.PublicMarket));
+            db.Shops.Add(pub);
+            foreach (var m in marketEntries)
+            {
+                var stockpile = Unwrap(Stockpile.CreateForShop(
+                    worldId, pub.Id, ResolveGood(goodsByName, m.Good, $"market in '{s.Name}'"),
+                    m.Quantity, new Money(m.UnitCostBasis)));
+                db.Stockpiles.Add(stockpile);
+            }
         }
 
         // Resource endowments.
