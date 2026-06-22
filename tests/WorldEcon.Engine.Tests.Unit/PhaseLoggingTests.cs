@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
+using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
 using WorldEcon.Engine;
 using WorldEcon.SharedKernel;
@@ -53,6 +54,67 @@ public class PhaseLoggingTests
 
             var stockoutCount = await s.Db.LogEvents.CountAsync(e => e.Type == LogEventType.Stockout);
             stockoutCount.Should().BeGreaterThan(0);
+        }
+        finally { await LogTestWorld.DisposeAsync(s); }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Regression: shop-owned spoilage is logged at the shop scope
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// <see cref="PerishabilityPhase"/> must emit a <see cref="LogEventType.Spoilage"/> event
+    /// whose origin is <see cref="LogScopeKind.Shop"/> (not Settlement) when the decaying
+    /// stockpile is shop-owned, and a matching <see cref="LogEventScope"/> row must exist for
+    /// that shop. The bonus assertion also checks the message names the shop.
+    /// </summary>
+    [Test]
+    public async Task Perishability_ShopOwnedStock_EmitsSpoilage_ScopedToShop()
+    {
+        var s = await LogTestWorld.CreateAsync();
+        try
+        {
+            // Seed: perishable good + shop + shop stockpile.
+            // shelfLifeTicks = 4320 (3 days) → daily loss = 300 * 1440 / 4320 = 100 (> 0), so spoilage fires.
+            var good = Good.Create(s.World.Id, "Fresh Bread", GoodCategory.Food, new Money(30), "loaf",
+                SizeClass.Small, shelfLifeTicks: 4320, divisible: true).Value;
+            s.Db.Goods.Add(good);
+
+            var shop = Shop.Create(s.World.Id, s.Settlement.Id, "The Bakery", 500, new Money(1000)).Value;
+            s.Db.Shops.Add(shop);
+
+            // 300 loaves in a shop-owned stockpile.
+            var shopStock = Stockpile.CreateForShop(s.World.Id, shop.Id, good.Id, 300, new Money(30)).Value;
+            s.Db.Stockpiles.Add(shopStock);
+
+            await s.Db.SaveChangesAsync();
+
+            // Advance one day via the full standard phase pipeline (PerishabilityPhase is included).
+            var sim = await SimulationContext.LoadAsync(s.Db, s.World.Id);
+            await new TickEngine(StandardPhases.All()).AdvanceAsync(sim, Tick.DefaultMinutesPerDay);
+
+            // Assert: a Spoilage event exists with origin = Shop.
+            var spoilageEvents = await s.Db.LogEvents
+                .Where(e => e.Type == LogEventType.Spoilage && e.OriginKind == LogScopeKind.Shop)
+                .ToListAsync();
+            spoilageEvents.Should().NotBeEmpty("PerishabilityPhase must emit Spoilage at the shop scope");
+
+            var shopSpoilage = spoilageEvents.First(e => e.OriginId == shop.Id.Value);
+            shopSpoilage.OriginKind.Should().Be(LogScopeKind.Shop);
+            shopSpoilage.OriginId.Should().Be(shop.Id.Value);
+
+            // Bonus: message names the shop.
+            shopSpoilage.Message.Should().Contain(shop.Name,
+                "the spoilage message should identify which shop lost stock");
+
+            // Assert: a LogEventScope row exists scoped to the shop.
+            var shopScope = await s.Db.LogEventScopes
+                .FirstOrDefaultAsync(sc =>
+                    sc.LogEventId == shopSpoilage.Id
+                    && sc.ScopeKind == LogScopeKind.Shop
+                    && sc.ScopeId == shop.Id.Value);
+            shopScope.Should().NotBeNull(
+                "a LogEventScope row for (ScopeKind=Shop, ScopeId=shop.Id) must be written");
         }
         finally { await LogTestWorld.DisposeAsync(s); }
     }
