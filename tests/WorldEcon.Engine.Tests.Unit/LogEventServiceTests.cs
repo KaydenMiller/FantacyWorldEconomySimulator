@@ -314,6 +314,29 @@ public class LogEventServiceTests
         }
     }
 
+    [Test]
+    public async Task AdjustMarketStock_TargetsPublicMarketShop()
+    {
+        var s = await LogTestWorld.CreateAsync();
+        try
+        {
+            var good = WorldEcon.Domain.Economy.Good.Create(s.World.Id, "Salt",
+                WorldEcon.Domain.Economy.GoodCategory.Food, new WorldEcon.SharedKernel.Money(5), "bag",
+                WorldEcon.Domain.Economy.SizeClass.Small, 0, true, 0).Value;
+            s.Db.Goods.Add(good);
+            await s.Db.SaveChangesAsync();
+
+            var result = await new WorldEcon.Engine.Actions.LogEventService(s.Db)
+                .AdjustMarketStockAsync(s.World.Id, s.Settlement.Id, good.Id, 50, DateTimeOffset.UtcNow);
+            result.IsError.Should().BeFalse();
+
+            var pub = await s.Db.Shops.SingleAsync(x => x.Kind == WorldEcon.Domain.Economy.ShopKind.PublicMarket);
+            var stock = await s.Db.Stockpiles.SingleAsync(x => x.OwnerId == pub.Id.Value && x.GoodId == good.Id);
+            stock.Quantity.Should().Be(50);
+        }
+        finally { await LogTestWorld.DisposeAsync(s); }
+    }
+
     // -------------------------------------------------------------------------
     // LogEvent Sequence monotonicity across two calls
     // -------------------------------------------------------------------------
