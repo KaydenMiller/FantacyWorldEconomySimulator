@@ -31,6 +31,13 @@ public sealed class PerishabilityPhase : ISimulationPhase
         if (perishable.Count == 0)
             return;
 
+        // Shop lookup (keyed by the raw owner Guid) so shop-owned spoilage logs at the shop and
+        // resolves its ancestor settlement. Built once per advance.
+        var shopsByOwnerId = (await ctx.Db.Shops
+                .Where(s => s.WorldId == worldId)
+                .ToListAsync())
+            .ToDictionary(s => s.Id.Value);
+
         foreach (var stock in LoadStockpiles(ctx, worldId))
         {
             if (!perishable.TryGetValue(stock.GoodId, out var good))
@@ -49,10 +56,18 @@ public sealed class PerishabilityPhase : ISimulationPhase
             if (loss > 0)
                 stock.Withdraw(loss).OrThrow("perishability decay");
 
-            if (loss > 0 && stock.OwnerKind == StockpileOwnerKind.SettlementMarket)
+            if (loss <= 0)
+                continue;
+
+            if (stock.OwnerKind == StockpileOwnerKind.SettlementMarket)
                 await ctx.Log.EmitAsync(LogEventType.Spoilage,
                     $"{good.Name} spoiled in a market ({loss} units)", tick,
                     LogScopeKind.Settlement, stock.OwnerId, new SettlementId(stock.OwnerId));
+            else if (stock.OwnerKind == StockpileOwnerKind.Shop
+                && shopsByOwnerId.TryGetValue(stock.OwnerId, out var shop))
+                await ctx.Log.EmitAsync(LogEventType.Spoilage,
+                    $"{good.Name} spoiled at {shop.Name} ({loss} units)", tick,
+                    LogScopeKind.Shop, stock.OwnerId, shop.SettlementId);
         }
     }
 
