@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine.Phases;
@@ -57,6 +58,10 @@ public sealed class TradePhase : ISimulationPhase
             merchant?.Earn(new Money(caravan.Quantity * destPrice));
 
             caravan.MarkDelivered();
+            await ctx.Log.EmitAsync(LogEventType.MerchantArrived,
+                $"Caravan delivered {caravan.Quantity} units (good {caravan.GoodId.Value})", tick,
+                LogScopeKind.Merchant, caravan.OwnerId.Value,
+                merchant?.Seat);
         }
 
         // ---- Step B: dispatch new caravans. ----
@@ -151,6 +156,9 @@ public sealed class TradePhase : ISimulationPhase
                 bestGoodId, quantity, new Money(bestSeatPrice), tick, arrive).Value;
             ctx.Db.Caravans.Add(newCaravan);
             inFlight.Add(newCaravan); // one caravan per merchant per run
+            await ctx.Log.EmitAsync(LogEventType.MerchantDeparted,
+                $"Caravan dispatched {quantity} units toward settlement {bestDest.Settlement.Value}", tick,
+                LogScopeKind.Merchant, merchant.Id.Value, merchant.Seat);
 
             // NOTE: transport cost affects only the decision threshold, not a separate gold sink;
             // risk-from-danger and multi-good cargo are deferred.

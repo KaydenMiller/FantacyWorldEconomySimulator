@@ -1,3 +1,4 @@
+using WorldEcon.Engine.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine;
@@ -48,6 +49,7 @@ public sealed class TickEngine : ITickEngine
             }
         }
 
+        await LogRetention.PruneAsync(ctx.Db, ctx.World.Id, ctx.World.CurrentTick);
         await ctx.Db.SaveChangesAsync();
     }
 }

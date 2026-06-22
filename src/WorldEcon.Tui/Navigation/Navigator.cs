@@ -1,7 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using WorldEcon.Domain.Actions;
+using WorldEcon.Application.Logging;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.Tui.Resources;
 
 namespace WorldEcon.Tui.Navigation;
@@ -10,7 +11,7 @@ namespace WorldEcon.Tui.Navigation;
 public sealed class Navigator : INavigator
 {
     private static readonly string[] Roots =
-        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "caravans", "factories", "recipes", "claims", "actions"];
+        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "caravans", "factories", "recipes", "claims", "actions", "log", "summary"];
 
     public IReadOnlyList<string> RootNames => Roots;
 
@@ -29,7 +30,9 @@ public sealed class Navigator : INavigator
             "factories" or "factory" or "nodes" or "node" or "production" => "factories",
             "recipes" or "recipe" => "recipes",
             "claims" or "claim" => "claims",
-            "actions" or "action" or "log" => "actions",
+            "actions" or "action" => "actions",
+            "log" or "events" => "log",
+            "summary" => "summary",
             _ => string.Empty,
         };
         return canonical.Length > 0;
@@ -51,6 +54,7 @@ public sealed class Navigator : INavigator
         "recipes" => await RecipesView(ctx),
         "claims" => await ClaimsView(ctx),
         "actions" => await ActionsView(ctx),
+        "log" => await LogViewForScopeAsync(LogScopeKind.World, ctx.World.Id.Value, "World", null, ctx),
         _ => new NavView(canonicalRootName, ["(unknown)"], []),
     };
 
@@ -362,11 +366,38 @@ public sealed class Navigator : INavigator
 
     private async Task<NavView> ActionsView(TuiContext ctx)
     {
-        var actions = (await ctx.Db.DmActions.Where(a => a.WorldId == ctx.World.Id).ToListAsync())
-            .OrderBy(a => a.Sequence).ToList();
-        var rows = actions.Select(a => new NavRow(a.Id.Value.ToString(), NavKind.Action,
-            [a.Sequence.ToString(), a.AppliedTick.Value.ToString(), a.Kind.ToString(), a.Description])).ToList();
-        return new NavView("Actions", ["Seq", "Tick", "Kind", "Description"], rows);
+        var events = (await ctx.Db.LogEvents.Where(e => e.WorldId == ctx.World.Id && e.IsPlayerAction).ToListAsync())
+            .OrderBy(e => e.Sequence).ToList();
+        var rows = events.Select(e => new NavRow(e.Id.Value.ToString(), NavKind.Action,
+            [e.Sequence.ToString(), e.OccurredTick.Value.ToString(), e.Type.ToString(), e.Message])).ToList();
+        return new NavView("Actions", ["Seq", "Tick", "Type", "Message"], rows);
+    }
+
+    // ---- log view builder ---------------------------------------------------------------------
+
+    /// <summary>Build a log NavView for an entity scope (newest first), optionally regex-filtered.</summary>
+    public async Task<NavView> LogViewForScopeAsync(
+        LogScopeKind kind, Guid scopeId, string title, string? regex, TuiContext ctx)
+    {
+        var events = await new LogQueryService(ctx.Db).QueryAsync(ctx.World.Id, kind, scopeId, regex, limit: 500);
+        var rows = events.Select(e => new NavRow(
+            e.Id.Value.ToString(),
+            NavKind.Leaf,
+            new[]
+            {
+                FormatTick(ctx, e.OccurredTick),
+                e.Magnitude.ToString(),
+                e.Type.ToString(),
+                e.Message,
+            })).ToList();
+        var suffix = regex is null ? "" : $"  /{regex}/";
+        return new NavView($"Log — {title}{suffix}", ["Time", "Mag", "Type", "Message"], rows);
+    }
+
+    private static string FormatTick(TuiContext ctx, WorldEcon.SharedKernel.Tick tick)
+    {
+        var d = ctx.Calendar.ToDate(tick);
+        return $"Y{d.Year} M{d.Month} D{d.Day} {d.Hour:D2}:{d.Minute:D2}";
     }
 
     // ---- details builders ---------------------------------------------------------------------

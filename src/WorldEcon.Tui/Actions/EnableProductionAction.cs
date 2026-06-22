@@ -14,10 +14,10 @@ public sealed class EnableProductionAction : IRowAction
     {
         var settlementId = new SettlementId(Guid.Parse(rowKey));
 
-        var result = await new DmActionService(ctx.Db).SetSettlementProductionDisabledAsync(
+        var result = await new LogEventService(ctx.Db).SetSettlementProductionDisabledAsync(
             ctx.World.Id, settlementId, false, DateTimeOffset.UtcNow);
 
         await ui.ShowMessageAsync("Enable production",
-            [result.IsError ? result.Errors[0].Description : result.Value.Description]);
+            [result.IsError ? result.Errors[0].Description : result.Value.Message]);
     }
 }

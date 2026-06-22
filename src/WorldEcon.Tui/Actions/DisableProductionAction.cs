@@ -17,10 +17,10 @@ public sealed class DisableProductionAction : IRowAction
         if (!await ui.ConfirmAsync("Disable production", "Disable all production in this settlement?"))
             return;
 
-        var result = await new DmActionService(ctx.Db).SetSettlementProductionDisabledAsync(
+        var result = await new LogEventService(ctx.Db).SetSettlementProductionDisabledAsync(
             ctx.World.Id, settlementId, true, DateTimeOffset.UtcNow);
 
         await ui.ShowMessageAsync("Disable production",
-            [result.IsError ? result.Errors[0].Description : result.Value.Description]);
+            [result.IsError ? result.Errors[0].Description : result.Value.Message]);
     }
 }

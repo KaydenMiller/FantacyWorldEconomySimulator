@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine.Phases;
@@ -47,6 +48,11 @@ public sealed class PerishabilityPhase : ISimulationPhase
             loss = Math.Min(loss, stock.Quantity);
             if (loss > 0)
                 stock.Withdraw(loss).OrThrow("perishability decay");
+
+            if (loss > 0 && stock.OwnerKind == StockpileOwnerKind.SettlementMarket)
+                await ctx.Log.EmitAsync(LogEventType.Spoilage,
+                    $"{good.Name} spoiled in a market ({loss} units)", tick,
+                    LogScopeKind.Settlement, stock.OwnerId, new SettlementId(stock.OwnerId));
         }
     }
 

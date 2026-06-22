@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine.Phases;
@@ -43,6 +44,11 @@ public sealed class ProductionPhase : ISimulationPhase
         // CompleteTick is a value-converted type, so the tick comparison is filtered in memory.
         // Merge DB rows with the local tracked set so batches created earlier in this same
         // multi-day advance (still unsaved) are also completed.
+        var settlementNames = (await ctx.Db.Settlements
+                .Where(s => s.WorldId == worldId)
+                .ToListAsync())
+            .ToDictionary(s => s.Id, s => s.Name);
+
         var incompleteOrders = await LoadIncompleteWorkOrders(ctx, worldId);
         var dueOrders = incompleteOrders
             .Where(w => w.CompleteTick.Value <= tick.Value)
@@ -75,6 +81,12 @@ public sealed class ProductionPhase : ISimulationPhase
             }
 
             workOrder.MarkComplete();
+            var settlementName = settlementNames.TryGetValue(node.SettlementId, out var name)
+                ? name
+                : node.SettlementId.Value.ToString();
+            await ctx.Log.EmitAsync(LogEventType.ProductionChanged,
+                $"Production completed at a facility in {settlementName}",
+                tick, LogScopeKind.Factory, node.Id.Value, node.SettlementId);
         }
 
         // 3. Start new batches.

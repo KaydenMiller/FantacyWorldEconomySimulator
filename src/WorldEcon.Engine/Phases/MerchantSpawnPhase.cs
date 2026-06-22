@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine.Phases;
@@ -51,6 +52,9 @@ public sealed class MerchantSpawnPhase : ISimulationPhase
                 var merchant = RepresentativeMerchant
                     .Create(worldId, settlement.Id, Capital, CargoCapacity, Reach).Value;
                 ctx.Db.Merchants.Add(merchant);
+                await ctx.Log.EmitAsync(LogEventType.MerchantGained,
+                    $"A new merchant set up in {settlement.Name}", tick,
+                    LogScopeKind.Merchant, merchant.Id.Value, settlement.Id);
             }
         }
     }

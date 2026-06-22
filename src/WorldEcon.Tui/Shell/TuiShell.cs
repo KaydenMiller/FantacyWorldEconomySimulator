@@ -5,6 +5,7 @@ using Terminal.Gui.Input;
 using Terminal.Gui.Text;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
+using WorldEcon.Domain.Logging;
 using WorldEcon.Tui.Actions;
 using WorldEcon.Tui.Navigation;
 
@@ -46,6 +47,9 @@ public sealed class TuiShell : Window
     private readonly List<NavFrame> _stack = [];
     private BarMode _barMode = BarMode.None;
     private TaskCompletionSource<string?>? _promptTcs;
+
+    private string? _logFilter;
+    private (LogScopeKind Kind, Guid Id, string Title)? _currentLogScope;
 
     private readonly SingleWordSuggestionGenerator _rootSuggest = new();
     private readonly IGlobalAction[] _globalActions = [new AdvanceAction(), new SnapshotAction()];
@@ -162,7 +166,7 @@ public sealed class TuiShell : Window
 
     private void RefreshStatus()
     {
-        var hints = new List<string> { ":cmd", "hjkl move", "enter drill", "esc back", "d details", "a advance", "S snapshot", "? help", "q quit" };
+        var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details", "l log", "/ filter", "a advance", "S snapshot", "? help", "q quit" };
         if (SelectedRow?.Kind == NavKind.City)
             hints.AddRange(_cityActions.Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}"));
         _status.Text = " " + string.Join("  ", hints);
@@ -207,6 +211,12 @@ public sealed class TuiShell : Window
     {
         if (_stack.Count <= 1) return;
         _stack.RemoveAt(_stack.Count - 1);
+        // If the new top is not a log view, clear stale log state so `:summary` targets the world.
+        if (!_stack[^1].View.Title.StartsWith("Log — ", StringComparison.Ordinal))
+        {
+            _currentLogScope = null;
+            _logFilter = null;
+        }
         ApplyTop();
     }
 
@@ -252,14 +262,32 @@ public sealed class TuiShell : Window
             return;
         }
 
-        // vim-style navigation in the table: forward hjkl to arrow keys. (Confirm dialogs use a y/n
-        // prompt rather than a button dialog, so hjkl button-switching isn't needed there.)
+        // '/' opens a regex filter prompt when viewing a log view.
+        if (key.AsRune.Value == '/' && Title.StartsWith("WorldEcon — Log — ", StringComparison.Ordinal))
+        {
+            key.Handled = true;
+            Dispatch(async () =>
+            {
+                var pattern = await PromptAsync("/", null);
+                var filter = string.IsNullOrEmpty(pattern) ? null : pattern;
+                _logFilter = filter;
+                if (_currentLogScope is { } sc)
+                {
+                    var view = await _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, filter, _ctx);
+                    Post(() => { _stack[^1] = new NavFrame(view, () => _nav.LogViewForScopeAsync(sc.Kind, sc.Id, sc.Title, filter, _ctx)!); ApplyTop(); });
+                }
+            });
+            return;
+        }
+
+        // vim-style navigation in the table: forward hjk to arrow keys. (l is now log; use arrow keys
+        // for cursor-right. Confirm dialogs use a y/n prompt rather than a button dialog, so hjkl
+        // button-switching isn't needed there.)
         switch (key.AsRune.Value)
         {
             case 'j': _table.NewKeyDownEvent(new Key(KeyCode.CursorDown)); RefreshStatus(); key.Handled = true; return;
             case 'k': _table.NewKeyDownEvent(new Key(KeyCode.CursorUp)); RefreshStatus(); key.Handled = true; return;
             case 'h': _table.NewKeyDownEvent(new Key(KeyCode.CursorLeft)); key.Handled = true; return;
-            case 'l': _table.NewKeyDownEvent(new Key(KeyCode.CursorRight)); key.Handled = true; return;
         }
 
         var ch = (char)key.AsRune.Value;
@@ -275,6 +303,7 @@ public sealed class TuiShell : Window
             case 'q': RequestStop(); return true;
             case 'd': ShowDetails(); return true;
             case '?': ShowHelp(); return true;
+            case 'l': ShowLog(); return true;
         }
 
         var global = _globalActions.FirstOrDefault(a => a.Key == ch);
@@ -319,16 +348,67 @@ public sealed class TuiShell : Window
         });
     }
 
+    private void ShowLog()
+    {
+        var row = SelectedRow;
+        if (row is null) return;
+        var scope = LogScopeFor(row.Kind);
+        if (scope is null) return;
+        var title = row.Cells.Count > 0 ? row.Cells[0] : row.Kind.ToString();
+        _currentLogScope = (scope.Value, Guid.Parse(row.Key), title);
+        _logFilter = null;
+        Dispatch(async () =>
+        {
+            var view = await _nav.LogViewForScopeAsync(scope.Value, Guid.Parse(row.Key), title, null, _ctx);
+            Post(() => { PushView(view, scope.Value, Guid.Parse(row.Key), title); });
+        });
+    }
+
+    private void PushView(NavView view, LogScopeKind kind, Guid scopeId, string title)
+    {
+        _stack.Add(new NavFrame(view, () => _nav.LogViewForScopeAsync(kind, scopeId, title, _logFilter, _ctx)!));
+        ApplyTop();
+    }
+
+    private static LogScopeKind? LogScopeFor(NavKind kind) => kind switch
+    {
+        NavKind.Continent => LogScopeKind.Continent,
+        NavKind.Country => LogScopeKind.Country,
+        NavKind.Region => LogScopeKind.Region,
+        NavKind.City => LogScopeKind.Settlement,
+        NavKind.Merchant => LogScopeKind.Merchant,
+        NavKind.Shop => LogScopeKind.Shop,
+        NavKind.Factory => LogScopeKind.Factory,
+        _ => null,
+    };
+
+    private void RunSummary()
+    {
+        var sc = _currentLogScope ?? (LogScopeKind.World, _ctx.World.Id.Value, "World");
+        Dispatch(async () =>
+        {
+            var sum = await new WorldEcon.Application.Logging.SummaryService(_ctx.Db)
+                .SummarizeAsync(_ctx.World.Id, sc.Kind, sc.Id,
+                    new WorldEcon.SharedKernel.Tick(0), _ctx.World.CurrentTick);
+            var lines = new List<string> { $"Total events: {sum.TotalEvents}" };
+            foreach (var kv in sum.CountByType)
+                lines.Add($"{kv.Key}: {kv.Value}");
+            await Ui!.ShowMessageAsync($"Summary — {sc.Title}", lines);
+        });
+    }
+
     private void ShowHelp()
     {
         var lines = new List<string>
         {
             "Navigation:",
             "  :        command bar — jump to a resource (autocomplete; Enter to go)",
-            "  hjkl     move (vim) — also arrow keys",
+            "  hjk      move (vim) — also arrow keys  (l is repurposed — see below)",
             "  Enter    drill into the selected row",
             "  Esc/⌫    go back up a level",
             "  d        details for the selected row",
+            "  l        open scoped log for the selected row",
+            "  /        regex-filter the current log view",
             "  q / ^Q   quit",
             "",
             "Actions:",
@@ -416,13 +496,31 @@ public sealed class TuiShell : Window
             if (token.Length == 0) return;
             if (_nav.TryResolveRoot(token, out var canonical))
             {
+                if (canonical == "summary")
+                {
+                    RunSummary();
+                    return;
+                }
+                if (canonical == "log")
+                {
+                    _currentLogScope = (LogScopeKind.World, _ctx.World.Id.Value, "World");
+                    _logFilter = null;
+                }
                 SetRoot(canonical);
                 return;
             }
             // Unique-prefix fallback (so ":merc" + Enter jumps to merchants without accepting the ghost).
             var matches = _nav.RootNames.Where(r => r.StartsWith(token, StringComparison.OrdinalIgnoreCase)).ToList();
             if (matches.Count == 1)
+            {
+                if (matches[0] == "summary") { RunSummary(); return; }
+                if (matches[0] == "log")
+                {
+                    _currentLogScope = (LogScopeKind.World, _ctx.World.Id.Value, "World");
+                    _logFilter = null;
+                }
                 SetRoot(matches[0]);
+            }
             else
                 Dispatch(() => Ui!.ShowMessageAsync("Unknown resource", [$"No resource matches '{token}'. Try: {string.Join(", ", _nav.RootNames)}"]));
         }
