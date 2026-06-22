@@ -15,6 +15,13 @@ public sealed class LogEventScopeConfiguration : IEntityTypeConfiguration<LogEve
         // keeps the WorldId column — which the migration's data-copy SQL and scope reads depend on.
         b.Property(x => x.WorldId);
         b.Property(x => x.ScopeKind).HasConversion<string>();
+        // Cascade-delete FK: deleting a LogEvent removes its scope rows automatically.
+        // LogRetention is still the primary prune path; this is a safety net for direct LogEvent deletes.
+        b.HasOne<WorldEcon.Domain.Logging.LogEvent>()
+            .WithMany()
+            .HasForeignKey(x => x.LogEventId)
+            .OnDelete(DeleteBehavior.Cascade);
+        // Note: EF may make the LogEventId index implicit via the FK above; keep explicit one unless it warns about duplicates.
         b.HasIndex(x => x.LogEventId);
         // The hot read: events visible at a given scope, newest first.
         b.HasIndex(x => new { x.ScopeKind, x.ScopeId, x.Sequence });

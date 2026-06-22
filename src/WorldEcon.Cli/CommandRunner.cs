@@ -576,10 +576,10 @@ internal static class CommandRunner
         Console.WriteLine($"  total events: {sum.TotalEvents}");
         foreach (var kv in sum.CountByType.OrderBy(k => k.Key.ToString(), StringComparer.Ordinal))
             Console.WriteLine($"    {kv.Key,-18} {kv.Value}");
-        if (sum.Notable.Count > 0)
+        if (sum.MajorEvents.Count > 0)
         {
             Console.WriteLine("  notable:");
-            foreach (var e in sum.Notable)
+            foreach (var e in sum.MajorEvents)
                 Console.WriteLine($"    tick {e.OccurredTick.Value,-8} {e.Type,-18} {e.Message}");
         }
         return 0;

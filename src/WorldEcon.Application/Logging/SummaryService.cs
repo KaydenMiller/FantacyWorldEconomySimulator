@@ -34,11 +34,11 @@ public sealed class SummaryService
             .GroupBy(e => e.Type)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var notable = events
+        var majorEvents = events
             .Where(e => (int)e.Magnitude >= (int)LogMagnitude.Major)
             .OrderByDescending(e => e.Sequence)
             .ToList();
 
-        return new ScopeSummary(scopeKind, scopeId, from.Value, to.Value, events.Count, countByType, notable);
+        return new ScopeSummary(scopeKind, scopeId, from.Value, to.Value, events.Count, countByType, majorEvents);
     }
 }

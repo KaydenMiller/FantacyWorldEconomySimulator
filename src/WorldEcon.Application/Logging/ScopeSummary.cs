@@ -10,4 +10,4 @@ public sealed record ScopeSummary(
     long ToTick,
     int TotalEvents,
     IReadOnlyDictionary<LogEventType, int> CountByType,
-    IReadOnlyList<LogEvent> Notable);   // Major+ events in the window, newest first
+    IReadOnlyList<LogEvent> MajorEvents);   // Major+ events in the window (Magnitude >= Major), newest first
