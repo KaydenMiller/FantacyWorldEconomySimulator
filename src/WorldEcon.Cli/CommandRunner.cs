@@ -36,6 +36,7 @@ internal static class CommandRunner
                 "advance" => await CmdAdvance(args),
                 "stock" => await CmdStock(args),
                 "merchants" => await CmdMerchants(args),
+                "consumers" => await CmdConsumers(args),
                 "caravans" => await CmdCaravans(args),
                 "snapshot" => await CmdSnapshot(args),
                 "buy" => await CmdBuy(args),
@@ -345,6 +346,44 @@ internal static class CommandRunner
         {
             var seat = settlementById.TryGetValue(m.Seat, out var n) ? n : "(unknown)";
             Console.WriteLine($"  {seat,-16} {currency.Format(m.Capital),12} {m.CargoCapacity,14} {m.Reach,8}");
+        }
+        return 0;
+    }
+
+    // ---- consumers <dbPath> ----
+    private static async Task<int> CmdConsumers(string[] args)
+    {
+        if (args.Length < 2)
+            return MissingArgs("consumers <dbPath>");
+
+        var path = args[1];
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+
+        var settlementById = (await ctx.Settlements.ToListAsync()).ToDictionary(s => s.Id, s => s.Name);
+
+        var consumers = (await ctx.Consumers.ToListAsync())
+            .OrderBy(c => settlementById.TryGetValue(c.Seat, out var n) ? n : string.Empty, StringComparer.Ordinal)
+            .ThenBy(c => c.Id.Value)
+            .ToList();
+
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        var currency = world?.Currency ?? CurrencyDefinition.Default;
+
+        Console.WriteLine("Consumers:");
+        Console.WriteLine();
+
+        if (consumers.Count == 0)
+        {
+            Console.WriteLine("  (no consumers — advance at least 1 week to spawn them)");
+            return 0;
+        }
+
+        Console.WriteLine($"  {"Seat",-16} {"Size",10} {"Budget",14}");
+        foreach (var c in consumers)
+        {
+            var seat = settlementById.TryGetValue(c.Seat, out var n) ? n : "(unknown)";
+            Console.WriteLine($"  {seat,-16} {c.Size,10} {currency.Format(c.Budget),14}");
         }
         return 0;
     }
@@ -676,6 +715,7 @@ internal static class CommandRunner
         Console.WriteLine("                                             or <n><unit> where unit: m=minute h=hour d=day w=week M=month y=year.");
         Console.WriteLine("  stock    <dbPath> <settlement>             Show a settlement's market stockpiles.");
         Console.WriteLine("  merchants <dbPath>                         List representative merchants and their seats.");
+        Console.WriteLine("  consumers <dbPath>                         List representative consumers (seat, size, budget).");
         Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered).");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
         Console.WriteLine("  buy      <dbPath> <settlement> <good> <qty> Party buys a good off shop shelves.");
