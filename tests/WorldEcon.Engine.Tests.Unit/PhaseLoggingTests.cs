@@ -34,13 +34,13 @@ public class PhaseLoggingTests
     }
 
     [Test]
-    public async Task Consumption_EmitsStockout_WhenMarketStockEmpty()
+    public async Task Demand_EmitsStockout_WhenMarketStockEmpty()
     {
+        // Intent preserved: a settlement-scoped Stockout fires when consumers can't find goods.
+        // New model: a funded consumer drives demand; stock=0 → no offers → unmet → Stockout.
         var s = await LogTestWorld.CreateAsync();
         try
         {
-            // Seed a consumable good and an empty shop stockpile with quantity 0.
-            // The settlement (Hammerfell) has population 50000 so demand > 0.
             var good = Good.Create(s.World.Id, "Grain", GoodCategory.Food, new Money(10), "sack",
                 SizeClass.Medium, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
             s.Db.Goods.Add(good);
@@ -48,6 +48,8 @@ public class PhaseLoggingTests
             s.Db.Shops.Add(emptyShop);
             var emptyStock = Stockpile.CreateForShop(s.World.Id, emptyShop.Id, good.Id, 0, new Money(10)).Value;
             s.Db.Stockpiles.Add(emptyStock);
+            // Consumer with budget: demand exists but stock is 0 → Stockout.
+            s.Db.Consumers.Add(RepresentativeConsumer.Create(s.World.Id, s.Settlement.Id, 100, new Money(10_000)).Value);
             await s.Db.SaveChangesAsync();
 
             var sim = await SimulationContext.LoadAsync(s.Db, s.World.Id);
@@ -60,12 +62,13 @@ public class PhaseLoggingTests
     }
 
     [Test]
-    public async Task Consumption_EmitsConsumed_WhenPopulationEatsStock()
+    public async Task Demand_EmitsTrade_WhenConsumerBuysStock()
     {
+        // Intent preserved: a log event fires when goods are sold to consumers.
+        // New model: funded consumer buys from shop → Shop-scoped Trade event (not Consumed).
         var s = await LogTestWorld.CreateAsync();
         try
         {
-            // Consumable good with a shop stockpile that has stock to consume.
             var good = Good.Create(s.World.Id, "Grain", GoodCategory.Food, new Money(10), "sack",
                 SizeClass.Medium, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
             s.Db.Goods.Add(good);
@@ -73,19 +76,18 @@ public class PhaseLoggingTests
             s.Db.Shops.Add(granary);
             var stock = Stockpile.CreateForShop(s.World.Id, granary.Id, good.Id, 200, new Money(10)).Value;
             s.Db.Stockpiles.Add(stock);
+            // size=100, 1000bp/cap → demand=10/day; cost=10, markup=0 → retail=10; budget=500 covers days.
+            s.Db.Consumers.Add(RepresentativeConsumer.Create(s.World.Id, s.Settlement.Id, 100, new Money(500)).Value);
             await s.Db.SaveChangesAsync();
 
             var sim = await SimulationContext.LoadAsync(s.Db, s.World.Id);
             await new TickEngine(StandardPhases.All()).AdvanceAsync(sim, Tick.DefaultMinutesPerDay);
 
-            var consumed = await s.Db.LogEvents
-                .Where(e => e.Type == LogEventType.Consumed)
+            var trades = await s.Db.LogEvents
+                .Where(e => e.Type == LogEventType.Trade && e.OriginKind == LogScopeKind.Shop)
                 .ToListAsync();
-            consumed.Should().NotBeEmpty();
-            consumed.Should().Contain(e =>
-                e.OriginKind == LogScopeKind.Settlement
-                && e.OriginId == s.Settlement.Id.Value
-                && e.Message.Contains("Grain"));
+            trades.Should().NotBeEmpty();
+            trades.Should().Contain(e => e.Message.Contains("Grain"));
         }
         finally { await LogTestWorld.DisposeAsync(s); }
     }
