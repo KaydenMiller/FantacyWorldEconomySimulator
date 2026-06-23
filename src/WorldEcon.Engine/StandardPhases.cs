@@ -8,7 +8,7 @@ public static class StandardPhases
         new Phases.ConsumerSpawnPhase(),
         new Phases.ConsumerIncomePhase(),
         new Phases.ProductionPhase(),
-        new Phases.ConsumptionPhase(),
+        new Phases.ConsumerDemandPhase(),
         new Phases.PerishabilityPhase(),
         new Phases.PricingPhase(),
         new Phases.TradePhase(),
