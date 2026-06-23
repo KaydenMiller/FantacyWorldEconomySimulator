@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Engine;
-using WorldEcon.Engine.Phases;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
@@ -56,12 +55,15 @@ public class ConsumptionPerishabilityTests
     }
 
     [Test]
-    public async Task Consumption_DrawsDownMarketStock_PerCapita()
+    public async Task Demand_DrawsDownMarketStock_PerCapita()
     {
+        // Intent preserved: consumer demand draws down shop stock at the per-capita rate.
+        // Consumer (size=1000, 1000bp/cap) → demand = 100/day. Shop markup=0, cost=25 → retail=25.
+        // Budget = 500*25 = 12500 (enough for 5 days at 100 units/day).
         GoodId goodId = default;
         var seed = await SeedAsync(1000, (ctx, worldId, settlementId) =>
         {
-            var good = Good.Create(worldId, "Bread", GoodCategory.Food, new Money(30), "loaf",
+            var good = Good.Create(worldId, "Bread", GoodCategory.Food, new Money(25), "loaf",
                 SizeClass.Small, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 1000).Value;
             goodId = good.Id;
             ctx.Goods.Add(good);
@@ -69,11 +71,13 @@ public class ConsumptionPerishabilityTests
             ctx.Shops.Add(shop);
             var market = Stockpile.CreateForShop(worldId, shop.Id, good.Id, 500, new Money(25)).Value;
             ctx.Stockpiles.Add(market);
+            // Funded consumer: size=1000, 1000bp/cap = 100/day demand. Budget covers 5 days.
+            ctx.Consumers.Add(RepresentativeConsumer.Create(worldId, settlementId, 1000, new Money(12_500)).Value);
         });
 
         try
         {
-            // 1000 pop * 1000bp = 100/day. 500 - 100 = 400.
+            // Day 1: 500 - 100 = 400.
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
             (await MarketStockpileAsync(seed.Path, goodId))!.Quantity.Should().Be(400);
 

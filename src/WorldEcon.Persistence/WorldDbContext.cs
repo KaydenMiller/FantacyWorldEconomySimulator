@@ -25,6 +25,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<ResourceEndowment> ResourceEndowments => Set<ResourceEndowment>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<RepresentativeMerchant> Merchants => Set<RepresentativeMerchant>();
+    public DbSet<RepresentativeConsumer> Consumers => Set<RepresentativeConsumer>();
     public DbSet<Caravan> Caravans => Set<Caravan>();
     public DbSet<LogEvent> LogEvents => Set<LogEvent>();
     public DbSet<LogEventScope> LogEventScopes => Set<LogEventScope>();
@@ -48,6 +49,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
         b.Properties<RecipeId>().HaveConversion<RecipeIdConverter>();
         b.Properties<WorkOrderId>().HaveConversion<WorkOrderIdConverter>();
         b.Properties<MerchantId>().HaveConversion<MerchantIdConverter>();
+        b.Properties<ConsumerId>().HaveConversion<ConsumerIdConverter>();
         b.Properties<CaravanId>().HaveConversion<CaravanIdConverter>();
         b.Properties<LogEventId>().HaveConversion<LogEventIdConverter>();
         b.Properties<LogEventScopeId>().HaveConversion<LogEventScopeIdConverter>();

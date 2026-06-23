@@ -11,3 +11,4 @@ public readonly record struct RecipeId(Guid Value) : IStronglyTypedId { public s
 public readonly record struct WorkOrderId(Guid Value) : IStronglyTypedId { public static WorkOrderId New() => new(Guid.NewGuid()); }
 public readonly record struct MerchantId(Guid Value) : IStronglyTypedId { public static MerchantId New() => new(Guid.NewGuid()); }
 public readonly record struct CaravanId(Guid Value) : IStronglyTypedId { public static CaravanId New() => new(Guid.NewGuid()); }
+public readonly record struct ConsumerId(Guid Value) : IStronglyTypedId { public static ConsumerId New() => new(Guid.NewGuid()); }

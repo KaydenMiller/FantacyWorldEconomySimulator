@@ -60,7 +60,7 @@ public class NavigatorTests
 
             var cityRow = contents.Rows.First(r => r.Kind == NavKind.City);
             var chooser = await nav.DrillAsync(cityRow, tctx);
-            chooser!.Rows.Should().HaveCount(4);
+            chooser!.Rows.Should().HaveCount(5);
             chooser.Rows.Should().OnlyContain(r => r.Kind == NavKind.CityCategory);
 
             // Pick a city that has shops: Hammerfell. Re-resolve via the cities root to get its key.

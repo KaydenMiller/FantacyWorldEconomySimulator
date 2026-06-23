@@ -33,12 +33,18 @@ public sealed class SeedImporter(WorldDbContext db)
         var byName = new Dictionary<string, GoodId>(StringComparer.OrdinalIgnoreCase);
         foreach (var g in NonNull(goods))
         {
+            // NeedTier is optional in the seed model; omitted goods default to Essential.
+            // JSON authors can specify e.g. "NeedTier": "Standard" or "NeedTier": "Comfort".
+            var needTier = g.NeedTier is null
+                ? NeedTier.Essential
+                : ParseEnum<NeedTier>(g.NeedTier, "good.needTier");
+
             var good = Unwrap(Good.Create(
                 worldId, g.Name,
                 ParseEnum<GoodCategory>(g.Category, "good.category"),
                 new Money(g.BaseValue), g.BaseUnit,
                 ParseEnum<SizeClass>(g.Size, "good.size"),
-                g.ShelfLifeTicks, g.Divisible, g.ConsumptionPerCapitaBp));
+                g.ShelfLifeTicks, g.Divisible, g.ConsumptionPerCapitaBp, needTier));
 
             if (!byName.TryAdd(good.Name, good.Id))
                 throw new InvalidOperationException($"Seed invalid: duplicate good name '{good.Name}'.");
@@ -168,6 +174,12 @@ public sealed class SeedImporter(WorldDbContext db)
                 worldId, settlementId, new Money(mer.Capital), mer.CargoCapacity, mer.Reach));
             db.Merchants.Add(merchant);
         }
+
+        // NOTE: RepresentativeConsumers are not imported from the seed JSON.
+        // Imported worlds receive their first consumers after the weekly ConsumerSpawnPhase runs
+        // (day 7+). To pre-seed consumers, extend SeedSettlement with an optional Consumers list
+        // and mirror the merchant import block above — future enhancement when day-1 demand matters
+        // for imported scenarios.
     }
 
     private void ImportRoutes(WorldId worldId, IReadOnlyList<SeedRoute>? routes, Dictionary<string, SettlementId> settlementsByName)

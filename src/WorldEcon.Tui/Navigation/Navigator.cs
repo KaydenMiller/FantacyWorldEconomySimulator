@@ -3,6 +3,7 @@ using WorldEcon.Application.Logging;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
+using WorldEcon.Engine.Demand;
 using WorldEcon.Tui.Resources;
 
 namespace WorldEcon.Tui.Navigation;
@@ -11,7 +12,7 @@ namespace WorldEcon.Tui.Navigation;
 public sealed class Navigator : INavigator
 {
     private static readonly string[] Roots =
-        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "caravans", "factories", "recipes", "claims", "actions", "log", "summary"];
+        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "consumers", "caravans", "factories", "recipes", "claims", "actions", "log", "summary"];
 
     public IReadOnlyList<string> RootNames => Roots;
 
@@ -26,6 +27,7 @@ public sealed class Navigator : INavigator
             "goods" or "good" => "goods",
             "shops" or "shop" => "shops",
             "merchants" or "merchant" => "merchants",
+            "consumers" or "consumer" => "consumers",
             "caravans" or "caravan" => "caravans",
             "factories" or "factory" or "nodes" or "node" or "production" => "factories",
             "recipes" or "recipe" => "recipes",
@@ -49,6 +51,7 @@ public sealed class Navigator : INavigator
         "goods" => await GoodsView(ctx),
         "shops" => await ShopsView(ctx, await AllShops(ctx), "Shops"),
         "merchants" => await MerchantsView(ctx, await AllMerchants(ctx), "Merchants"),
+        "consumers" => await ConsumersView(ctx, await AllConsumers(ctx), "Consumers"),
         "caravans" => await CaravansView(ctx, await AllCaravans(ctx), "Caravans"),
         "factories" => await FactoriesView(ctx, await AllNodes(ctx), "Factories"),
         "recipes" => await RecipesView(ctx),
@@ -84,7 +87,9 @@ public sealed class Navigator : INavigator
                 var shopId = new ShopId(Guid.Parse(row.Key));
                 var goods = (await AllStockpiles(ctx))
                     .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == shopId.Value).ToList();
-                return await StockpileGoodsView(ctx, goods, "Goods");
+                // Show the wholesale MarketPrice column when drilling into a shop's own goods (the
+                // marketplace board now shows retail price; wholesale lives here).
+                return await StockpileGoodsView(ctx, goods, "Goods", includeMarketPrice: true);
             }
             case NavKind.Factory:
                 return await FactoryOutputsView(ctx, new ProductionNodeId(Guid.Parse(row.Key)));
@@ -127,6 +132,8 @@ public sealed class Navigator : INavigator
         => (await ctx.Db.Shops.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Id.Value).ToList();
     private async Task<List<RepresentativeMerchant>> AllMerchants(TuiContext ctx)
         => (await ctx.Db.Merchants.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Id.Value).ToList();
+    private async Task<List<RepresentativeConsumer>> AllConsumers(TuiContext ctx)
+        => (await ctx.Db.Consumers.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Id.Value).ToList();
     private async Task<List<Caravan>> AllCaravans(TuiContext ctx)
         => (await ctx.Db.Caravans.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.ArriveTick.Value).ThenBy(x => x.Id.Value).ToList();
     private async Task<List<ProductionNode>> AllNodes(TuiContext ctx)
@@ -227,6 +234,7 @@ public sealed class Navigator : INavigator
     {
         var names = await Lookups.SettlementNamesAsync(ctx);
         var merchants = await ctx.Db.Merchants.CountAsync(m => m.Seat == settlementId);
+        var consumers = await ctx.Db.Consumers.CountAsync(c => c.Seat == settlementId);
         var shops = await ctx.Db.Shops.CountAsync(s => s.WorldId == ctx.World.Id && s.SettlementId == settlementId);
         var factories = await ctx.Db.ProductionNodes.CountAsync(n => n.SettlementId == settlementId);
         var settlementShopIds = (await ctx.Db.Shops.Where(sh => sh.WorldId == ctx.World.Id && sh.SettlementId == settlementId).ToListAsync())
@@ -237,6 +245,7 @@ public sealed class Navigator : INavigator
         var rows = new List<NavRow>
         {
             new(K("merchants"), NavKind.CityCategory, [$"Merchants ({merchants})"]),
+            new(K("consumers"), NavKind.CityCategory, [$"Consumers ({consumers})"]),
             new(K("shops"), NavKind.CityCategory, [$"Shops ({shops})"]),
             new(K("factories"), NavKind.CityCategory, [$"Factories ({factories})"]),
             new(K("market"), NavKind.CityCategory, [$"Market goods ({market})"]),
@@ -254,6 +263,8 @@ public sealed class Navigator : INavigator
         {
             case "merchants":
                 return await MerchantsView(ctx, (await AllMerchants(ctx)).Where(m => m.Seat == settlementId).ToList(), $"{name} / Merchants");
+            case "consumers":
+                return await ConsumersView(ctx, (await AllConsumers(ctx)).Where(c => c.Seat == settlementId).ToList(), $"{name} / Consumers");
             case "shops":
                 return await ShopsView(ctx, (await AllShops(ctx)).Where(s => s.SettlementId == settlementId).ToList(), $"{name} / Shops");
             case "factories":
@@ -265,7 +276,10 @@ public sealed class Navigator : INavigator
         }
     }
 
-    /// <summary>Marketplace board for a settlement: one row per shop's offer of each good.</summary>
+    /// <summary>Marketplace board for a settlement: one row per shop's offer of each good.
+    /// Price shows the retail price (cost × (1 + markup × scarcityMult)) approximating demand
+    /// as settlement.Population × good.ConsumptionPerCapitaBp and supply as total shop quantity.
+    /// Min Price = cost basis. Wholesale MarketPrice is available in details.</summary>
     public async Task<NavView> MarketBoardAsync(SettlementId settlementId, TuiContext ctx)
     {
         var goods = (await ctx.Db.Goods.Where(g => g.WorldId == ctx.World.Id).ToListAsync())
@@ -278,11 +292,26 @@ public sealed class Navigator : INavigator
             .Where(s => shops.ContainsKey(s.OwnerId) && s.Quantity > 0)
             .ToList();
 
+        // Load settlement for population-based demand approximation.
+        var settlement = await ctx.Db.Settlements.FirstOrDefaultAsync(s => s.Id == settlementId);
+        var population = settlement?.Population ?? 0L;
+
+        // Compute per-good total supply (sum across all settlement shops) for scarcity calc.
+        var supplyByGood = stocks.GroupBy(s => s.GoodId)
+            .ToDictionary(g => g.Key, g => g.Sum(s => s.Quantity));
+
         var rows = stocks
             .Select(s =>
             {
                 var shop = shops[s.OwnerId];
                 var good = goods.TryGetValue(s.GoodId, out var g) ? g : null;
+                // Approximate demand as population × consumptionPerCapitaBp; supply = total shop qty.
+                long demand = good is not null ? SharedKernel.FixedMath.MulBp(population, good.ConsumptionPerCapitaBp) : 0;
+                long supply = supplyByGood.TryGetValue(s.GoodId, out var sq) ? sq : s.Quantity;
+                long scarcityMult = good is not null
+                    ? RetailPricing.ScarcityMultBp(demand, supply, ctx.World)
+                    : 10000L; // neutral (1.0) when good metadata unavailable
+                var retailPrice = RetailPricing.RetailPrice(s.CostBasis, shop.MarkupBp, scarcityMult);
                 return new NavRow(s.Id.Value.ToString(), NavKind.Leaf, new[]
                 {
                     good?.Name ?? s.GoodId.Value.ToString(),
@@ -290,7 +319,7 @@ public sealed class Navigator : INavigator
                     shop.Name,
                     s.Quantity.ToString(),
                     ctx.FormatMoney(s.CostBasis),   // Min Price = cost basis (break-even)
-                    ctx.FormatMoney(s.MarketPrice),
+                    ctx.FormatMoney(retailPrice),   // retail = cost × (1 + markup × scarcityMult)
                 });
             })
             .OrderBy(r => r.Cells[0], StringComparer.Ordinal).ThenBy(r => r.Cells[2], StringComparer.Ordinal)
@@ -307,6 +336,15 @@ public sealed class Navigator : INavigator
             .Select(m => new NavRow(m.Id.Value.ToString(), NavKind.Merchant,
                 [names.Resolve(m.Seat.Value), ctx.FormatMoney(m.Capital), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
         return new NavView(title, ["Seat", "Capital", "Capacity", "Reach"], rows);
+    }
+
+    private async Task<NavView> ConsumersView(TuiContext ctx, List<RepresentativeConsumer> consumers, string title)
+    {
+        var names = await Lookups.SettlementNamesAsync(ctx);
+        var rows = consumers
+            .Select(c => new NavRow(c.Id.Value.ToString(), NavKind.Leaf,
+                [names.Resolve(c.Seat.Value), c.Size.ToString(), ctx.FormatMoney(c.Budget)])).ToList();
+        return new NavView(title, ["Settlement", "Size", "Budget"], rows);
     }
 
     private async Task<NavView> ShopsView(TuiContext ctx, List<Shop> shops, string title)
@@ -546,7 +584,7 @@ public sealed class Navigator : INavigator
     {
         var g = await ctx.Db.Goods.FirstOrDefaultAsync(x => x.Id == id);
         if (g is null) return [$"Good {id.Value} not found."];
-        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
+        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Need tier: {g.Need}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> RecipeDetails(TuiContext ctx, RecipeId id)
