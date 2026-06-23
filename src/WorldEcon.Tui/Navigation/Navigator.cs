@@ -332,10 +332,16 @@ public sealed class Navigator : INavigator
     private async Task<NavView> MerchantsView(TuiContext ctx, List<RepresentativeMerchant> merchants, string title)
     {
         var names = await Lookups.SettlementNamesAsync(ctx);
+        // Ordinal of each merchant among its seat siblings (ordered by id) → stable "Caravaneer II/III".
+        var ordinalById = merchants
+            .GroupBy(m => m.Seat.Value)
+            .SelectMany(g => g.OrderBy(m => m.Id.Value).Select((m, i) => (Id: m.Id.Value, Ordinal: i)))
+            .ToDictionary(t => t.Id, t => t.Ordinal);
         var rows = merchants
             .Select(m => new NavRow(m.Id.Value.ToString(), NavKind.Merchant,
-                [names.Resolve(m.Seat.Value), ctx.FormatMoney(m.Capital), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
-        return new NavView(title, ["Seat", "Capital", "Capacity", "Reach"], rows);
+                [MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinalById[m.Id.Value]),
+                 ctx.FormatMoney(m.Capital), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
+        return new NavView(title, ["Merchant", "Capital", "Capacity", "Reach"], rows);
     }
 
     private async Task<NavView> ConsumersView(TuiContext ctx, List<RepresentativeConsumer> consumers, string title)
@@ -550,7 +556,12 @@ public sealed class Navigator : INavigator
         if (m is null) return [$"Merchant {id.Value} not found."];
         var names = await Lookups.SettlementNamesAsync(ctx);
         var caravans = await ctx.Db.Caravans.CountAsync(c => c.OwnerId == id && !c.Delivered);
-        return [$"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}", $"Cargo capacity: {m.CargoCapacity}", $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
+        // Ordinal among seat siblings (ordered by id) drives the "Caravaneer II/III" suffix.
+        var seatMerchants = await ctx.Db.Merchants
+            .Where(x => x.WorldId == ctx.World.Id && x.Seat == m.Seat).ToListAsync();
+        var ordinal = seatMerchants.OrderBy(x => x.Id.Value).ToList().FindIndex(x => x.Id == m.Id);
+        var displayName = MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinal);
+        return [$"Name: {displayName}", $"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}", $"Cargo capacity: {m.CargoCapacity}", $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> ShopDetails(TuiContext ctx, ShopId id)
