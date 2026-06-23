@@ -122,6 +122,46 @@ public class FormTests
     }
 
     [Test]
+    public async Task SettlementEditForm_ChangesState()
+    {
+        var path = await TestWorld.SeedTempDbAsync();
+        try
+        {
+            await using var ctx = TestWorld.NewContext(path);
+            var tui = await TuiContext.LoadAsync(ctx);
+            var hammerfell = await ctx.Settlements.SingleAsync(s => s.Name == "Hammerfell");
+            hammerfell.State.Should().Be(SettlementState.Active);
+
+            var ui = new FakeUserInteraction().EnqueueChoice(1); // Ruined (Active=0, Ruined=1, Abandoned=2)
+            var outcome = await new SettlementEditForm().RunAsync(hammerfell.Id.Value, tui, ui);
+
+            outcome.Created.Should().BeTrue();
+            (await ctx.Settlements.SingleAsync(s => s.Name == "Hammerfell")).State.Should().Be(SettlementState.Ruined);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task MerchantEditForm_AdjustsCapital()
+    {
+        var path = await TestWorld.SeedTempDbAsync();
+        try
+        {
+            await using var ctx = TestWorld.NewContext(path);
+            var tui = await TuiContext.LoadAsync(ctx);
+            var merchant = await ctx.Merchants.FirstAsync();
+            var before = merchant.Capital.Units;
+
+            var ui = new FakeUserInteraction().EnqueueNumber(1000); // add 1000 copper
+            var outcome = await new MerchantEditForm().RunAsync(merchant.Id.Value, tui, ui);
+
+            outcome.Created.Should().BeTrue();
+            (await ctx.Merchants.FirstAsync(m => m.Id == merchant.Id)).Capital.Units.Should().Be(before + 1000);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Test]
     public async Task ShopForm_FailsGracefully_WithMessage_OnDomainValidation()
     {
         var path = await TestWorld.SeedTempDbAsync();

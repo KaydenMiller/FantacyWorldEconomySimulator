@@ -238,6 +238,8 @@ public sealed class TuiShell : Window
         if (LogScopeFor(row?.Kind ?? NavKind.Leaf) is not null)
             hints.Add("l log");
         hints.AddRange(["/filter", "o sort", "n new", "a advance", "S snapshot", "? help", "q quit"]);
+        if (row is not null && EditRegistry.ForKind(row.Kind) is { } ef)
+            hints.Add($"E edit {ef.Label}");
         if (row?.Kind == NavKind.City)
             hints.AddRange(_cityActions.Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}"));
         _status.Text = " " + string.Join("  ", hints);
@@ -439,6 +441,7 @@ public sealed class TuiShell : Window
             case '?': ShowHelp(); return true;
             case 'l': ShowLog(); return true;
             case 'n': ShowNewEntityForm(); return true;
+            case 'E': ShowEditForm(); return true;
         }
 
         var global = _globalActions.FirstOrDefault(a => a.Key == ch);
@@ -501,6 +504,25 @@ public sealed class TuiShell : Window
             else
                 await RefreshCurrentAsync();
         });
+
+    /// <summary>'E' (edit): if the selected row's kind has an edit-form, run it on that entity.</summary>
+    private void ShowEditForm()
+    {
+        var row = SelectedRow;
+        if (row is null) return;
+        var form = EditRegistry.ForKind(row.Kind);
+        if (form is null) return;                       // nothing editable for this kind
+        if (!Guid.TryParse(row.Key, out var id)) return; // composite/non-entity row
+
+        Dispatch(async () =>
+        {
+            var outcome = await form.RunAsync(id, _ctx, Ui!);
+            await _ctx.ReloadWorldAsync();
+            if (outcome.Created || !outcome.Message.Equals("Cancelled.", StringComparison.Ordinal))
+                await Ui!.ShowMessageAsync($"Edit {form.Label}", [outcome.Message]);
+            await RefreshCurrentAsync();
+        });
+    }
 
     private void ShowDetails()
     {
@@ -599,6 +621,7 @@ public sealed class TuiShell : Window
             Sep(),
             Row("--- Actions ---", string.Empty),
             Row("n", "new — create an entity (good, settlement, shop, recipe, …)"),
+            Row("E", "edit the selected row (settlement state, region, merchant capital, shop till)"),
             Row("a", "advance time"),
             Row("S", "snapshot"),
             Row("o", "cycle sort: unsorted → col0 ▲ → col0 ▼ → col1 ▲ → … → unsorted; active column header shows ▲/▼"),
