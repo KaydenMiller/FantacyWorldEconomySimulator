@@ -562,7 +562,7 @@ public sealed class TuiShell : Window
             Row("d", "details for the selected row"),
             Row("l", "open scoped log (only on loggable rows)"),
             Row("/", "regex-filter the current view (any view, client-side)"),
-            Row("q / Ctrl+Q", "quit"),
+            Row("q / Ctrl+Q / :q", "quit"),
             Sep(),
             Row("--- Actions ---", string.Empty),
             Row("a", "advance time"),
@@ -657,6 +657,7 @@ public sealed class TuiShell : Window
 
             var token = text.Trim();
             if (token.Length == 0) return;
+            if (token is "q" or "quit") { RequestStop(); return; }   // vim-style :q
             if (_nav.TryResolveRoot(token, out var canonical))
             {
                 if (canonical == "summary")
