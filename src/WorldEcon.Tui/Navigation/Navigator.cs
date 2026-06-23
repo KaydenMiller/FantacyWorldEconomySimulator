@@ -372,7 +372,7 @@ public sealed class Navigator : INavigator
         var goodNames = await Lookups.GoodNamesAsync(ctx);
         var rows = caravans
             .Select(c => new NavRow(c.Id.Value.ToString(), NavKind.Caravan,
-                [settlementNames.Resolve(c.OriginId.Value), settlementNames.Resolve(c.DestinationId.Value), goodNames.Resolve(c.GoodId.Value), c.Quantity.ToString(), c.ArriveTick.Value.ToString(), c.Delivered ? "yes" : "no"])).ToList();
+                [settlementNames.Resolve(c.OriginId.Value), settlementNames.Resolve(c.DestinationId.Value), goodNames.Resolve(c.GoodId.Value), c.Quantity.ToString(), FormatTick(ctx, c.ArriveTick), c.Delivered ? "yes" : "no"])).ToList();
         return new NavView(title, ["Origin", "Dest", "Good", "Qty", "Arrive", "Delivered"], rows);
     }
 
