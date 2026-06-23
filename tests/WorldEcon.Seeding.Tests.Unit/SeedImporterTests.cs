@@ -138,4 +138,51 @@ public class SeedImporterTests
             File.Delete(path);
         }
     }
+
+    [Test]
+    public async Task ImportAsync_SeedsConsumers_WhenSettlementDeclaresThem()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"seedcon_{Guid.NewGuid():N}.db");
+        try
+        {
+            var seed = new SeedWorld(
+                Name: "Aerthos", Seed: 42UL, RulesetVersion: "1.0.0",
+                Goods: [new SeedGood("Bread", "Food", 30, "loaf", "Small", 4320, true, 50, "Essential")],
+                Recipes: [],
+                Continents:
+                [
+                    new SeedContinent("Mundus",
+                    [
+                        new SeedCountry("Highmark",
+                        [
+                            new SeedRegion("The Reach",
+                            [
+                                new SeedSettlement("Hammerfell", "City", 10, 20, 50_000,
+                                    Shops: [], Market: [], Endowments: [], Production: [], Merchants: [],
+                                    Consumers: [new SeedConsumer(1000, 40_000), new SeedConsumer(1000, 40_000)]),
+                            ]),
+                        ]),
+                    ]),
+                ],
+                Routes: []);
+
+            await using (var ctx = NewContextOnFile(path))
+            {
+                await ctx.Database.MigrateAsync();
+                await new SeedImporter(ctx).ImportAsync(seed);
+            }
+
+            await using (var ctx = NewContextOnFile(path))
+            {
+                var consumers = await ctx.Consumers.ToListAsync();
+                consumers.Should().HaveCount(2);
+                consumers.Should().OnlyContain(c => c.Size == 1000);
+                consumers.Should().OnlyContain(c => c.Budget.Units == 40_000);
+            }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

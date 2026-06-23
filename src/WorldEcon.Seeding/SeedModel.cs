@@ -24,7 +24,8 @@ public sealed record SeedRegion(string Name, IReadOnlyList<SeedSettlement> Settl
 
 public sealed record SeedSettlement(string Name, string Type, int X, int Y, long Population,
     IReadOnlyList<SeedShop> Shops, IReadOnlyList<SeedStock> Market, IReadOnlyList<SeedEndowment> Endowments,
-    IReadOnlyList<SeedProductionNode> Production, IReadOnlyList<SeedMerchant> Merchants);
+    IReadOnlyList<SeedProductionNode> Production, IReadOnlyList<SeedMerchant> Merchants,
+    IReadOnlyList<SeedConsumer>? Consumers = null);
 
 public sealed record SeedShop(string Name, int MarkupBp, long Till, IReadOnlyList<SeedStock> Stock);
 
@@ -35,6 +36,12 @@ public sealed record SeedEndowment(string Good, long Abundance);
 public sealed record SeedProductionNode(string Recipe, long ThroughputCap);
 
 public sealed record SeedMerchant(long Capital, long CargoCapacity, long Reach);
+
+/// <summary>A representative consumer pre-seeded at a settlement so imported worlds have demand from
+/// day 1 (otherwise the first consumers appear only after the weekly ConsumerSpawnPhase). Size is the
+/// number of people represented; for the weekly spawn top-up to stay consistent, seed consumers at the
+/// engine's DefaultConsumerSize (1000). Budget is starting spending money (≈ one week's allowance).</summary>
+public sealed record SeedConsumer(long Size, long Budget);
 
 /// <summary>A directed route between two settlements (by name). For symmetric travel, the
 /// author lists both directions explicitly (the importer creates exactly the routes listed).</summary>

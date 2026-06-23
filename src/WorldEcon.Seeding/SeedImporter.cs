@@ -175,11 +175,15 @@ public sealed class SeedImporter(WorldDbContext db)
             db.Merchants.Add(merchant);
         }
 
-        // NOTE: RepresentativeConsumers are not imported from the seed JSON.
-        // Imported worlds receive their first consumers after the weekly ConsumerSpawnPhase runs
-        // (day 7+). To pre-seed consumers, extend SeedSettlement with an optional Consumers list
-        // and mirror the merchant import block above — future enhancement when day-1 demand matters
-        // for imported scenarios.
+        // Representative consumers seated at this settlement (optional; gives imported worlds day-1
+        // demand instead of waiting for the weekly ConsumerSpawnPhase). The spawn phase later tops the
+        // count up to population/DefaultConsumerSize, so seed sizes at DefaultConsumerSize (1000).
+        foreach (var con in NonNull(s.Consumers))
+        {
+            var consumer = Unwrap(RepresentativeConsumer.Create(
+                worldId, settlementId, con.Size, new Money(con.Budget)));
+            db.Consumers.Add(consumer);
+        }
     }
 
     private void ImportRoutes(WorldId worldId, IReadOnlyList<SeedRoute>? routes, Dictionary<string, SettlementId> settlementsByName)

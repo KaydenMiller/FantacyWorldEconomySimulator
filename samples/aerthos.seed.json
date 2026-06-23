@@ -3,20 +3,28 @@
   "seed": 42,
   "rulesetVersion": "1.0.0",
   "goods": [
-    { "name": "Health Potion", "category": "Potion", "baseValue": 5000, "baseUnit": "vial", "size": "Small", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
+    { "name": "Grain", "category": "Raw", "baseValue": 15, "baseUnit": "sack", "size": "Medium", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 0 },
+    { "name": "Iron Ore", "category": "Raw", "baseValue": 20, "baseUnit": "unit", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
+    { "name": "Coal", "category": "Raw", "baseValue": 12, "baseUnit": "unit", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
+    { "name": "Wool", "category": "Raw", "baseValue": 25, "baseUnit": "bale", "size": "Medium", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 0 },
+    { "name": "Grapes", "category": "Raw", "baseValue": 18, "baseUnit": "crate", "size": "Medium", "shelfLifeTicks": 4320, "divisible": true, "consumptionPerCapitaBp": 0 },
+    { "name": "Flour", "category": "Material", "baseValue": 40, "baseUnit": "sack", "size": "Medium", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 0 },
     { "name": "Iron Ingot", "category": "Material", "baseValue": 200, "baseUnit": "ingot", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
-    { "name": "Bread", "category": "Food", "baseValue": 30, "baseUnit": "loaf", "size": "Small", "shelfLifeTicks": 4320, "divisible": true, "consumptionPerCapitaBp": 50 },
-    { "name": "Iron Ore", "category": "Raw", "baseValue": 20, "baseUnit": "unit", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 }
+    { "name": "Bread", "category": "Food", "baseValue": 30, "baseUnit": "loaf", "size": "Small", "shelfLifeTicks": 4320, "divisible": true, "consumptionPerCapitaBp": 50, "needTier": "Essential" },
+    { "name": "Cloth", "category": "Material", "baseValue": 80, "baseUnit": "bolt", "size": "Small", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 10, "needTier": "Standard" },
+    { "name": "Tools", "category": "Tool", "baseValue": 150, "baseUnit": "set", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 5, "needTier": "Standard" },
+    { "name": "Ale", "category": "Luxury", "baseValue": 40, "baseUnit": "mug", "size": "Small", "shelfLifeTicks": 720, "divisible": true, "consumptionPerCapitaBp": 20, "needTier": "Comfort" },
+    { "name": "Wine", "category": "Luxury", "baseValue": 120, "baseUnit": "bottle", "size": "Small", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 15, "needTier": "Comfort" },
+    { "name": "Health Potion", "category": "Potion", "baseValue": 5000, "baseUnit": "vial", "size": "Small", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 }
   ],
   "recipes": [
-    {
-      "name": "Smelt Iron",
-      "facility": "Smithy",
-      "inputs": [ { "good": "Iron Ore", "quantity": 10 } ],
-      "outputs": [ { "good": "Iron Ingot", "quantity": 1 } ],
-      "laborCost": 0,
-      "ticksToProduce": 1440
-    }
+    { "name": "Grind Flour", "facility": "Mill", "inputs": [ { "good": "Grain", "quantity": 100 } ], "outputs": [ { "good": "Flour", "quantity": 80 } ], "laborCost": 0, "ticksToProduce": 1440 },
+    { "name": "Bake Bread", "facility": "Bakery", "inputs": [ { "good": "Flour", "quantity": 25 } ], "outputs": [ { "good": "Bread", "quantity": 60 } ], "laborCost": 0, "ticksToProduce": 720 },
+    { "name": "Smelt Iron", "facility": "Smithy", "inputs": [ { "good": "Iron Ore", "quantity": 40 }, { "good": "Coal", "quantity": 16 } ], "outputs": [ { "good": "Iron Ingot", "quantity": 12 } ], "laborCost": 0, "ticksToProduce": 1440 },
+    { "name": "Forge Tools", "facility": "Workshop", "inputs": [ { "good": "Iron Ingot", "quantity": 20 } ], "outputs": [ { "good": "Tools", "quantity": 30 } ], "laborCost": 0, "ticksToProduce": 1440 },
+    { "name": "Weave Cloth", "facility": "Workshop", "inputs": [ { "good": "Wool", "quantity": 25 } ], "outputs": [ { "good": "Cloth", "quantity": 40 } ], "laborCost": 0, "ticksToProduce": 1440 },
+    { "name": "Brew Ale", "facility": "Workshop", "inputs": [ { "good": "Grain", "quantity": 40 } ], "outputs": [ { "good": "Ale", "quantity": 50 } ], "laborCost": 0, "ticksToProduce": 1440 },
+    { "name": "Press Wine", "facility": "Workshop", "inputs": [ { "good": "Grapes", "quantity": 40 } ], "outputs": [ { "good": "Wine", "quantity": 36 } ], "laborCost": 0, "ticksToProduce": 1440 }
   ],
   "continents": [
     {
@@ -30,66 +38,198 @@
               "settlements": [
                 {
                   "name": "Hammerfell",
-                  "type": "City",
-                  "x": 10,
-                  "y": 20,
-                  "population": 50000,
+                  "type": "City", "x": 10, "y": 20, "population": 50000,
                   "shops": [
-                    {
-                      "name": "The Sundries",
-                      "markupBp": 2000,
-                      "till": 100000,
-                      "stock": [
-                        { "good": "Health Potion", "quantity": 40, "unitCostBasis": 4000 },
-                        { "good": "Bread", "quantity": 100, "unitCostBasis": 25 }
-                      ]
-                    },
-                    {
-                      "name": "Apothecary",
-                      "markupBp": 5000,
-                      "till": 100000,
-                      "stock": [
-                        { "good": "Health Potion", "quantity": 15, "unitCostBasis": 4200 }
-                      ]
-                    }
+                    { "name": "The Sundries", "markupBp": 2000, "till": 100000, "stock": [
+                      { "good": "Bread", "quantity": 300, "unitCostBasis": 25 },
+                      { "good": "Cloth", "quantity": 150, "unitCostBasis": 70 },
+                      { "good": "Ale", "quantity": 200, "unitCostBasis": 35 }
+                    ] },
+                    { "name": "Apothecary", "markupBp": 5000, "till": 100000, "stock": [
+                      { "good": "Health Potion", "quantity": 40, "unitCostBasis": 4000 }
+                    ] }
                   ],
                   "market": [
-                    { "good": "Bread", "quantity": 200, "unitCostBasis": 28 }
+                    { "good": "Flour", "quantity": 400, "unitCostBasis": 40 },
+                    { "good": "Grain", "quantity": 400, "unitCostBasis": 15 },
+                    { "good": "Iron Ore", "quantity": 300, "unitCostBasis": 20 },
+                    { "good": "Coal", "quantity": 200, "unitCostBasis": 12 },
+                    { "good": "Wool", "quantity": 200, "unitCostBasis": 25 },
+                    { "good": "Bread", "quantity": 400, "unitCostBasis": 28 }
                   ],
-                  "endowments": [],
-                  "production": [],
-                  "merchants": [
-                    { "capital": 50000, "cargoCapacity": 50, "reach": 1000 }
+                  "endowments": [ { "good": "Grain", "abundance": 320 } ],
+                  "production": [
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Smelt Iron", "throughputCap": 1 },
+                    { "recipe": "Forge Tools", "throughputCap": 1 },
+                    { "recipe": "Weave Cloth", "throughputCap": 1 },
+                    { "recipe": "Weave Cloth", "throughputCap": 1 },
+                    { "recipe": "Brew Ale", "throughputCap": 1 },
+                    { "recipe": "Brew Ale", "throughputCap": 1 }
+                  ],
+                  "merchants": [ { "capital": 80000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "consumers": [
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 }
+                  ]
+                },
+                {
+                  "name": "Greenfield",
+                  "type": "Town", "x": 14, "y": 22, "population": 6000,
+                  "shops": [
+                    { "name": "Mill Store", "markupBp": 1200, "till": 40000, "stock": [
+                      { "good": "Flour", "quantity": 160, "unitCostBasis": 38 },
+                      { "good": "Bread", "quantity": 120, "unitCostBasis": 25 },
+                      { "good": "Cloth", "quantity": 80, "unitCostBasis": 70 }
+                    ] }
+                  ],
+                  "market": [
+                    { "good": "Grain", "quantity": 300, "unitCostBasis": 15 },
+                    { "good": "Wool", "quantity": 160, "unitCostBasis": 25 },
+                    { "good": "Flour", "quantity": 160, "unitCostBasis": 40 }
+                  ],
+                  "endowments": [
+                    { "good": "Grain", "abundance": 260 },
+                    { "good": "Wool", "abundance": 60 }
+                  ],
+                  "production": [
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Weave Cloth", "throughputCap": 1 },
+                    { "recipe": "Weave Cloth", "throughputCap": 1 }
+                  ],
+                  "merchants": [ { "capital": 30000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "consumers": [
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 }
                   ]
                 },
                 {
                   "name": "Riverwood",
-                  "type": "Village",
-                  "x": 12,
-                  "y": 25,
-                  "population": 800,
+                  "type": "Village", "x": 12, "y": 25, "population": 800,
                   "shops": [
-                    {
-                      "name": "Trading Post",
-                      "markupBp": 1500,
-                      "till": 50000,
-                      "stock": [
-                        { "good": "Iron Ingot", "quantity": 60, "unitCostBasis": 180 }
-                      ]
-                    }
+                    { "name": "Trading Post", "markupBp": 1500, "till": 20000, "stock": [
+                      { "good": "Bread", "quantity": 60, "unitCostBasis": 26 },
+                      { "good": "Ale", "quantity": 40, "unitCostBasis": 35 }
+                    ] }
+                  ],
+                  "market": [ { "good": "Grain", "quantity": 160, "unitCostBasis": 15 } ],
+                  "endowments": [ { "good": "Grain", "abundance": 120 } ],
+                  "production": [
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 }
+                  ],
+                  "merchants": [ { "capital": 10000, "cargoCapacity": 40, "reach": 1000 } ],
+                  "consumers": [ { "size": 1000, "budget": 40000 } ]
+                }
+              ]
+            },
+            {
+              "name": "Ironhills",
+              "settlements": [
+                {
+                  "name": "Karak Drûm",
+                  "type": "Town", "x": 30, "y": 10, "population": 4000,
+                  "shops": [
+                    { "name": "The Anvil", "markupBp": 1800, "till": 40000, "stock": [
+                      { "good": "Tools", "quantity": 60, "unitCostBasis": 140 },
+                      { "good": "Iron Ingot", "quantity": 80, "unitCostBasis": 190 },
+                      { "good": "Bread", "quantity": 80, "unitCostBasis": 28 }
+                    ] }
                   ],
                   "market": [
-                    { "good": "Iron Ore", "quantity": 50, "unitCostBasis": 20 }
+                    { "good": "Iron Ore", "quantity": 360, "unitCostBasis": 20 },
+                    { "good": "Coal", "quantity": 200, "unitCostBasis": 12 },
+                    { "good": "Bread", "quantity": 160, "unitCostBasis": 28 }
                   ],
                   "endowments": [
-                    { "good": "Iron Ore", "abundance": 30 }
+                    { "good": "Iron Ore", "abundance": 180 },
+                    { "good": "Coal", "abundance": 90 }
                   ],
                   "production": [
-                    { "recipe": "Smelt Iron", "throughputCap": 1 }
+                    { "recipe": "Smelt Iron", "throughputCap": 1 },
+                    { "recipe": "Smelt Iron", "throughputCap": 1 },
+                    { "recipe": "Smelt Iron", "throughputCap": 1 },
+                    { "recipe": "Forge Tools", "throughputCap": 1 },
+                    { "recipe": "Forge Tools", "throughputCap": 1 }
                   ],
-                  "merchants": [
-                    { "capital": 50000, "cargoCapacity": 50, "reach": 1000 }
+                  "merchants": [ { "capital": 30000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "consumers": [
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 }
                   ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Sunreach",
+          "regions": [
+            {
+              "name": "Goldcoast",
+              "settlements": [
+                {
+                  "name": "Sunport",
+                  "type": "City", "x": 60, "y": 40, "population": 30000,
+                  "shops": [
+                    { "name": "Harbor Emporium", "markupBp": 2500, "till": 100000, "stock": [
+                      { "good": "Wine", "quantity": 120, "unitCostBasis": 110 },
+                      { "good": "Cloth", "quantity": 100, "unitCostBasis": 75 },
+                      { "good": "Health Potion", "quantity": 20, "unitCostBasis": 4200 }
+                    ] },
+                    { "name": "Dockside Bakery", "markupBp": 1500, "till": 50000, "stock": [
+                      { "good": "Bread", "quantity": 250, "unitCostBasis": 27 }
+                    ] }
+                  ],
+                  "market": [
+                    { "good": "Grain", "quantity": 360, "unitCostBasis": 15 },
+                    { "good": "Flour", "quantity": 200, "unitCostBasis": 40 },
+                    { "good": "Grapes", "quantity": 250, "unitCostBasis": 18 },
+                    { "good": "Bread", "quantity": 300, "unitCostBasis": 30 },
+                    { "good": "Wine", "quantity": 120, "unitCostBasis": 110 }
+                  ],
+                  "endowments": [ { "good": "Grain", "abundance": 220 } ],
+                  "production": [
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Grind Flour", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Bake Bread", "throughputCap": 1 },
+                    { "recipe": "Press Wine", "throughputCap": 1 },
+                    { "recipe": "Press Wine", "throughputCap": 1 }
+                  ],
+                  "merchants": [ { "capital": 80000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "consumers": [
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 },
+                    { "size": 1000, "budget": 40000 }
+                  ]
+                },
+                {
+                  "name": "Vinemoor",
+                  "type": "Village", "x": 58, "y": 45, "population": 1200,
+                  "shops": [
+                    { "name": "Vintner's Cellar", "markupBp": 1600, "till": 30000, "stock": [
+                      { "good": "Wine", "quantity": 60, "unitCostBasis": 110 },
+                      { "good": "Bread", "quantity": 30, "unitCostBasis": 28 }
+                    ] }
+                  ],
+                  "market": [ { "good": "Grapes", "quantity": 200, "unitCostBasis": 18 } ],
+                  "endowments": [ { "good": "Grapes", "abundance": 200 } ],
+                  "production": [ { "recipe": "Press Wine", "throughputCap": 1 } ],
+                  "merchants": [ { "capital": 12000, "cargoCapacity": 40, "reach": 1000 } ],
+                  "consumers": [ { "size": 1000, "budget": 40000 } ]
                 }
               ]
             }
@@ -99,7 +239,17 @@
     }
   ],
   "routes": [
+    { "fromSettlement": "Hammerfell", "toSettlement": "Greenfield", "distance": 60, "terrain": "Plains", "danger": 2, "category": "Land" },
+    { "fromSettlement": "Greenfield", "toSettlement": "Hammerfell", "distance": 60, "terrain": "Plains", "danger": 2, "category": "Land" },
     { "fromSettlement": "Hammerfell", "toSettlement": "Riverwood", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" },
-    { "fromSettlement": "Riverwood", "toSettlement": "Hammerfell", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" }
+    { "fromSettlement": "Riverwood", "toSettlement": "Hammerfell", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Karak Drûm", "distance": 200, "terrain": "Mountain", "danger": 6, "category": "Land" },
+    { "fromSettlement": "Karak Drûm", "toSettlement": "Hammerfell", "distance": 200, "terrain": "Mountain", "danger": 6, "category": "Land" },
+    { "fromSettlement": "Greenfield", "toSettlement": "Karak Drûm", "distance": 180, "terrain": "Mountain", "danger": 5, "category": "Land" },
+    { "fromSettlement": "Karak Drûm", "toSettlement": "Greenfield", "distance": 180, "terrain": "Mountain", "danger": 5, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Sunport", "distance": 400, "terrain": "Coast", "danger": 4, "category": "Land" },
+    { "fromSettlement": "Sunport", "toSettlement": "Hammerfell", "distance": 400, "terrain": "Coast", "danger": 4, "category": "Land" },
+    { "fromSettlement": "Sunport", "toSettlement": "Vinemoor", "distance": 80, "terrain": "Coast", "danger": 2, "category": "Land" },
+    { "fromSettlement": "Vinemoor", "toSettlement": "Sunport", "distance": 80, "terrain": "Coast", "danger": 2, "category": "Land" }
   ]
 }
