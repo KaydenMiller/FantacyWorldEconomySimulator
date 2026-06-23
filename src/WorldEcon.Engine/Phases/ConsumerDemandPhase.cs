@@ -40,14 +40,13 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
             if (consumers.Count == 0)
                 continue;
 
-            // Per-good scarcity multiplier from the day's total demand vs supply (fixed for the day).
+            // Per-good scarcity multiplier from the day's total demand vs supply (fixed for the day,
+            // before any buying, so every consumer pays the same price for the day).
             var scarcityByGood = new Dictionary<GoodId, long>();
-            var supplyByGood = new Dictionary<GoodId, long>();
             foreach (var good in consumableGoods)
             {
                 long demand = consumers.Sum(c => FixedMath.MulBp(c.Size, good.ConsumptionPerCapitaBp));
                 long supply = await ShopMarket.TotalSupply(ctx, settlement.Id, good.Id);
-                supplyByGood[good.Id] = supply;
                 scarcityByGood[good.Id] = RetailPricing.ScarcityMultBp(demand, supply, ctx.World);
             }
 
@@ -60,10 +59,9 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
 
             foreach (var consumer in consumers)
             {
-                bool broke = false;
                 foreach (var good in consumableGoods)   // already in tier then id order
                 {
-                    if (broke) break;
+                    if (consumer.Budget.Units <= 0) break;  // out of money for the day → stop buying
                     long demand = FixedMath.MulBp(consumer.Size, good.ConsumptionPerCapitaBp);
                     if (demand <= 0) continue;
                     long needed = demand;
@@ -83,11 +81,11 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
                         long unit = offer.Price.Units;
                         long affordable = unit > 0 ? consumer.Budget.Units / unit : needed;
                         long take = Math.Min(needed, Math.Min(offer.Stock.Quantity, affordable));
+                        // Offers are cheapest-first, so once the consumer can't afford an offer it can't
+                        // afford any pricier one for THIS good — stop scanning this good and move to the
+                        // next (a cheaper good may still be affordable). Don't abandon the whole basket.
                         if (take <= 0)
-                        {
-                            if (unit > consumer.Budget.Units) { broke = true; break; } // can't afford the cheapest → done for today
-                            continue;
-                        }
+                            break;
                         long cost = unit * take;
                         offer.Stock.Withdraw(take).OrThrow("consumer purchase");
                         consumer.Spend(new Money(cost));
