@@ -8,7 +8,9 @@ public sealed record SeedWorld(string Name, ulong Seed, string RulesetVersion,
     IReadOnlyList<SeedGood> Goods, IReadOnlyList<SeedRecipe> Recipes,
     IReadOnlyList<SeedContinent> Continents, IReadOnlyList<SeedRoute> Routes);
 
-public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size, long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp);
+// NeedTier is optional; omitted goods default to Essential. JSON authors can specify e.g.
+// "NeedTier": "Standard" or "NeedTier": "Comfort" to opt into higher tiers.
+public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size, long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp, string? NeedTier = null);
 
 public sealed record SeedRecipeLine(string Good, long Quantity);
 

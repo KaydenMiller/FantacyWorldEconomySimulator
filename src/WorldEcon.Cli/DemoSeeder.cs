@@ -47,6 +47,13 @@ internal static class DemoSeeder
         var ironOre = Unwrap(
             Good.Create(world.Id, "Iron Ore", GoodCategory.Raw, new Money(20), "unit", SizeClass.Medium, 0, false),
             "Iron Ore");
+        // Tiered demo goods so NeedTier is exercised in the simulation.
+        var cloth = Unwrap(
+            Good.Create(world.Id, "Cloth", GoodCategory.Material, new Money(80), "bolt", SizeClass.Small, 0, true, consumptionPerCapitaBp: 10, NeedTier.Standard),
+            "Cloth");
+        var ale = Unwrap(
+            Good.Create(world.Id, "Ale", GoodCategory.Luxury, new Money(40), "mug", SizeClass.Small, 720, true, consumptionPerCapitaBp: 20, NeedTier.Comfort),
+            "Ale");
 
         // Production: Riverwood mines Iron Ore and smelts it into Iron Ingot.
         var oreEndowment = Unwrap(
@@ -80,8 +87,16 @@ internal static class DemoSeeder
         // Stockpiles (shop-owned).
         var sundriesPotion = Unwrap(Stockpile.CreateForShop(world.Id, sundries.Id, potion.Id, 40, new Money(4000)), "Sundries/Health Potion");
         var sundriesBread = Unwrap(Stockpile.CreateForShop(world.Id, sundries.Id, bread.Id, 100, new Money(25)), "Sundries/Bread");
+        var sundriesCloth = Unwrap(Stockpile.CreateForShop(world.Id, sundries.Id, cloth.Id, 500, new Money(70)), "Sundries/Cloth");
+        var sundriesAle = Unwrap(Stockpile.CreateForShop(world.Id, sundries.Id, ale.Id, 200, new Money(35)), "Sundries/Ale");
         var apothPotion = Unwrap(Stockpile.CreateForShop(world.Id, apothecary.Id, potion.Id, 15, new Money(4200)), "Apothecary/Health Potion");
         var tradingIron = Unwrap(Stockpile.CreateForShop(world.Id, tradingPost.Id, iron.Id, 60, new Money(180)), "Trading Post/Iron Ingot");
+        var tradingAle = Unwrap(Stockpile.CreateForShop(world.Id, tradingPost.Id, ale.Id, 80, new Money(35)), "Trading Post/Ale");
+
+        // Pre-seed consumers so day-1 buying works before the first weekly income phase.
+        // Initial budget ≈ one week's allowance (AllowanceIncome default 40/capita).
+        var hammerConsumer = Unwrap(RepresentativeConsumer.Create(world.Id, hammerfell.Id, 1000, new Money(40_000)), "Hammerfell consumer");
+        var riverConsumer = Unwrap(RepresentativeConsumer.Create(world.Id, riverwood.Id, 800, new Money(32_000)), "Riverwood consumer");
 
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
@@ -89,13 +104,14 @@ internal static class DemoSeeder
         ctx.Regions.Add(region);
         ctx.Settlements.AddRange(hammerfell, riverwood);
         ctx.Routes.AddRange(routeOut, routeBack);
-        ctx.Goods.AddRange(potion, iron, bread, ironOre);
+        ctx.Goods.AddRange(potion, iron, bread, ironOre, cloth, ale);
         ctx.Shops.AddRange(sundries, apothecary, tradingPost);
-        ctx.Stockpiles.AddRange(sundriesPotion, sundriesBread, apothPotion, tradingIron);
+        ctx.Stockpiles.AddRange(sundriesPotion, sundriesBread, sundriesCloth, sundriesAle, apothPotion, tradingIron, tradingAle);
         ctx.Merchants.AddRange(riverwoodMerchant, hammerfellMerchant);
         ctx.ResourceEndowments.Add(oreEndowment);
         ctx.Recipes.Add(smeltRecipe);
         ctx.ProductionNodes.Add(smithyNode);
+        ctx.Consumers.AddRange(hammerConsumer, riverConsumer);
         ctx.SaveChanges();
 
         return world;
