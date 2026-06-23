@@ -156,6 +156,55 @@ public sealed class CalendarSystem
         return false;
     }
 
+    /// <summary>
+    /// Renders a duration (relative tick count) using the world's calendar units, largest-to-smallest,
+    /// composing up to two non-zero units. Unit symbols: m=minute, h=hour, d=day, w=week, M=month, y=year
+    /// (matches <see cref="TryParseDurationToTicks"/>). Zero ticks returns "0m".
+    /// Examples on the default calendar (60m/h, 24h/d, 7d/w, 30d/M, 12M/y):
+    ///   0→"0m", 90→"1h 30m", 720→"12h", 1440→"1d", 4320→"3d", 10080→"1w".
+    /// </summary>
+    public string FormatDuration(long ticks)
+    {
+        if (ticks <= 0)
+            return "0m";
+
+        long minutesPerDay = (long)_def.HoursPerDay * _def.MinutesPerHour;
+        long minutesPerWeek = (long)_def.Weekdays.Count * minutesPerDay;
+        long daysPerMonth = _def.Months.Count > 0 ? _def.Months[0].Days : _daysPerYear / _def.Months.Count;
+        long minutesPerMonth = daysPerMonth * minutesPerDay;
+        long minutesPerYear = (long)_daysPerYear * minutesPerDay;
+
+        // Units in descending size order: (symbol, ticksPerUnit)
+        (string symbol, long perUnit)[] units =
+        [
+            ("y", minutesPerYear),
+            ("M", minutesPerMonth),
+            ("w", minutesPerWeek),
+            ("d", minutesPerDay),
+            ("h", (long)_def.MinutesPerHour),
+            ("m", 1L),
+        ];
+
+        var parts = new System.Text.StringBuilder();
+        var remaining = ticks;
+        int count = 0;
+        foreach (var (symbol, perUnit) in units)
+        {
+            if (remaining <= 0 || count >= 2)
+                break;
+            long value = remaining / perUnit;
+            if (value > 0)
+            {
+                if (count > 0) parts.Append(' ');
+                parts.Append(value).Append(symbol);
+                remaining -= value * perUnit;
+                count++;
+            }
+        }
+
+        return count == 0 ? "0m" : parts.ToString();
+    }
+
     private static bool InSeason(int month, int day, SeasonDef s)
     {
         int v = month * 100 + day;

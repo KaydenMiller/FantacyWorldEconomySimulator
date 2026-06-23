@@ -50,7 +50,8 @@ public sealed class TuiShell : Window
     private readonly List<NavFrame> _stack = [];
     private BarMode _barMode = BarMode.None;
     private TaskCompletionSource<string?>? _promptTcs;
-    private int _sortColumn = -1; // -1 = no sort; cycles on 'o'
+    private int _sortColumn = -1;    // -1 = no sort; cycles on 'o'
+    private bool _sortDescending;   // false = ascending; toggled per 'o' press
 
     private (LogScopeKind Kind, Guid Id, string Title)? _currentLogScope;
 
@@ -183,20 +184,34 @@ public sealed class TuiShell : Window
 
         // Apply column sort if active (Ordinal string sort; Number-aware is not required for Phase 1).
         if (_sortColumn >= 0 && _sortColumn < frame.View.Columns.Count)
-            rows = rows.OrderBy(r => _sortColumn < r.Cells.Count ? r.Cells[_sortColumn] : string.Empty,
-                StringComparer.Ordinal).ToList();
+        {
+            rows = _sortDescending
+                ? rows.OrderByDescending(r => _sortColumn < r.Cells.Count ? r.Cells[_sortColumn] : string.Empty,
+                    StringComparer.Ordinal).ToList()
+                : rows.OrderBy(r => _sortColumn < r.Cells.Count ? r.Cells[_sortColumn] : string.Empty,
+                    StringComparer.Ordinal).ToList();
+        }
 
         return rows;
     }
 
-    private static DataTableSource BuildTableSourceFromRows(NavView view, IReadOnlyList<NavRow> rows)
+    private DataTableSource BuildTableSourceFromRows(NavView view, IReadOnlyList<NavRow> rows)
     {
         var dt = new DataTable();
         if (view.Columns.Count == 0)
+        {
             dt.Columns.Add(" ");
+        }
         else
-            foreach (var col in view.Columns)
-                dt.Columns.Add(col);
+        {
+            for (var i = 0; i < view.Columns.Count; i++)
+            {
+                var colName = view.Columns[i];
+                if (i == _sortColumn)
+                    colName += _sortDescending ? " ▼" : " ▲"; // ▼ or ▲
+                dt.Columns.Add(colName);
+            }
+        }
 
         foreach (var row in rows)
         {
@@ -236,6 +251,7 @@ public sealed class TuiShell : Window
             Post(() =>
             {
                 _sortColumn = -1;
+                _sortDescending = false;
                 _stack.Clear();
                 _stack.Add(new NavFrame(v, () => _nav.RootAsync(canonicalRootName, _ctx)!));
                 ApplyTop();
@@ -256,6 +272,7 @@ public sealed class TuiShell : Window
             {
                 _stack[^1].Selection = selection;
                 _sortColumn = -1;
+                _sortDescending = false;
                 _stack.Add(new NavFrame(child, () => _nav.DrillAsync(row, _ctx)));
                 ApplyTop();
             });
@@ -271,6 +288,7 @@ public sealed class TuiShell : Window
         if (!_stack[^1].View.Title.StartsWith("Log — ", StringComparison.Ordinal))
             _currentLogScope = null;
         _sortColumn = -1;
+        _sortDescending = false;
         ApplyTop();
     }
 
@@ -356,11 +374,40 @@ public sealed class TuiShell : Window
             return;
         }
 
-        // 'o' cycles the sort column of the current view (Ordinal string sort; reset per-frame).
+        // 'o' cycles sort: unsorted → col0 asc → col0 desc → col1 asc → col1 desc → … → unsorted.
         if (key.AsRune.Value == 'o')
         {
             var cols = _stack[^1].View.Columns.Count;
-            if (cols > 0) { _sortColumn = (_sortColumn + 1) % cols; ApplyTop(); }
+            if (cols > 0)
+            {
+                if (_sortColumn < 0)
+                {
+                    // unsorted → first column ascending
+                    _sortColumn = 0;
+                    _sortDescending = false;
+                }
+                else if (!_sortDescending)
+                {
+                    // ascending → descending (same column)
+                    _sortDescending = true;
+                }
+                else
+                {
+                    // descending → next column ascending; if past last column → unsorted
+                    var next = _sortColumn + 1;
+                    if (next >= cols)
+                    {
+                        _sortColumn = -1;
+                        _sortDescending = false;
+                    }
+                    else
+                    {
+                        _sortColumn = next;
+                        _sortDescending = false;
+                    }
+                }
+                ApplyTop();
+            }
             key.Handled = true;
             return;
         }
@@ -426,10 +473,25 @@ public sealed class TuiShell : Window
     {
         var row = SelectedRow;
         if (row is null) return;
+        var name = row.Cells.Count > 0 ? row.Cells[0] : row.Kind.ToString();
         Dispatch(async () =>
         {
             var lines = await _nav.DetailsAsync(row, _ctx);
-            await Ui!.ShowMessageAsync($"{row.Kind} details", lines);
+            var detailRows = lines.Select(line =>
+            {
+                var sep = line.IndexOf(": ", StringComparison.Ordinal);
+                if (sep >= 0)
+                    return new NavRow(line, NavKind.Leaf, [line[..sep], line[(sep + 2)..]]);
+                return new NavRow(line, NavKind.Leaf, [line, string.Empty]);
+            }).ToList();
+            var detailView = new NavView($"Details — {name}", ["Field", "Value"], detailRows);
+            Post(() =>
+            {
+                _sortColumn = -1;
+                _sortDescending = false;
+                _stack.Add(new NavFrame(detailView, () => Task.FromResult<NavView?>(detailView)));
+                ApplyTop();
+            });
         });
     }
 
@@ -451,6 +513,7 @@ public sealed class TuiShell : Window
     private void PushView(NavView view, LogScopeKind kind, Guid scopeId, string title)
     {
         _sortColumn = -1;
+        _sortDescending = false;
         _stack.Add(new NavFrame(view, () => _nav.LogViewForScopeAsync(kind, scopeId, title, null, _ctx)!));
         ApplyTop();
     }
@@ -504,7 +567,7 @@ public sealed class TuiShell : Window
             Row("--- Actions ---", string.Empty),
             Row("a", "advance time"),
             Row("S", "snapshot"),
-            Row("o", "cycle sort column (Ordinal; resets per frame)"),
+            Row("o", "cycle sort: unsorted → col0 ▲ → col0 ▼ → col1 ▲ → … → unsorted; active column header shows ▲/▼"),
             Row("b", "(on a city) buy out a good"),
             Row("x", "(on a city) disable production"),
             Row("e", "(on a city) enable production"),

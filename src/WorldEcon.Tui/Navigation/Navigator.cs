@@ -577,14 +577,16 @@ public sealed class Navigator : INavigator
         if (c is null) return [$"Caravan {id.Value} not found."];
         var settlementNames = await Lookups.SettlementNamesAsync(ctx);
         var goodNames = await Lookups.GoodNamesAsync(ctx);
-        return [$"Origin: {settlementNames.Resolve(c.OriginId.Value)}", $"Dest: {settlementNames.Resolve(c.DestinationId.Value)}", $"Good: {goodNames.Resolve(c.GoodId.Value)}", $"Qty: {c.Quantity}", $"Unit cost: {ctx.FormatMoney(c.UnitCostBasis)}", $"Depart: {c.DepartTick.Value}", $"Arrive: {c.ArriveTick.Value}", $"Delivered: {(c.Delivered ? "yes" : "no")}", $"Id: {c.Id.Value}"];
+        return [$"Origin: {settlementNames.Resolve(c.OriginId.Value)}", $"Dest: {settlementNames.Resolve(c.DestinationId.Value)}", $"Good: {goodNames.Resolve(c.GoodId.Value)}", $"Qty: {c.Quantity}", $"Unit cost: {ctx.FormatMoney(c.UnitCostBasis)}", $"Depart: {FormatTick(ctx, c.DepartTick)}", $"Arrive: {FormatTick(ctx, c.ArriveTick)}", $"Delivered: {(c.Delivered ? "yes" : "no")}", $"Id: {c.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> GoodDetails(TuiContext ctx, GoodId id)
     {
         var g = await ctx.Db.Goods.FirstOrDefaultAsync(x => x.Id == id);
         if (g is null) return [$"Good {id.Value} not found."];
-        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Need tier: {g.Need}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
+        var shelfLife = g.ShelfLifeTicks == 0 ? "imperishable" : ctx.Calendar.FormatDuration(g.ShelfLifeTicks);
+        var consumption = $"{g.ConsumptionPerCapitaBp / 10.0:0.##} per 1,000 people/day";
+        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Need tier: {g.Need}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life: {shelfLife}", $"Consumption: {consumption}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> RecipeDetails(TuiContext ctx, RecipeId id)
