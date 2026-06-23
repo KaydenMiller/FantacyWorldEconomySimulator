@@ -15,3 +15,6 @@ public enum StockpileOwnerKind { SettlementMarket = 0, Shop = 1, Agent = 2 }
 public enum FacilityType { Mine = 0, Farm = 1, Forest = 2, Smithy = 3, Mill = 4, Bakery = 5, Workshop = 6 }
 
 public enum RecipeLineKind { Input = 0, Output = 1 }
+
+/// <summary>Need priority for consumer demand: lower tiers are bought first within budget.</summary>
+public enum NeedTier { Essential = 0, Standard = 1, Comfort = 2 }

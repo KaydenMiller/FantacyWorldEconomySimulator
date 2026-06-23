@@ -60,4 +60,12 @@ public sealed class Shop : AggregateRoot<ShopId>
         var salePrice = new Money(unitCostBasis.Units + FixedMath.MulBp(unitCostBasis.Units, MarkupBp));
         return new ShopQuote(salePrice, salePrice - unitCostBasis, MarkupBp);
     }
+
+    /// <summary>Credit the till (e.g. a consumer payment). Phase 2.</summary>
+    public void CreditTill(Money amount)
+    {
+        if (amount.IsNegative)
+            throw new InvalidOperationException("Cannot credit a negative amount.");
+        Till += amount;
+    }
 }
