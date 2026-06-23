@@ -8,6 +8,7 @@ using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using WorldEcon.Domain.Logging;
 using WorldEcon.Tui.Actions;
+using WorldEcon.Tui.Forms;
 using WorldEcon.Tui.Navigation;
 
 namespace WorldEcon.Tui.Shell;
@@ -58,6 +59,7 @@ public sealed class TuiShell : Window
     private readonly SingleWordSuggestionGenerator _rootSuggest = new();
     private readonly IGlobalAction[] _globalActions = [new AdvanceAction(), new SnapshotAction()];
     private readonly IRowAction[] _cityActions = [new BuyOutAction(), new DisableProductionAction(), new EnableProductionAction()];
+    private readonly IReadOnlyList<IEntityForm> _forms = FormRegistry.All;
 
     public TuiShell(TuiContext ctx, INavigator nav, IUserInteraction? ui = null, IApplication? app = null)
     {
@@ -235,7 +237,7 @@ public sealed class TuiShell : Window
         var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details" };
         if (LogScopeFor(row?.Kind ?? NavKind.Leaf) is not null)
             hints.Add("l log");
-        hints.AddRange(["/filter", "o sort", "a advance", "S snapshot", "? help", "q quit"]);
+        hints.AddRange(["/filter", "o sort", "n new", "a advance", "S snapshot", "? help", "q quit"]);
         if (row?.Kind == NavKind.City)
             hints.AddRange(_cityActions.Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}"));
         _status.Text = " " + string.Join("  ", hints);
@@ -436,6 +438,7 @@ public sealed class TuiShell : Window
             case 'd': ShowDetails(); return true;
             case '?': ShowHelp(); return true;
             case 'l': ShowLog(); return true;
+            case 'n': ShowNewEntityForm(); return true;
         }
 
         var global = _globalActions.FirstOrDefault(a => a.Key == ch);
@@ -468,6 +471,36 @@ public sealed class TuiShell : Window
             await RefreshCurrentAsync();
         });
     }
+
+    /// <summary>'n' (new): choose an entity type, run its create-form, then refresh and navigate to
+    /// the new entity's resource so the result is visible.</summary>
+    private void ShowNewEntityForm()
+        => Dispatch(async () =>
+        {
+            var labels = _forms.Select(f => f.Label).ToList();
+            var idx = await Ui!.AskChoiceAsync("New", "Create what?", labels);
+            if (idx is null)
+                return; // cancelled
+
+            var form = _forms[idx.Value];
+            var outcome = await form.RunAsync(_ctx, Ui!);
+            await _ctx.ReloadWorldAsync();
+
+            if (!outcome.Created)
+            {
+                // Surface validation/precondition failures; stay put on cancel without a popup.
+                if (!outcome.Message.Equals("Cancelled.", StringComparison.Ordinal))
+                    await Ui!.ShowMessageAsync(form.Label, [outcome.Message]);
+                await RefreshCurrentAsync();
+                return;
+            }
+
+            await Ui!.ShowMessageAsync(form.Label, [outcome.Message]);
+            if (form.ResourceName is { } root)
+                SetRoot(root);          // jump to the resource so the new row is visible
+            else
+                await RefreshCurrentAsync();
+        });
 
     private void ShowDetails()
     {
@@ -565,6 +598,7 @@ public sealed class TuiShell : Window
             Row("q / Ctrl+Q / :q", "quit"),
             Sep(),
             Row("--- Actions ---", string.Empty),
+            Row("n", "new — create an entity (good, settlement, shop, recipe, …)"),
             Row("a", "advance time"),
             Row("S", "snapshot"),
             Row("o", "cycle sort: unsorted → col0 ▲ → col0 ▼ → col1 ▲ → … → unsorted; active column header shows ▲/▼"),
