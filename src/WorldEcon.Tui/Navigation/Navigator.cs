@@ -87,7 +87,9 @@ public sealed class Navigator : INavigator
                 var shopId = new ShopId(Guid.Parse(row.Key));
                 var goods = (await AllStockpiles(ctx))
                     .Where(s => s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == shopId.Value).ToList();
-                return await StockpileGoodsView(ctx, goods, "Goods");
+                // Show the wholesale MarketPrice column when drilling into a shop's own goods (the
+                // marketplace board now shows retail price; wholesale lives here).
+                return await StockpileGoodsView(ctx, goods, "Goods", includeMarketPrice: true);
             }
             case NavKind.Factory:
                 return await FactoryOutputsView(ctx, new ProductionNodeId(Guid.Parse(row.Key)));
@@ -582,7 +584,7 @@ public sealed class Navigator : INavigator
     {
         var g = await ctx.Db.Goods.FirstOrDefaultAsync(x => x.Id == id);
         if (g is null) return [$"Good {id.Value} not found."];
-        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
+        return [$"Name: {g.Name}", $"Category: {g.Category}", $"Need tier: {g.Need}", $"Base value: {ctx.FormatMoney(g.BaseValue)}", $"Base unit: {g.BaseUnit}", $"Size: {g.Size}", $"Shelf life (ticks): {g.ShelfLifeTicks}", $"Consumption/capita (bp): {g.ConsumptionPerCapitaBp}", $"Divisible: {(g.Divisible ? "yes" : "no")}", $"Id: {g.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> RecipeDetails(TuiContext ctx, RecipeId id)
