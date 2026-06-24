@@ -33,12 +33,24 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
         var settlements = (await ctx.Db.Settlements.Where(s => s.WorldId == worldId).ToListAsync())
             .OrderBy(s => s.Id.Value).ToList();
 
+        // Load consumers once for the whole world, grouped by seat (was re-queried per settlement).
+        var consumersBySeat = (await LoadConsumers(ctx, worldId))
+            .GroupBy(c => c.Seat)
+            .ToDictionary(g => g.Key, g => g.OrderBy(c => c.Id.Value).ToList());
+        var consumableGoodIds = consumableGoods.Select(g => g.Id).ToHashSet();
+
         foreach (var settlement in settlements)
         {
-            var consumers = (await LoadConsumers(ctx, worldId))
-                .Where(c => c.Seat == settlement.Id).OrderBy(c => c.Id.Value).ToList();
-            if (consumers.Count == 0)
+            if (!consumersBySeat.TryGetValue(settlement.Id, out var consumers) || consumers.Count == 0)
                 continue;
+
+            // Shops for till crediting + markup lookup.
+            var shopsById = (await ShopMarket.ShopsIn(ctx, settlement.Id)).ToDictionary(sh => sh.Id.Value);
+
+            // Load every shop stockpile of a consumable good in this settlement ONCE per day, grouped by
+            // good in stable (owner, id) order. Buying mutates these tracked instances in place, so the
+            // in-memory quantities stay current across consumers — no per-consumer/per-good re-query.
+            var offersByGood = await LoadOffers(ctx, worldId, shopsById, consumableGoodIds);
 
             // Per-good scarcity multiplier from the day's total demand vs supply (fixed for the day,
             // before any buying, so every consumer pays the same price for the day).
@@ -46,12 +58,9 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
             foreach (var good in consumableGoods)
             {
                 long demand = consumers.Sum(c => FixedMath.MulBp(c.Size, good.ConsumptionPerCapitaBp));
-                long supply = await ShopMarket.TotalSupply(ctx, settlement.Id, good.Id);
+                long supply = offersByGood.TryGetValue(good.Id, out var os) ? os.Sum(o => o.Stock.Quantity) : 0;
                 scarcityByGood[good.Id] = RetailPricing.ScarcityMultBp(demand, supply, ctx.World);
             }
-
-            // Shops for till crediting + markup lookup.
-            var shopsById = (await ShopMarket.ShopsIn(ctx, settlement.Id)).ToDictionary(sh => sh.Id.Value);
 
             // Accumulators emitted once per settlement-day.
             var sales = new Dictionary<(Guid Shop, GoodId Good), (long Qty, long Money)>();
@@ -68,10 +77,11 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
 
                     // Shops holding this good, priced by retail = cost × (1+markup×scarcity), cheapest first.
                     long scarcity = scarcityByGood[good.Id];
-                    var offers = (await ShopMarket.StockpilesForGood(ctx, settlement.Id, good.Id))
-                        .Where(st => st.Quantity > 0 && shopsById.ContainsKey(st.OwnerId))
-                        .Select(st => (Stock: st, Shop: shopsById[st.OwnerId],
-                                       Price: RetailPricing.RetailPrice(st.CostBasis, shopsById[st.OwnerId].MarkupBp, scarcity)))
+                    var goodOffers = offersByGood.TryGetValue(good.Id, out var go) ? go : [];
+                    var offers = goodOffers
+                        .Where(o => o.Stock.Quantity > 0)
+                        .Select(o => (o.Stock, o.Shop,
+                                      Price: RetailPricing.RetailPrice(o.Stock.CostBasis, o.Shop.MarkupBp, scarcity)))
                         .OrderBy(o => o.Price.Units).ThenBy(o => o.Shop.Id.Value)
                         .ToList();
 
@@ -130,5 +140,28 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
         foreach (var local in ctx.Db.Consumers.Local.Where(c => c.WorldId == worldId))
             byId[local.Id] = local;
         return byId.Values.ToList();
+    }
+
+    /// <summary>All shop stockpiles of the consumable goods in one settlement (DB ∪ Local), grouped by
+    /// good in stable (owner, id) order, paired with their shop. One query per settlement-day; replaces
+    /// the per-consumer/per-good <see cref="ShopMarket.StockpilesForGood"/> calls. Stockpiles are tracked
+    /// instances, so withdrawals during buying are reflected in-place.</summary>
+    private static async Task<Dictionary<GoodId, List<(Stockpile Stock, Shop Shop)>>> LoadOffers(
+        SimulationContext ctx, WorldId worldId, Dictionary<Guid, Shop> shopsById, HashSet<GoodId> consumableGoodIds)
+    {
+        var shopIds = shopsById.Keys.ToList(); // raw Guids translate in SQL
+        var fromDb = await ctx.Db.Stockpiles
+            .Where(s => s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop && shopIds.Contains(s.OwnerId))
+            .ToListAsync();
+        var byId = fromDb.ToDictionary(s => s.Id);
+        foreach (var local in ctx.Db.Stockpiles.Local.Where(s =>
+            s.WorldId == worldId && s.OwnerKind == StockpileOwnerKind.Shop && shopsById.ContainsKey(s.OwnerId)))
+            byId[local.Id] = local;
+
+        return byId.Values
+            .Where(s => consumableGoodIds.Contains(s.GoodId) && shopsById.ContainsKey(s.OwnerId))
+            .OrderBy(s => s.OwnerId).ThenBy(s => s.Id.Value)
+            .GroupBy(s => s.GoodId)
+            .ToDictionary(g => g.Key, g => g.Select(s => (Stock: s, Shop: shopsById[s.OwnerId])).ToList());
     }
 }
