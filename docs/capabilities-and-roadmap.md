@@ -2,7 +2,7 @@
 
 **Living document.** The single source of truth for (a) what the simulation can actually do today, (b) how confident we are in each capability, and (c) where we're going — short and long term. It exists so we plan deliberately instead of stacking features on unverified ground.
 
-_Last updated: 2026-06-24._
+_Last updated: 2026-06-24 (after a full validation sweep)._
 
 ---
 
@@ -17,7 +17,7 @@ Each item carries a status:
 - 🧭 **Planned** — designed or discussed; not built.
 - 💡 **Idea** — raised; not yet designed.
 
-> **Reality check:** most of the codebase is currently 🔨. It has tests and it runs, but only a subset of flows have actually been driven live in a terminal during a working session. Promoting 🔨 → ✅ requires a deliberate **live-validation pass** (see Roadmap → "Validation sweep"). Where an item is marked ✅ below, it was driven live either this session or in an earlier session with tmux evidence recorded in `docs/superpowers/decisions-log.md`.
+> **Validation sweep — 2026-06-24.** A full live sweep was run over the terminal (CLI directly, TUI via tmux). **Every capability tested passed — no failures.** All CLI commands, all 13 TUI create-forms (verified by querying the DB after each), all 4 edit-forms, snapshots, scoped log, marketplace board, sort, filter, merchant display names, and caravan date formatting are now ✅. Remaining 🔨 items are ones not yet exercised or genuinely not built. Where an item is marked ✅ below, it was driven live in this sweep or an earlier session with tmux evidence in `docs/superpowers/decisions-log.md`.
 
 ---
 
@@ -62,24 +62,21 @@ Each item carries a status:
 - ✅ `log <scope> <name>` and `summary` driven live; scoped TUI log view (`l`) validated in an earlier session.
 
 ### Snapshots & branching
-- 🔨 `VACUUM INTO` snapshot, branch, and in-C# structural compare; TUI `S` action.
-- 🔨 **Not driven live this session** — provisional until a validation pass.
+- ✅ `VACUUM INTO` snapshot via CLI (`snapshot`) and TUI (`S` → destination prompt → file written) — both driven live this sweep.
+- 🔨 Branch and in-C# structural compare — exist; not exercised this sweep.
 
 ### DM / party actions
-- 🔨 Buy-out a good, adjust market stock, disable/enable production; all logged as player actions.
-- ✅ Buy-out validated end-to-end in an earlier tmux session; `adjust`/`actions` exercised via CLI.
+- ✅ Buy-out, adjust market stock, disable/enable production — all driven live via CLI this sweep and logged (the `actions` list shows them); buy-out also validated in the TUI in an earlier session.
 
 ### Interface: CLI (`WorldEcon.Cli`)
-- ✅ `new`, `import`, `advance`, `list`, `stock`, `consumers`, `caravans`, `log`, `summary` — all driven live this session with correct output.
-- 🔨 `price`, `merchants`, `actions`, `snapshot`, `disable`/`enable` — exist; not all re-exercised this session.
+- ✅ Entire command surface driven live this sweep with correct output: `new`, `import`, `advance`, `list`, `stock`, `price`, `consumers`, `merchants`, `caravans`, `log`, `summary`, `buy`, `adjust`, `disable`, `enable`, `actions`, `snapshot`.
 
 ### Interface: TUI (`WorldEcon.Tui`, k9s-style navigator)
 - ✅ Drill navigation (Enter/Esc/hjkl), `:` command bar with autocomplete, `/` regex filter, `o` column sort, `d` master-detail view, `q`/`:q` quit — validated live (this + earlier sessions).
-- ✅ `n` (new) create-forms: **Good** and **Settlement** driven live end-to-end (fields → validation → save → navigate to the new row).
-- 🔨 `n` create-forms for the other 11 entity types (Continent/Country/Region/Route/Shop/Stock/Merchant/Consumer/Endowment/Recipe/ProductionNode) — unit-tested only.
-- 🔨 `E` (edit) forms (settlement state, region, merchant capital, shop till) — unit-tested only; **not driven live**.
-- ✅ Advance UX: `⏳ working…` busy indicator + input-lock during a background advance + result dialog + header refresh — validated live this session.
-- 🔨 Scoped log view, marketplace board, merchant display names ("Caravaneer"), caravan-date formatting — built; some validated in earlier sessions, the recent fixes not yet driven live.
+- ✅ All **13** `n` (new) create-forms driven live this sweep and confirmed persisted to the DB: Continent, Country, Region, Settlement, Route, Good, Shop, Stock, Merchant, Consumer, Resource Endowment, Recipe (incl. the input/output line loop), Production Node (facility derived from the chosen recipe).
+- ✅ All **4** `E` (edit) forms driven live: settlement state (Active→Ruined, reflected in the list), region kind/country, merchant capital (+/−), shop till.
+- ✅ Advance UX: `⏳ working…` busy indicator + input-lock during a background advance + result dialog + header refresh.
+- ✅ Scoped log view (`l`), marketplace board (Good│Category│Shop│Qty│Min Price│Price), merchant display names ("Caravaneer"), and caravan Arrive dates (formatted, not raw ticks) — all driven live this sweep.
 
 ### Performance
 - ✅ Long advances are fast: a 2-month advance dropped from 5+ min to ~9 s (skip-ahead loop + change-tracking discipline + demand-phase N+1 fix). Measured live via CLI timing this session.
@@ -96,7 +93,7 @@ Each item carries a status:
 2. **No labor.** Consumer income is a free allowance faucet; nothing employs anyone or pays wages, so the money loop isn't closed.
 3. **Economy isn't balanced.** Essentials are met; comfort/speciality goods run caravan-limited shortfalls. Intentional for now, but a tuning pass is owed.
 4. **Advance still ~0.1 s/day** — fine for months, slow for many years; N+1 in Production/Pricing/Trade remains.
-5. **Most TUI flows are 🔨, not ✅** — edit-forms, 11 of 13 create-forms, snapshots, and recent display fixes have not been driven live.
+5. ~~Most TUI flows are 🔨, not ✅.~~ **Resolved by the 2026-06-24 validation sweep** — forms (create + edit), snapshots, log, marketplace board, and the recent display fixes were all driven live and pass.
 6. **Terminology:** raw food crop is "Grain," not "Wheat."
 
 ---
