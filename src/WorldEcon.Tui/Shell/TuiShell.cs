@@ -56,6 +56,10 @@ public sealed class TuiShell : Window
 
     private (LogScopeKind Kind, Guid Id, string Title)? _currentLogScope;
 
+    // 0 = idle, 1 = a background operation is running. Guards against starting a second operation
+    // (which would touch the non-thread-safe WorldDbContext concurrently) and drives the busy hint.
+    private int _busy;
+
     private readonly SingleWordSuggestionGenerator _rootSuggest = new();
     private readonly IGlobalAction[] _globalActions = [new AdvanceAction(), new SnapshotAction()];
     private readonly IRowAction[] _cityActions = [new BuyOutAction(), new DisableProductionAction(), new EnableProductionAction()];
@@ -228,7 +232,8 @@ public sealed class TuiShell : Window
     private void RefreshHeader()
     {
         var dbPath = _ctx.DbPath ?? "(in-memory)";
-        _header.Text = $" {_ctx.World.Name}  •  {_ctx.CurrentDateLabel}  •  {dbPath}";
+        var busy = Volatile.Read(ref _busy) != 0 ? "   ⏳ working…" : "";
+        _header.Text = $" {_ctx.World.Name}  •  {_ctx.CurrentDateLabel}  •  {dbPath}{busy}";
     }
 
     private void RefreshStatus()
@@ -746,10 +751,23 @@ public sealed class TuiShell : Window
     private void Dispatch(Func<Task> work)
     {
         if (_app is null) { work().GetAwaiter().GetResult(); return; }
+
+        // Serialize operations: only one may run at a time. A keystroke during a long advance would
+        // otherwise start a second task hitting the same WorldDbContext concurrently and throw. While
+        // one runs, further triggers are ignored and the header shows a "working…" hint. (Prompt-bar
+        // input still flows — prompts run inside the in-flight operation, not through Dispatch.)
+        if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+            return;
+        Post(RefreshHeader);
         _ = Task.Run(async () =>
         {
             try { await work(); }
             catch (Exception ex) { if (Ui is not null) await Ui.ShowMessageAsync("Error", [ex.Message]); }
+            finally
+            {
+                Interlocked.Exchange(ref _busy, 0);
+                Post(RefreshHeader);
+            }
         });
     }
 
