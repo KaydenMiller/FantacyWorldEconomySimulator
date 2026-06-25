@@ -1,6 +1,6 @@
 # Money-Supply Ledger — Design
 
-**Status:** Approved (instrument-only scope confirmed by the author; remaining choices decided per the overnight guidelines — see `docs/overnight-2026-06-25-decisions-and-plan.md`). Built autonomously.
+**Status:** Built + live-validated. **Post-review revisions (2026-06-25, author walked the 8 decisions):** (1) the ledger tracks **faucets & sinks only** — the `RetailSale` *transfer* was dropped (it's a *supply* ledger; conserved place-to-place movement belongs to the future **geographic money-flow** feature). (2) TUI command renamed to **`:ledger`** (CLI is `money`/`ledger`). (3) Party gold is *not* money-neutral after all → a future **Party Treasury & DM money-injection** subsystem (wallets + DM injection that feeds the ledger + warn-before-large-injection/backup). Cadence (monthly+end), conservation (record + fail tests), derived total supply, the `ctx.Money` emitter, and the snapshot+lines model were all confirmed. Original scope: instrument-only.
 
 **Goal:** Make every flow of currency in the world **explicit, categorized, conserved-checkable, and queryable** — without changing economic behavior. This is the foundation for taxes/tariffs/upkeep sinks and the labor/wage loop (wages without a sink ledger = runaway inflation), and it directly serves the "if the DM can't see it, it doesn't exist" principle.
 

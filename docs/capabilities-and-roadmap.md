@@ -56,7 +56,7 @@ Each item carries a status:
 ### Money & currency
 - 🔨 World-configurable currency denominations (default copper/silver/gold/platinum 10:10:10); display-only (Money math is base units).
 - ✅ Currency formatting observed live (CLI shows `3g 2s 1c` style; TUI money columns).
-- ✅ **Money-supply ledger** — every currency flow categorized Faucet/Sink/Transfer; monthly + end-of-advance snapshots with derived total supply, per-channel breakdown, net delta, and a conservation discrepancy (0 = no untracked flow); surfaced via CLI `money` and TUI `:money`. Live-validated; conservation holds. Instrument-only (the trade money leaks are now *visible* channels, not fixed). Spec: `docs/superpowers/specs/2026-06-25-money-supply-ledger-design.md`.
+- ✅ **Money-supply ledger** — every supply-changing flow categorized **Faucet/Sink** (transfers excluded — it's a *supply* ledger); monthly + end-of-advance snapshots with derived total supply, per-channel breakdown, net delta, and a conservation discrepancy (0 = no untracked flow); surfaced via CLI `money`/`ledger` and TUI `:ledger`. Live-validated; conservation holds. Instrument-only (the trade money leaks are now *visible* channels, not fixed). Spec: `docs/superpowers/specs/2026-06-25-money-supply-ledger-design.md`. **It immediately revealed the demo world inflates ~16k p/month** (allowance + merchant-sale faucets ≫ the merchant-purchase sink; consumers hoard).
 
 ### Activity / event log
 - 🔨 Append-only event stream with write-time visibility materialization, magnitude-driven upward propagation, granularity-independent retention, regex query + on-demand summaries.
@@ -107,6 +107,8 @@ Each item carries a status:
 - **Production/Pricing/Trade N+1 cleanup** → sub-second advances (load each settlement's stockpiles once per day, like the demand phase already does).
 
 ### Medium term
+- **Party Treasury & DM money injection** (decided 2026-06-25, from the ledger review): model the party as in-world money-holders — **individual member wallets + a collective party purse**. Wallets change by **buying/selling** with shops & merchants (wallet ⇄ till, tracked) and by the **DM adjusting them directly** (a faucet/sink that feeds the supply ledger — so injecting gold and watching a town's economy react is *visible*). **Safety:** before a **large injection**, **warn the DM** (not automatic) to back up — reuses the existing snapshot/branch/fork. New `MoneyChannel`s (party spend/earn, DM injection/removal) plug into the ledger.
+- **Geographic money-flow / balance-of-trade** (decided 2026-06-25): track **net money in/out per place** (settlement → region → country → continent) and **net flow between settlements along trade routes** — the basis for a future **trade-route-arrow visualization** ("net coin Hammerfell → Sunport this month"). This is where *transfers* (deliberately excluded from the supply ledger) are tracked, at the geographic level; it also captures party gold flowing into a town.
 - **Labor & wages subsystem** — population as a labor supply, employment at facilities, wages → consumer income (replacing the allowance faucet and **closing the money loop**). This is where the "workers" seam comes alive.
 - **Retail restocking / wholesale→retail money flow** (shop-economy Phase 3): retail shops buy from producer shops to refill; trade & industrial demand fully over shops; transient caravan market stalls.
 - **Production profitability throttle** (Phase 4): producers slow when their shop accumulates unsold stock at a loss — closes the glut loop.

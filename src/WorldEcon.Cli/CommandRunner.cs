@@ -37,7 +37,7 @@ internal static class CommandRunner
                 "stock" => await CmdStock(args),
                 "merchants" => await CmdMerchants(args),
                 "consumers" => await CmdConsumers(args),
-                "money" => await CmdMoney(args),
+                "money" or "ledger" => await CmdMoney(args),
                 "caravans" => await CmdCaravans(args),
                 "snapshot" => await CmdSnapshot(args),
                 "buy" => await CmdBuy(args),

@@ -12,7 +12,7 @@ namespace WorldEcon.Tui.Navigation;
 public sealed class Navigator : INavigator
 {
     private static readonly string[] Roots =
-        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "consumers", "caravans", "factories", "recipes", "claims", "actions", "log", "summary", "money"];
+        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "consumers", "caravans", "factories", "recipes", "claims", "actions", "log", "summary", "ledger"];
 
     public IReadOnlyList<string> RootNames => Roots;
 
@@ -35,7 +35,7 @@ public sealed class Navigator : INavigator
             "actions" or "action" => "actions",
             "log" or "events" => "log",
             "summary" => "summary",
-            "money" or "ledger" or "economy" => "money",
+            "ledger" or "money" or "economy" => "ledger",
             _ => string.Empty,
         };
         return canonical.Length > 0;
@@ -59,7 +59,7 @@ public sealed class Navigator : INavigator
         "claims" => await ClaimsView(ctx),
         "actions" => await ActionsView(ctx),
         "log" => await LogViewForScopeAsync(LogScopeKind.World, ctx.World.Id.Value, "World", null, ctx),
-        "money" => await MoneyView(ctx),
+        "ledger" => await MoneyView(ctx),
         _ => new NavView(canonicalRootName, ["(unknown)"], []),
     };
 

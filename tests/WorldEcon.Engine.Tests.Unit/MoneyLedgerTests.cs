@@ -41,10 +41,10 @@ public class MoneyLedgerTests
                 + (await s.Db.Merchants.Where(m => m.WorldId == s.World.Id).ToListAsync()).Sum(m => m.Capital.Units);
             latest.TotalSupply.Units.Should().Be(actualSupply);
 
-            // The known faucet (allowance) and the retail transfer both got recorded.
+            // The known faucet (allowance) is recorded; the ledger holds only faucets & sinks.
             var lines = await s.Db.MoneyLedgerLines.Where(l => l.WorldId == s.World.Id).ToListAsync();
             lines.Should().Contain(l => l.Channel == MoneyChannel.ConsumerAllowance && l.Kind == MoneyFlowKind.Faucet && l.Amount.Units > 0);
-            lines.Should().Contain(l => l.Channel == MoneyChannel.RetailSale && l.Kind == MoneyFlowKind.Transfer);
+            lines.Should().OnlyContain(l => l.Kind == MoneyFlowKind.Faucet || l.Kind == MoneyFlowKind.Sink);
         }
         finally { await LogTestWorld.DisposeAsync(s); }
     }

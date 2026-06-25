@@ -9,7 +9,6 @@ public class MoneyChannelsTests
     public void KindOf_ClassifiesEveryChannel()
     {
         MoneyChannels.KindOf(MoneyChannel.ConsumerAllowance).Should().Be(MoneyFlowKind.Faucet);
-        MoneyChannels.KindOf(MoneyChannel.RetailSale).Should().Be(MoneyFlowKind.Transfer);
         MoneyChannels.KindOf(MoneyChannel.MerchantPurchase).Should().Be(MoneyFlowKind.Sink);
         MoneyChannels.KindOf(MoneyChannel.MerchantSale).Should().Be(MoneyFlowKind.Faucet);
     }
