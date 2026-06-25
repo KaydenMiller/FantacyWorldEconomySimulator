@@ -119,6 +119,59 @@ Each item carries a status:
 
 ---
 
+## Refined economic direction (2026-06-25)
+
+The product target and the design decisions made while reviewing the research below. **This supersedes the looser roadmap above where they conflict.**
+
+### Target
+A **full, quantity-driven economy**: real goods are produced, stored, hauled, and consumed in **real amounts**, and **price is an _output_** of "what's actually available + how much is needed + other market factors" — not the thing being simulated. This is a **personal tool for the author** (not a product for others), so it optimizes for **realism over convenience**; creature comforts may be sacrificed, but the two hard constraints below may not. North-star references: **X4: Foundations** and **EVE Online**.
+
+### Cross-cutting constraints (govern every decision)
+- **Determinism** — seeded RNG + deterministic tie-breaks; runs are reproducible. (The price-belief mechanic introduces an RNG surface that must be seeded/threaded explicitly.)
+- **Performance** — non-negotiable: fast world-gen and fast simulation. Every mechanic below is cheap aggregate/constant math.
+- **Closed loops** — every good needs both a producer and a consumer; every unit of money needs both a faucet and a sink. Open loops are the #1 source of unstable, ugly results.
+
+### Locked design decisions
+1. **Price discovery — per-shop price-belief intervals.** Each shop keeps a `[low, high]` confidence band per good; it offers within the band, narrows it on successful trades, widens/shifts it toward the market on failures. Prices thus **emerge from real quantity flows** (offers clear or fail against real inventories), giving dispersed, lagged, believable prices and natural haggling ranges. Quantity sim underneath; emergent prices on top. (Per-shop chosen over per-market for realism.)
+2. **Demand elasticity per good.** Demanded quantity bends with price: **inelastic** staples (grain, salt) keep selling and spike hard in shortage; **elastic** luxuries (wine, silk) see demand collapse. Composes with the existing tier-substitution. Self-correcting price feedback; makes shortages behave believably per good.
+3. **Money-supply discipline.** Track total money + an explicit **faucet−sink ledger** and net delta, surfaced to the DM. This is foundational and a **prerequisite for the labor/wage loop** (wages without sinks = runaway inflation). Implicit faucets (consumer allowance today) must be paired with real sinks (taxes, tariffs, fees, upkeep, spoilage-as-value-destruction).
+4. **Stability guardrails.** (a) **Shortage-aware** production/restock decisions (bias toward goods where demand>supply) to avoid the zero-profit **death-spiral**; (b) **per-facility upkeep / idleness cost** so chronically unprofitable shops/factories close on their own — natural churn, and doubles as a money sink.
+5. **Population dynamics — migration.** A settlement's **provisioning/attractiveness** (need-satisfaction, food weighted heaviest) drives **migration**: under-provisioned places lose people, prosperous ones gain. Modeled as an aggregate **migrant flow** (a caravan-like entity that travels routes over real time, subject to the same logistics/hazards) and surfaced as a queryable event. Self-balances populations; later feeds labor supply. _Open: migration only, or also births/deaths tied to food?_
+6. **Weight & dimensional weight.** Each good has **mass + volume**; per-unit **haul weight = max(mass, volume ÷ dimensionalFactor)** (factor is a world config knob, like currency/calendar). **Both transport and storage are weight/volume-bounded.** Promotes the existing `SizeClass` to explicit mass/volume (D&D liberties for fantasy goods). Consequence: bulky-cheap goods (grain, ore, timber) stay locally produced; dense-valuable goods (ingots, spices, gems) become the long-haul trade — emergent comparative advantage. Makes transport the real binding constraint (the X4/EVE lesson).
+7. **Transport modes** — a 5-axis trade-off (capacity in haul-weight · speed · cost · hazard exposure · routing/range), in two families:
+   - **Open-graph movers** over the route network: porter-with-a-sack → handcart → small wagon → large wagon → wagon caravan (capacity ↑, speed ↓, risk ↑).
+   - **Geography-benders:** **airship** (fast, avoids ground hazards, modest cap, wealth-gated) and **teleport links** like the campaign's **"Light Bridge"** — a first-class **transport-link entity** (fixed endpoint pairs — today 2 cities, DM-extensible; instant over any distance; **daily throughput cap**; **fee**) → a scarce, high-premium service and a controllable chokepoint/faction lever.
+   - Merchants pick the most profitable **feasible** mode per shipment (landed cost vs. price gradient); **wealth gates access** (own an airship vs. hire a porter); public links are pay-per-use. _Open: bridge fee fixed (DM-set) vs. emergent from daily-slot scarcity?_
+8. **Extraction as first-class facilities.** Farms/mines/plantations become facilities like factories (multi-good via recipes, visible/browsable, correctly labeled — not "Mine" for everything), with **optional DM-controlled depletable reserves** (infinite/stable toggle, growable "discover more ore," multiple veins) and a **yield knob** (land quality / region tree-density / season). **Workers recorded as a seam** (not yet economically active). _Open: yield = pure DM knob vs. automatic seasonal cycle; reserve default infinite vs. finite._
+9. **Labor & wages (next major subsystem, built AFTER the money ledger).** Population as a labor supply, employment at facilities, wages → consumer income — replacing the allowance faucet and **closing the money loop**. The "workers" seam comes alive here.
+
+### Query & play surfaces (DM-facing; mostly session-time)
+- **"What can players buy here, at what price, and when does it restock?"** — a fast session-time view; *restock* is answered by whether a **real caravan / known source will actually deliver** the good (forward-looking from logistics, not a fudge).
+- **Queryable, impact-ranked record of already-happened events** (leverages the existing log **magnitude tiers** Routine/Notable/Major/Historic) so the DM filters impactful from mundane and **builds their own hooks** — the tool exposes facts, it does **not** auto-generate plot. Events occur regardless of party action ("bandits hit caravan X at mile Y on the Z road").
+- **Lightweight travel/encounter prompter:** party route + speed → terse, **non-binding** prompts that read sim state (bandits on route, terrain, nearby things) but **never mutate the sim** ("a wolf is stalking you," "something fell off a cart on the path").
+
+### Recommended foundational build ordering
+1. Money-supply ledger + sinks/faucets (with upkeep/idleness as the first sinks).
+2. Price discovery (per-shop belief intervals) + demand elasticity.
+3. Weight/dim-weight + transport modes (makes friction real).
+4. Stability guardrails (shortage-aware production) + population migration.
+5. First-class extraction facilities (+ depletion, yield).
+6. Labor & wages (closes the money loop).
+7. Query & travel surfaces (ongoing; partly leverages the existing log).
+
+Rationale: the **money + price foundations** make the later pieces (especially labor) safe and believable; **weight/transport** make the quantity sim feel real; **labor goes last** because it needs the sink ledger to not inflate.
+
+### Open questions (resolve per-feature in specs)
+- Population: migration only, or + births/deaths tied to food?
+- Extraction yield: pure DM knob vs. automatic seasonal cycle? Reserve default infinite vs. finite?
+- Teleport/airship link fee: fixed DM premium vs. emergent slot-scarcity price?
+- Price-belief **clearing mechanism**: full double-auction vs. a simpler deterministic match (given the determinism constraint).
+
+### Research basis
+Distilled from a four-stream survey (commercial sims, RPG-economy & ABM literature incl. Doran-Parberry, TTRPG systems/tools, open-source sims like BazaarBot) — see `docs/research/2026-06-25-economy-research.md`.
+
+---
+
 ## Discussion notes — 2026-06-24 session
 
 Captured so this thread isn't lost:
