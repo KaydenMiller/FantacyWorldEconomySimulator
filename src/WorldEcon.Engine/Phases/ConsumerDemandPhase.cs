@@ -100,6 +100,7 @@ public sealed class ConsumerDemandPhase : ISimulationPhase
                         offer.Stock.Withdraw(take).OrThrow("consumer purchase");
                         consumer.Spend(new Money(cost));
                         offer.Shop.CreditTill(new Money(cost));
+                        ctx.Money.Record(MoneyChannel.RetailSale, cost); // transfer: budget → till
                         needed -= take;
                         var key = (offer.Shop.Id.Value, good.Id);
                         var prev = sales.TryGetValue(key, out var pv) ? pv : (0L, 0L);

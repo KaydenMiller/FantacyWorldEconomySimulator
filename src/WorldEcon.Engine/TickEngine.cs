@@ -56,6 +56,10 @@ public sealed class TickEngine : ITickEngine
         {
             const long saveIntervalTicks = 90 * Tick.DefaultMinutesPerDay; // ~quarter-year batches
             long lastSaveTick = ctx.World.CurrentTick.Value;
+            // Money-supply snapshots roll up on calendar month rollover (calendar-correct for variable
+            // month lengths) plus one at end of advance. Seed from the starting month so we snapshot
+            // when the month actually changes, not immediately.
+            int lastMonthKey = MonthKey(ctx, ctx.World.CurrentTick);
 
             while (ctx.World.CurrentTick.Value < finalTick)
             {
@@ -79,6 +83,13 @@ public sealed class TickEngine : ITickEngine
                         await phase.ExecuteAsync(ctx, boundary);
                 }
 
+                int monthKey = MonthKey(ctx, boundary);
+                if (monthKey != lastMonthKey)
+                {
+                    await ctx.Money.SnapshotAsync(boundary);
+                    lastMonthKey = monthKey;
+                }
+
                 if (nextDue - lastSaveTick >= saveIntervalTicks)
                 {
                     tracker.DetectChanges();
@@ -89,6 +100,7 @@ public sealed class TickEngine : ITickEngine
                 }
             }
 
+            await ctx.Money.SnapshotAsync(ctx.World.CurrentTick); // final data point for this advance
             await LogRetention.PruneAsync(ctx.Db, ctx.World.Id, ctx.World.CurrentTick);
             tracker.DetectChanges();
             await ctx.Db.SaveChangesAsync();
@@ -97,5 +109,13 @@ public sealed class TickEngine : ITickEngine
         {
             tracker.AutoDetectChangesEnabled = prevAutoDetect;
         }
+    }
+
+    /// <summary>A comparable key for the in-world month (year*100+month) — used to detect month rollover
+    /// for money-ledger snapshots, correct even when months have different lengths.</summary>
+    private static int MonthKey(SimulationContext ctx, Tick tick)
+    {
+        var d = ctx.Calendar.ToDate(tick);
+        return d.Year * 100 + d.Month;
     }
 }

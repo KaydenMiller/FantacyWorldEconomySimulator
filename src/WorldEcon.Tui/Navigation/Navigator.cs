@@ -12,7 +12,7 @@ namespace WorldEcon.Tui.Navigation;
 public sealed class Navigator : INavigator
 {
     private static readonly string[] Roots =
-        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "consumers", "caravans", "factories", "recipes", "claims", "actions", "log", "summary"];
+        ["continents", "countries", "regions", "cities", "goods", "shops", "merchants", "consumers", "caravans", "factories", "recipes", "claims", "actions", "log", "summary", "money"];
 
     public IReadOnlyList<string> RootNames => Roots;
 
@@ -35,6 +35,7 @@ public sealed class Navigator : INavigator
             "actions" or "action" => "actions",
             "log" or "events" => "log",
             "summary" => "summary",
+            "money" or "ledger" or "economy" => "money",
             _ => string.Empty,
         };
         return canonical.Length > 0;
@@ -58,8 +59,34 @@ public sealed class Navigator : INavigator
         "claims" => await ClaimsView(ctx),
         "actions" => await ActionsView(ctx),
         "log" => await LogViewForScopeAsync(LogScopeKind.World, ctx.World.Id.Value, "World", null, ctx),
+        "money" => await MoneyView(ctx),
         _ => new NavView(canonicalRootName, ["(unknown)"], []),
     };
+
+    /// <summary>Money-supply ledger: the latest month's flows by channel (faucet/sink/transfer), with
+    /// total supply + net change in the title. History lives in the CLI `money` command.</summary>
+    private async Task<NavView> MoneyView(TuiContext ctx)
+    {
+        var latest = (await ctx.Db.MoneyLedgerSnapshots.Where(s => s.WorldId == ctx.World.Id).ToListAsync())
+            .OrderByDescending(s => s.Sequence).FirstOrDefault();
+        if (latest is null)
+            return new NavView("Money", ["Kind", "Channel", "Amount"],
+                [new NavRow("none", NavKind.Leaf, ["(no snapshots — advance at least one in-world month)", "", ""])]);
+
+        var lines = (await ctx.Db.MoneyLedgerLines.Where(l => l.SnapshotId == latest.Id).ToListAsync())
+            .OrderBy(l => (int)l.Kind).ThenBy(l => (int)l.Channel).ToList();
+        var d = ctx.Calendar.ToDate(latest.Tick);
+        var title = $"Money — {ctx.FormatMoney(latest.TotalSupply)} @ Y{d.Year} M{d.Month}  (net {ctx.FormatMoney(latest.NetDelta)}/mo)";
+
+        var rows = lines
+            .Select(l => new NavRow(l.Id.Value.ToString(), NavKind.Leaf,
+                [l.Kind.ToString(), l.Channel.ToString(), ctx.FormatMoney(l.Amount)]))
+            .ToList();
+        if (latest.Discrepancy.Units != 0)
+            rows.Add(new NavRow("discrepancy", NavKind.Leaf,
+                ["⚠", "Discrepancy (untracked)", ctx.FormatMoney(latest.Discrepancy)]));
+        return new NavView(title, ["Kind", "Channel", "Amount"], rows);
+    }
 
     // ---- drill --------------------------------------------------------------------------------
 

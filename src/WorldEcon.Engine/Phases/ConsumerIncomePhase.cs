@@ -30,6 +30,10 @@ public sealed class ConsumerIncomePhase : ISimulationPhase
             byId[local.Id] = local;
 
         foreach (var consumer in byId.Values.OrderBy(c => c.Id.Value))
-            consumer.Earn(_income.GrantFor(consumer.Size));
+        {
+            var grant = _income.GrantFor(consumer.Size);
+            consumer.Earn(grant);
+            ctx.Money.Record(MoneyChannel.ConsumerAllowance, grant.Units); // faucet
+        }
     }
 }

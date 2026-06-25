@@ -64,7 +64,11 @@ public sealed class TradePhase : ISimulationPhase
             destStock.Deposit(caravan.Quantity, caravan.UnitCostBasis, _valuation);
 
             var merchant = await FindMerchant(ctx, worldId, caravan.OwnerId);
-            merchant?.Earn(new Money(caravan.Quantity * destPrice));
+            if (merchant is not null)
+            {
+                merchant.Earn(new Money(caravan.Quantity * destPrice));
+                ctx.Money.Record(MoneyChannel.MerchantSale, caravan.Quantity * destPrice); // faucet (buyer undebited today)
+            }
 
             caravan.MarkDelivered();
             await ctx.Log.EmitAsync(LogEventType.MerchantArrived,
@@ -146,6 +150,7 @@ public sealed class TradePhase : ISimulationPhase
             if (quantity < 1)
                 continue;
             merchant.Spend(new Money(quantity * bestSeatPrice));
+            ctx.Money.Record(MoneyChannel.MerchantPurchase, quantity * bestSeatPrice); // sink (source shop uncredited today)
 
             long travelTicks = bestDest.Distance * TravelTicksPerDistance;
             var arrive = new Tick(tick.Value + travelTicks);
