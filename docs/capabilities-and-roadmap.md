@@ -56,6 +56,7 @@ Each item carries a status:
 ### Money & currency
 - 🔨 World-configurable currency denominations (default copper/silver/gold/platinum 10:10:10); display-only (Money math is base units).
 - ✅ Currency formatting observed live (CLI shows `3g 2s 1c` style; TUI money columns).
+- ✅ **Money-supply ledger** — every currency flow categorized Faucet/Sink/Transfer; monthly + end-of-advance snapshots with derived total supply, per-channel breakdown, net delta, and a conservation discrepancy (0 = no untracked flow); surfaced via CLI `money` and TUI `:money`. Live-validated; conservation holds. Instrument-only (the trade money leaks are now *visible* channels, not fixed). Spec: `docs/superpowers/specs/2026-06-25-money-supply-ledger-design.md`.
 
 ### Activity / event log
 - 🔨 Append-only event stream with write-time visibility materialization, magnitude-driven upward propagation, granularity-independent retention, regex query + on-demand summaries.
