@@ -62,6 +62,21 @@ nests cities *directly* under kingdoms and has regions with no country. In-schem
    are **not** settlements. Notable ones are recorded as points of interest (§7 notes) and inform
    goods, but do not become map nodes under the current schema.
 
+### Schema re-check (verified 2026-06-25 — the API has moved since the plan was drafted)
+Re-read against the current `SeedModel.cs` + the new canonical sample `samples/aerthos.seed.json`.
+**Geography is unchanged** — still strict Continent→Country→Region→Settlement; countryless regions,
+region kind, settlement state, and claims are **still not exposed** in the import DTO, so §3's fitting
+and the deferrals below stand. Two new *optional* fields now exist and we adopt them:
+- `SeedGood.needTier` (`Essential` | `Standard` | `Comfort`; omitted ⇒ Essential) — assigned per good in §5.
+- `SeedSettlement.consumers` (`[{ size, budget }]`) — pre-seeds demand from day 1; **deferred to the
+  economic pass** (the political pass leaves it empty). When used, seed at the engine's
+  DefaultConsumerSize (1000) and a budget ≈ one week's allowance.
+
+**Authoring convention:** the canonical sample uses **camelCase** keys (`name`, `continents`,
+`fromSettlement`, `needTier`, …) — mirror it. The sample's coords/distances are small abstract integers;
+we instead use map-pixel coords and map-mile distances (§6), which is fine as long as it stays internally
+consistent. **Re-verify the schema again at execution** — it has changed once and may change again.
+
 ### Deferred to "needs schema support" (record now, encode later — see §8)
 - **Countryless regions** (the domain already supports `Region.CountryId == null`) — if the importer
   exposes it by execution time, model Threykadian Desolation / Wastelands as true countryless regions
@@ -111,6 +126,11 @@ nodes / endowments / shop inventories are a later economic pass (not this politi
 | Gold | Luxury (Raw) | Zeigelith "City of Gold" | Zeigelith |
 | Spirits (burning alcohol) | Misc | Syrusburn "burning alcohol… magical fire" | Syrusburn |
 | Bows / Arrows | Weapon | Ezorath "City of Arrows… ancient ways… druids" | Ezorath |
+
+**NeedTier** (the new optional `SeedGood` field): staples (Grain/Corn, Fish, Livestock, Iron ore,
+Stone) → `Essential`; manufactured / utility goods (Tools, Weapons, Armor, Ink, Textiles, Ships,
+Arcane Engine, Bows/Arrows, the Archanite family) → `Standard`; indulgences (Luxury goods, Emeralds,
+Gold, Spirits) → `Comfort`.
 
 (Magic artifacts in `items/` — Morgal Blade, Lens of Focusing, Demonomicon, etc. — are *not* trade
 goods and are excluded from the catalog.)
@@ -251,9 +271,11 @@ A non-state umbrella for unaligned places sitting directly under Praxus (not in 
 
 ## 9. Execution checklist (when the import schema is stable)
 
-1. **Confirm the target schema** — re-read `src/WorldEcon.Seeding/SeedModel.cs` for any new fields the
-   other agent added (countryless region, region kind, settlement state, claims). Adopt them if
-   present (see §3/§8); otherwise use the strict-schema fallback.
+1. **Confirm the target schema** — re-read `src/WorldEcon.Seeding/SeedModel.cs` and mirror the canonical
+   sample `samples/aerthos.seed.json` (camelCase keys). As of 2026-06-25 geography is strict-nested with
+   optional `needTier`/`consumers`; the API has already shifted once, so re-verify and adopt any newly
+   exposed fields (countryless region, region kind, settlement state, claims — see §3/§8) if present,
+   else use the strict-schema fallback.
 2. **Author geography** — emit Praxus → 8 countries → 8 regions → 45 settlements from §7 (name, type,
    population, X/Y).
 3. **Place off-map settlements** — assign coords within each kingdom's map bounds for the cities
