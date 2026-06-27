@@ -14,3 +14,4 @@ public readonly record struct CaravanId(Guid Value) : IStronglyTypedId { public 
 public readonly record struct ConsumerId(Guid Value) : IStronglyTypedId { public static ConsumerId New() => new(Guid.NewGuid()); }
 public readonly record struct MoneyLedgerSnapshotId(Guid Value) : IStronglyTypedId { public static MoneyLedgerSnapshotId New() => new(Guid.NewGuid()); }
 public readonly record struct MoneyLedgerLineId(Guid Value) : IStronglyTypedId { public static MoneyLedgerLineId New() => new(Guid.NewGuid()); }
+public readonly record struct ShopPriceBeliefId(Guid Value) : IStronglyTypedId { public static ShopPriceBeliefId New() => new(Guid.NewGuid()); }

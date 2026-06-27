@@ -41,7 +41,10 @@ Each item carries a status:
 ### Demand & consumers
 - 🔨 Representative consumers (size = people represented, budget, seated at a settlement), spawned to population weekly.
 - 🔨 Allowance income (a money **faucet** — the placeholder until the labor/wage loop exists).
-- 🔨 Tiered demand: consumers buy Essential→Standard→Comfort, cheapest-retail-first within budget; purchases credit shop tills and emit per-shop sale events; unmet demand emits stockouts; scarcity-flexing retail price.
+- ✅ **Price discovery — per-shop price-belief bands cleared by a daily double auction** (`PriceDiscoveryPhase`, replaces the old scarcity-formula `ConsumerDemandPhase`). Each shop draws a deterministic in-band ask; each consumer bids a **per-unit demand curve** (peak willingness × need tier, decaying to base value at the last needed unit). Highest bid meets lowest ask while bid ≥ ask; **clears at the shop's posted ask**; the day's clearing price becomes the good's `MarketPrice`. Beliefs **narrow on sales, widen + shift toward the market on misses**. Goods auction in need-tier order so essentials claim budget first. Tuning lives on `World` (narrow/widen/shift fractions) and per-good peak willingness. Granularity-invariant + deterministic (hash-keyed draw).
+- ✅ Validated live (1-year demo advance, 2026-06-27): Bread clears **dispersed** across bakeries (2s 7c–2s 8c around its 3s base, ~200–250% realized margin over cost), surfaced by `price`; the money ledger reconciles (retail is a budget→till transfer, so total supply is unchanged by it).
+- 🔨 Representative consumers (size = people represented, budget, seated at a settlement), spawned to population weekly.
+- 🔨 Allowance income (a money **faucet** — the placeholder until the labor/wage loop exists).
 - ✅ Observed live: `advance` then `consumers` (budgets accumulating), `log city` (sales + stockouts), confirming demand runs.
 
 ### Trade & logistics
@@ -161,9 +164,9 @@ A **full, quantity-driven economy**: real goods are produced, stored, hauled, an
 - **Lightweight travel/encounter prompter:** party route + speed → terse, **non-binding** prompts that read sim state (bandits on route, terrain, nearby things) but **never mutate the sim** ("a wolf is stalking you," "something fell off a cart on the path").
 
 ### Recommended foundational build ordering
-1. Money-supply ledger + sinks/faucets (with upkeep/idleness as the first sinks).
-2. Price discovery (per-shop belief intervals) + demand elasticity.
-3. Weight/dim-weight + transport modes (makes friction real).
+1. ~~Money-supply ledger + sinks/faucets~~ ✅ **done** (instrument-only ledger; upkeep/idleness sinks still pending).
+2. ~~Price discovery (per-shop belief intervals) + demand elasticity~~ ✅ **done** (double-auction `PriceDiscoveryPhase` + per-unit demand curve; validated 2026-06-27).
+3. Weight/dim-weight + transport modes (makes friction real).  ← **next**
 4. Stability guardrails (shortage-aware production) + population migration.
 5. First-class extraction facilities (+ depletion, yield).
 6. Labor & wages (closes the money loop).

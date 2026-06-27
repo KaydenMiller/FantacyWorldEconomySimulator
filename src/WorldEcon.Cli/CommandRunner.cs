@@ -8,6 +8,7 @@ using WorldEcon.Engine;
 using WorldEcon.Engine.Actions;
 using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
+using WorldEcon.SharedKernel;
 using WorldEcon.Persistence.Snapshots;
 using WorldEcon.Seeding;
 using WorldEcon.SharedKernel.Currency;
@@ -203,12 +204,15 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"ShopName",-16} {"Stock",6} {"CostBasis",12} {"SalePrice",12} {"Margin(abs)",14} {"Margin(%)",10}");
+        // "Retail" is the price discovery auction's last clearing price — what townsfolk actually paid.
+        // Margin is realized against cost basis (Retail - CostBasis), not the shop's nominal markup.
+        Console.WriteLine($"  {"ShopName",-16} {"Stock",6} {"Retail",12} {"CostBasis",12} {"Margin(abs)",14} {"Margin(%)",10}");
         foreach (var line in value.Shops)
         {
-            var marginPct = line.MarginBp / 100.0;
+            var realizedMargin = line.RetailPrice.Units - line.UnitCostBasis.Units;
+            var marginPct = line.UnitCostBasis.Units > 0 ? realizedMargin * 100.0 / line.UnitCostBasis.Units : 0.0;
             Console.WriteLine(
-                $"  {line.ShopName,-16} {line.Stock,6} {currency.Format(line.UnitCostBasis),12} {currency.Format(line.SalePrice),12} {currency.Format(line.MarginAbs),14} {marginPct,9:0.##}%");
+                $"  {line.ShopName,-16} {line.Stock,6} {currency.Format(line.RetailPrice),12} {currency.Format(line.UnitCostBasis),12} {currency.Format(new Money(realizedMargin)),14} {marginPct,9:0.##}%");
         }
         return 0;
     }

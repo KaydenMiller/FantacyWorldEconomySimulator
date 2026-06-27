@@ -11,6 +11,7 @@ public sealed record ShopPriceLine(
     string ShopName,
     long Stock,
     Money UnitCostBasis,
+    Money RetailPrice,
     Money SalePrice,
     Money MarginAbs,
     int MarginBp);
@@ -47,7 +48,7 @@ public sealed class PriceMarginQuery(IShopRepository shops, IStockpileRepository
             var quote = shop.Quote(stock.CostBasis);
             lines.Add(new ShopPriceLine(
                 shop.Id, shop.Name, stock.Quantity, stock.CostBasis,
-                quote.SalePrice, quote.MarginAbs, quote.MarginBp));
+                stock.MarketPrice, quote.SalePrice, quote.MarginAbs, quote.MarginBp));
         }
 
         var ordered = lines

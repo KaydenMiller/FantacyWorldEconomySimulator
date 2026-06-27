@@ -8,9 +8,9 @@ public static class StandardPhases
         new Phases.ConsumerSpawnPhase(),
         new Phases.ConsumerIncomePhase(),
         new Phases.ProductionPhase(),
-        new Phases.ConsumerDemandPhase(),
+        new Phases.PriceDiscoveryPhase(),   // retail double-auction (replaces ConsumerDemandPhase)
         new Phases.PerishabilityPhase(),
-        new Phases.PricingPhase(),
+        new Phases.PricingPhase(),           // formula price for NON-consumed (industrial) goods only
         new Phases.TradePhase(),
     };
 }

@@ -319,34 +319,19 @@ public sealed class Navigator : INavigator
             .Where(s => shops.ContainsKey(s.OwnerId) && s.Quantity > 0)
             .ToList();
 
-        // Load settlement for population-based demand approximation.
-        var settlement = await ctx.Db.Settlements.FirstOrDefaultAsync(s => s.Id == settlementId);
-        var population = settlement?.Population ?? 0L;
-
-        // Compute per-good total supply (sum across all settlement shops) for scarcity calc.
-        var supplyByGood = stocks.GroupBy(s => s.GoodId)
-            .ToDictionary(g => g.Key, g => g.Sum(s => s.Quantity));
-
         var rows = stocks
             .Select(s =>
             {
                 var shop = shops[s.OwnerId];
                 var good = goods.TryGetValue(s.GoodId, out var g) ? g : null;
-                // Approximate demand as population × consumptionPerCapitaBp; supply = total shop qty.
-                long demand = good is not null ? SharedKernel.FixedMath.MulBp(population, good.ConsumptionPerCapitaBp) : 0;
-                long supply = supplyByGood.TryGetValue(s.GoodId, out var sq) ? sq : s.Quantity;
-                long scarcityMult = good is not null
-                    ? RetailPricing.ScarcityMultBp(demand, supply, ctx.World)
-                    : 10000L; // neutral (1.0) when good metadata unavailable
-                var retailPrice = RetailPricing.RetailPrice(s.CostBasis, shop.MarkupBp, scarcityMult);
                 return new NavRow(s.Id.Value.ToString(), NavKind.Leaf, new[]
                 {
                     good?.Name ?? s.GoodId.Value.ToString(),
                     good?.Category.ToString() ?? "",
                     shop.Name,
                     s.Quantity.ToString(),
-                    ctx.FormatMoney(s.CostBasis),   // Min Price = cost basis (break-even)
-                    ctx.FormatMoney(retailPrice),   // retail = cost × (1 + markup × scarcityMult)
+                    ctx.FormatMoney(s.CostBasis),    // Min Price = cost basis (break-even)
+                    ctx.FormatMoney(s.MarketPrice),  // Price = emergent clearing price (auction) / formula price
                 });
             })
             .OrderBy(r => r.Cells[0], StringComparer.Ordinal).ThenBy(r => r.Cells[2], StringComparer.Ordinal)

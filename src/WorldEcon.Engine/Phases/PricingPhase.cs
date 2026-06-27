@@ -29,8 +29,11 @@ public sealed class PricingPhase : ISimulationPhase
                 .ToListAsync())
             .ToDictionary(s => s.Id);
 
+        // Consumed goods are priced by PriceDiscoveryPhase (the retail double auction). This phase
+        // prices only the remaining NON-consumed (raw/industrial) goods via the supply/demand formula,
+        // as the reference price merchants trade on until the wholesale auction slice lands.
         var goods = (await ctx.Db.Goods
-                .Where(g => g.WorldId == worldId)
+                .Where(g => g.WorldId == worldId && g.ConsumptionPerCapitaBp == 0)
                 .ToListAsync())
             .ToDictionary(g => g.Id);
 

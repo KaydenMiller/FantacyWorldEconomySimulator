@@ -66,31 +66,9 @@ public class PricingPhaseTests
         return sp.MarketPrice;
     }
 
-    [Test]
-    public async Task Pricing_HighDemandRaisesPrice()
-    {
-        // pop 1000 * 2000bp = 200 demand; supply 100 -> scarcity 2.0 -> mult 2.0 -> price 100*2 = 200.
-        var seed = await SeedAsync(population: 1000, consumptionPerCapitaBp: 2000, baseValue: 100, marketQuantity: 100);
-        try
-        {
-            await AdvanceAsync(seed.Path, seed.WorldId, 1440);
-            (await MarketPriceAsync(seed.Path, seed.WorldId)).Should().Be(new Money(200));
-        }
-        finally { File.Delete(seed.Path); }
-    }
-
-    [Test]
-    public async Task Pricing_HighSupplyLowersPrice()
-    {
-        // demand 200; supply 800 -> scarcity 0.25 -> price 100*0.25 = 25.
-        var seed = await SeedAsync(population: 1000, consumptionPerCapitaBp: 2000, baseValue: 100, marketQuantity: 800);
-        try
-        {
-            await AdvanceAsync(seed.Path, seed.WorldId, 1440);
-            (await MarketPriceAsync(seed.Path, seed.WorldId)).Should().Be(new Money(25));
-        }
-        finally { File.Delete(seed.Path); }
-    }
+    // Note: high-demand / high-supply formula pricing for *consumed* goods moved to the price-discovery
+    // auction (see PriceDiscoveryTests). PricingPhase now formula-prices only non-consumed (industrial)
+    // goods — covered here by the demand-0 clamp and the industrial-demand (production node) case.
 
     [Test]
     public async Task Pricing_ClampsAtMin()

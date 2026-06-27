@@ -9,3 +9,4 @@ public sealed class ShopIdConverter() : ValueConverter<ShopId, Guid>(v => v.Valu
 public sealed class ConsumerIdConverter() : ValueConverter<ConsumerId, Guid>(v => v.Value, g => new ConsumerId(g));
 public sealed class MoneyLedgerSnapshotIdConverter() : ValueConverter<MoneyLedgerSnapshotId, Guid>(v => v.Value, g => new MoneyLedgerSnapshotId(g));
 public sealed class MoneyLedgerLineIdConverter() : ValueConverter<MoneyLedgerLineId, Guid>(v => v.Value, g => new MoneyLedgerLineId(g));
+public sealed class ShopPriceBeliefIdConverter() : ValueConverter<ShopPriceBeliefId, Guid>(v => v.Value, g => new ShopPriceBeliefId(g));
