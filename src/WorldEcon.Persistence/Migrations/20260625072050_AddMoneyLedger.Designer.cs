@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WorldEcon.Persistence;
 
@@ -10,9 +11,11 @@ using WorldEcon.Persistence;
 namespace WorldEcon.Persistence.Migrations
 {
     [DbContext(typeof(WorldDbContext))]
-    partial class WorldDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260625072050_AddMoneyLedger")]
+    partial class AddMoneyLedger
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
@@ -94,9 +97,6 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<string>("Need")
                         .IsRequired()
                         .HasColumnType("TEXT");
-
-                    b.Property<long>("PeakWillingnessMultipleBasisPoints")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Provenance")
                         .IsRequired()
@@ -373,35 +373,6 @@ namespace WorldEcon.Persistence.Migrations
                     b.HasIndex("SettlementId", "Kind");
 
                     b.ToTable("shops", (string)null);
-                });
-
-            modelBuilder.Entity("WorldEcon.Domain.Economy.ShopPriceBelief", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("GoodId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("High")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("Low")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("ShopId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("WorldId")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("WorldId");
-
-                    b.HasIndex("ShopId", "GoodId");
-
-                    b.ToTable("shop_price_beliefs", (string)null);
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Economy.Stockpile", b =>
@@ -719,15 +690,6 @@ namespace WorldEcon.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
-
-                    b.Property<long>("BeliefNarrowFractionBasisPoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("BeliefShiftFractionBasisPoints")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("BeliefWidenFractionBasisPoints")
-                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Calendar")
                         .IsRequired()

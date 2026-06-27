@@ -24,6 +24,17 @@ public sealed class World : AggregateRoot<WorldId>
     private const int DefaultMinPriceMultBp = 1_000;    // 0.1x
     private const int DefaultMaxPriceMultBp = 100_000;  // 10x
 
+    // Price-discovery belief-update tuning (basis points). How fast a shop's price belief band narrows
+    // when its asks sell, and widens / shifts toward the market when they don't. Gentle defaults orbit
+    // equilibrium without thrashing; DM-tunable via SetBeliefTuning.
+    public long BeliefNarrowFractionBasisPoints { get; private set; }
+    public long BeliefWidenFractionBasisPoints { get; private set; }
+    public long BeliefShiftFractionBasisPoints { get; private set; }
+
+    private const long DefaultBeliefNarrowFraction = 1_000; // 10%
+    private const long DefaultBeliefWidenFraction = 1_000;  // 10%
+    private const long DefaultBeliefShiftFraction = 2_000;  // 20%
+
     // Parameterless ctor for EF Core materialization (sets private/get-only props via backing fields).
     private World() : base(default)
     {
@@ -45,6 +56,9 @@ public sealed class World : AggregateRoot<WorldId>
         ElasticityExponent = DefaultElasticityExponent;
         MinPriceMultBp = DefaultMinPriceMultBp;
         MaxPriceMultBp = DefaultMaxPriceMultBp;
+        BeliefNarrowFractionBasisPoints = DefaultBeliefNarrowFraction;
+        BeliefWidenFractionBasisPoints = DefaultBeliefWidenFraction;
+        BeliefShiftFractionBasisPoints = DefaultBeliefShiftFraction;
     }
 
     public static ErrorOr<World> Create(string name, ulong seed, CalendarDefinition calendar, string rulesetVersion)
@@ -89,5 +103,15 @@ public sealed class World : AggregateRoot<WorldId>
         ElasticityExponent = elasticityExponent;
         MinPriceMultBp = minMultBp;
         MaxPriceMultBp = maxMultBp;
+    }
+
+    /// <summary>DM tuning for price-discovery belief updates (all in basis points; must be non-negative).</summary>
+    public void SetBeliefTuning(long narrowFractionBasisPoints, long widenFractionBasisPoints, long shiftFractionBasisPoints)
+    {
+        if (narrowFractionBasisPoints < 0 || widenFractionBasisPoints < 0 || shiftFractionBasisPoints < 0)
+            throw new ArgumentOutOfRangeException(nameof(narrowFractionBasisPoints), "Belief fractions must be non-negative.");
+        BeliefNarrowFractionBasisPoints = narrowFractionBasisPoints;
+        BeliefWidenFractionBasisPoints = widenFractionBasisPoints;
+        BeliefShiftFractionBasisPoints = shiftFractionBasisPoints;
     }
 }

@@ -39,6 +39,35 @@ internal sealed class ShellUserInteraction : IUserInteraction
         }
     }
 
+    public async Task<int?> AskChoiceAsync(string title, string prompt, IReadOnlyList<string> options)
+    {
+        if (options.Count == 0)
+            return null;
+
+        var menu = string.Join("  ", options.Select((o, i) => $"{i + 1}){o}"));
+        while (true)
+        {
+            var text = await _shell.PromptAsync($"{prompt}  [{menu}]", null);
+            if (text is null)
+                return null; // cancelled
+
+            var t = text.Trim();
+            if (int.TryParse(t, out var n) && n >= 1 && n <= options.Count)
+                return n - 1;
+
+            // Fall back to a unique case-insensitive name-prefix match.
+            var matches = options
+                .Select((o, i) => (Name: o, Index: i))
+                .Where(x => x.Name.StartsWith(t, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (matches.Count == 1)
+                return matches[0].Index;
+
+            await ShowMessageAsync(title, [$"Enter a number 1-{options.Count} or a unique name."]);
+            // loop and re-prompt
+        }
+    }
+
     public Task ShowMessageAsync(string title, IReadOnlyList<string> lines)
     {
         var message = lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);

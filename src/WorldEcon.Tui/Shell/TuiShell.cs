@@ -8,6 +8,7 @@ using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using WorldEcon.Domain.Logging;
 using WorldEcon.Tui.Actions;
+using WorldEcon.Tui.Forms;
 using WorldEcon.Tui.Navigation;
 
 namespace WorldEcon.Tui.Shell;
@@ -55,9 +56,14 @@ public sealed class TuiShell : Window
 
     private (LogScopeKind Kind, Guid Id, string Title)? _currentLogScope;
 
+    // 0 = idle, 1 = a background operation is running. Guards against starting a second operation
+    // (which would touch the non-thread-safe WorldDbContext concurrently) and drives the busy hint.
+    private int _busy;
+
     private readonly SingleWordSuggestionGenerator _rootSuggest = new();
     private readonly IGlobalAction[] _globalActions = [new AdvanceAction(), new SnapshotAction()];
     private readonly IRowAction[] _cityActions = [new BuyOutAction(), new DisableProductionAction(), new EnableProductionAction()];
+    private readonly IReadOnlyList<IEntityForm> _forms = FormRegistry.All;
 
     public TuiShell(TuiContext ctx, INavigator nav, IUserInteraction? ui = null, IApplication? app = null)
     {
@@ -226,7 +232,8 @@ public sealed class TuiShell : Window
     private void RefreshHeader()
     {
         var dbPath = _ctx.DbPath ?? "(in-memory)";
-        _header.Text = $" {_ctx.World.Name}  •  {_ctx.CurrentDateLabel}  •  {dbPath}";
+        var busy = Volatile.Read(ref _busy) != 0 ? "   ⏳ working…" : "";
+        _header.Text = $" {_ctx.World.Name}  •  {_ctx.CurrentDateLabel}  •  {dbPath}{busy}";
     }
 
     private void RefreshStatus()
@@ -235,7 +242,9 @@ public sealed class TuiShell : Window
         var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details" };
         if (LogScopeFor(row?.Kind ?? NavKind.Leaf) is not null)
             hints.Add("l log");
-        hints.AddRange(["/filter", "o sort", "a advance", "S snapshot", "? help", "q quit"]);
+        hints.AddRange(["/filter", "o sort", "n new", "a advance", "S snapshot", "? help", "q quit"]);
+        if (row is not null && EditRegistry.ForKind(row.Kind) is { } ef)
+            hints.Add($"E edit {ef.Label}");
         if (row?.Kind == NavKind.City)
             hints.AddRange(_cityActions.Select(a => $"{a.Key} {a.Label.ToLowerInvariant()}"));
         _status.Text = " " + string.Join("  ", hints);
@@ -436,6 +445,8 @@ public sealed class TuiShell : Window
             case 'd': ShowDetails(); return true;
             case '?': ShowHelp(); return true;
             case 'l': ShowLog(); return true;
+            case 'n': ShowNewEntityForm(); return true;
+            case 'E': ShowEditForm(); return true;
         }
 
         var global = _globalActions.FirstOrDefault(a => a.Key == ch);
@@ -465,6 +476,55 @@ public sealed class TuiShell : Window
             if (key is null) { await Ui!.ShowMessageAsync(action.Label, ["No row is selected."]); return; }
             await action.ExecuteAsync(key, _ctx, Ui!);
             await _ctx.ReloadWorldAsync();
+            await RefreshCurrentAsync();
+        });
+    }
+
+    /// <summary>'n' (new): choose an entity type, run its create-form, then refresh and navigate to
+    /// the new entity's resource so the result is visible.</summary>
+    private void ShowNewEntityForm()
+        => Dispatch(async () =>
+        {
+            var labels = _forms.Select(f => f.Label).ToList();
+            var idx = await Ui!.AskChoiceAsync("New", "Create what?", labels);
+            if (idx is null)
+                return; // cancelled
+
+            var form = _forms[idx.Value];
+            var outcome = await form.RunAsync(_ctx, Ui!);
+            await _ctx.ReloadWorldAsync();
+
+            if (!outcome.Created)
+            {
+                // Surface validation/precondition failures; stay put on cancel without a popup.
+                if (!outcome.Message.Equals("Cancelled.", StringComparison.Ordinal))
+                    await Ui!.ShowMessageAsync(form.Label, [outcome.Message]);
+                await RefreshCurrentAsync();
+                return;
+            }
+
+            await Ui!.ShowMessageAsync(form.Label, [outcome.Message]);
+            if (form.ResourceName is { } root)
+                SetRoot(root);          // jump to the resource so the new row is visible
+            else
+                await RefreshCurrentAsync();
+        });
+
+    /// <summary>'E' (edit): if the selected row's kind has an edit-form, run it on that entity.</summary>
+    private void ShowEditForm()
+    {
+        var row = SelectedRow;
+        if (row is null) return;
+        var form = EditRegistry.ForKind(row.Kind);
+        if (form is null) return;                       // nothing editable for this kind
+        if (!Guid.TryParse(row.Key, out var id)) return; // composite/non-entity row
+
+        Dispatch(async () =>
+        {
+            var outcome = await form.RunAsync(id, _ctx, Ui!);
+            await _ctx.ReloadWorldAsync();
+            if (outcome.Created || !outcome.Message.Equals("Cancelled.", StringComparison.Ordinal))
+                await Ui!.ShowMessageAsync($"Edit {form.Label}", [outcome.Message]);
             await RefreshCurrentAsync();
         });
     }
@@ -565,6 +625,8 @@ public sealed class TuiShell : Window
             Row("q / Ctrl+Q / :q", "quit"),
             Sep(),
             Row("--- Actions ---", string.Empty),
+            Row("n", "new — create an entity (good, settlement, shop, recipe, …)"),
+            Row("E", "edit the selected row (settlement state, region, merchant capital, shop till)"),
             Row("a", "advance time"),
             Row("S", "snapshot"),
             Row("o", "cycle sort: unsorted → col0 ▲ → col0 ▼ → col1 ▲ → … → unsorted; active column header shows ▲/▼"),
@@ -689,10 +751,23 @@ public sealed class TuiShell : Window
     private void Dispatch(Func<Task> work)
     {
         if (_app is null) { work().GetAwaiter().GetResult(); return; }
+
+        // Serialize operations: only one may run at a time. A keystroke during a long advance would
+        // otherwise start a second task hitting the same WorldDbContext concurrently and throw. While
+        // one runs, further triggers are ignored and the header shows a "working…" hint. (Prompt-bar
+        // input still flows — prompts run inside the in-flight operation, not through Dispatch.)
+        if (Interlocked.CompareExchange(ref _busy, 1, 0) != 0)
+            return;
+        Post(RefreshHeader);
         _ = Task.Run(async () =>
         {
             try { await work(); }
             catch (Exception ex) { if (Ui is not null) await Ui.ShowMessageAsync("Error", [ex.Message]); }
+            finally
+            {
+                Interlocked.Exchange(ref _busy, 0);
+                Post(RefreshHeader);
+            }
         });
     }
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Geography;
+using WorldEcon.Engine.Ledger;
 using WorldEcon.Engine.Logging;
 using WorldEcon.Persistence;
 using WorldEcon.Simulation.Random;
@@ -21,6 +22,7 @@ public sealed class SimulationContext
         Rng = rng;
         Calendar = calendar;
         Log = new LogEventEmitter(db, world.Id);
+        Money = new MoneyLedger(db, world.Id);
     }
 
     public WorldDbContext Db { get; }
@@ -31,6 +33,10 @@ public sealed class SimulationContext
     /// <summary>The log-event writer for this advance. Phases emit through this; the engine's single
     /// end-of-advance SaveChanges persists the rows.</summary>
     public LogEventEmitter Log { get; }
+
+    /// <summary>The money-supply ledger. Phases record currency flows by channel; the engine writes
+    /// periodic snapshots (monthly + end-of-advance).</summary>
+    public MoneyLedger Money { get; }
 
     /// <summary>
     /// Loads the single <see cref="World"/> by id (tracked, so mutations persist on save) and

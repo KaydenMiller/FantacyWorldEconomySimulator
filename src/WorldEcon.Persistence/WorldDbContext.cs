@@ -29,6 +29,9 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<Caravan> Caravans => Set<Caravan>();
     public DbSet<LogEvent> LogEvents => Set<LogEvent>();
     public DbSet<LogEventScope> LogEventScopes => Set<LogEventScope>();
+    public DbSet<MoneyLedgerSnapshot> MoneyLedgerSnapshots => Set<MoneyLedgerSnapshot>();
+    public DbSet<MoneyLedgerLine> MoneyLedgerLines => Set<MoneyLedgerLine>();
+    public DbSet<ShopPriceBelief> ShopPriceBeliefs => Set<ShopPriceBelief>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
@@ -53,6 +56,9 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
         b.Properties<CaravanId>().HaveConversion<CaravanIdConverter>();
         b.Properties<LogEventId>().HaveConversion<LogEventIdConverter>();
         b.Properties<LogEventScopeId>().HaveConversion<LogEventScopeIdConverter>();
+        b.Properties<MoneyLedgerSnapshotId>().HaveConversion<MoneyLedgerSnapshotIdConverter>();
+        b.Properties<MoneyLedgerLineId>().HaveConversion<MoneyLedgerLineIdConverter>();
+        b.Properties<ShopPriceBeliefId>().HaveConversion<ShopPriceBeliefIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder b)

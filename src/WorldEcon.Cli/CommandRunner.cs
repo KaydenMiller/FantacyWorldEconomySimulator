@@ -8,6 +8,7 @@ using WorldEcon.Engine;
 using WorldEcon.Engine.Actions;
 using WorldEcon.Persistence;
 using WorldEcon.Persistence.Repositories;
+using WorldEcon.SharedKernel;
 using WorldEcon.Persistence.Snapshots;
 using WorldEcon.Seeding;
 using WorldEcon.SharedKernel.Currency;
@@ -37,6 +38,7 @@ internal static class CommandRunner
                 "stock" => await CmdStock(args),
                 "merchants" => await CmdMerchants(args),
                 "consumers" => await CmdConsumers(args),
+                "money" or "ledger" => await CmdMoney(args),
                 "caravans" => await CmdCaravans(args),
                 "snapshot" => await CmdSnapshot(args),
                 "buy" => await CmdBuy(args),
@@ -202,12 +204,15 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"ShopName",-16} {"Stock",6} {"CostBasis",12} {"SalePrice",12} {"Margin(abs)",14} {"Margin(%)",10}");
+        // "Retail" is the price discovery auction's last clearing price — what townsfolk actually paid.
+        // Margin is realized against cost basis (Retail - CostBasis), not the shop's nominal markup.
+        Console.WriteLine($"  {"ShopName",-16} {"Stock",6} {"Retail",12} {"CostBasis",12} {"Margin(abs)",14} {"Margin(%)",10}");
         foreach (var line in value.Shops)
         {
-            var marginPct = line.MarginBp / 100.0;
+            var realizedMargin = line.RetailPrice.Units - line.UnitCostBasis.Units;
+            var marginPct = line.UnitCostBasis.Units > 0 ? realizedMargin * 100.0 / line.UnitCostBasis.Units : 0.0;
             Console.WriteLine(
-                $"  {line.ShopName,-16} {line.Stock,6} {currency.Format(line.UnitCostBasis),12} {currency.Format(line.SalePrice),12} {currency.Format(line.MarginAbs),14} {marginPct,9:0.##}%");
+                $"  {line.ShopName,-16} {line.Stock,6} {currency.Format(line.RetailPrice),12} {currency.Format(line.UnitCostBasis),12} {currency.Format(new Money(realizedMargin)),14} {marginPct,9:0.##}%");
         }
         return 0;
     }
@@ -384,6 +389,61 @@ internal static class CommandRunner
         {
             var seat = settlementById.TryGetValue(c.Seat, out var n) ? n : "(unknown)";
             Console.WriteLine($"  {seat,-16} {c.Size,10} {currency.Format(c.Budget),14}");
+        }
+        return 0;
+    }
+
+    // ---- money <dbPath> ----  (money-supply ledger)
+    private static async Task<int> CmdMoney(string[] args)
+    {
+        if (args.Length < 2)
+            return MissingArgs("money <dbPath>");
+
+        var path = args[1];
+        await using var ctx = OpenContext(path);
+        ctx.Database.Migrate();
+
+        var world = await ctx.Worlds.FirstOrDefaultAsync();
+        if (world is null)
+        {
+            Console.Error.WriteLine("Error: no world found. Run 'new' first.");
+            return 1;
+        }
+        var currency = world.Currency;
+        var calendar = new CalendarSystem(world.Calendar);
+
+        var snapshots = (await ctx.MoneyLedgerSnapshots.Where(s => s.WorldId == world.Id).ToListAsync())
+            .OrderBy(s => s.Sequence).ToList();
+        if (snapshots.Count == 0)
+        {
+            Console.WriteLine("Money ledger: (no snapshots yet — advance at least one in-world month)");
+            return 0;
+        }
+
+        var latest = snapshots[^1];
+        var lines = (await ctx.MoneyLedgerLines.Where(l => l.SnapshotId == latest.Id).ToListAsync())
+            .OrderBy(l => (int)l.Kind).ThenBy(l => (int)l.Channel).ToList();
+        var d = calendar.ToDate(latest.Tick);
+
+        Console.WriteLine($"Money supply @ Y{d.Year} M{d.Month} D{d.Day} (tick {latest.Tick.Value}):");
+        Console.WriteLine($"  Total in circulation: {currency.Format(latest.TotalSupply)}");
+        Console.WriteLine($"  Net change this month: {currency.Format(latest.NetDelta)}  (faucets − sinks)");
+        if (latest.Discrepancy.Units != 0)
+            Console.WriteLine($"  ⚠ Discrepancy: {currency.Format(latest.Discrepancy)}  (untracked flow — should be 0)");
+        Console.WriteLine();
+        Console.WriteLine($"  This month's flows by channel:");
+        if (lines.Count == 0)
+            Console.WriteLine("    (no flows)");
+        foreach (var l in lines)
+            Console.WriteLine($"    {l.Kind,-9} {l.Channel,-18} {currency.Format(l.Amount),14}");
+
+        Console.WriteLine();
+        Console.WriteLine("  History (recent months):");
+        Console.WriteLine($"    {"Date",-14} {"Supply",16} {"Net Δ",14}");
+        foreach (var s in snapshots.TakeLast(12))
+        {
+            var sd = calendar.ToDate(s.Tick);
+            Console.WriteLine($"    {$"Y{sd.Year} M{sd.Month} D{sd.Day}",-14} {currency.Format(s.TotalSupply),16} {currency.Format(s.NetDelta),14}");
         }
         return 0;
     }
@@ -716,6 +776,7 @@ internal static class CommandRunner
         Console.WriteLine("  stock    <dbPath> <settlement>             Show a settlement's market stockpiles.");
         Console.WriteLine("  merchants <dbPath>                         List representative merchants and their seats.");
         Console.WriteLine("  consumers <dbPath>                         List representative consumers (seat, size, budget).");
+        Console.WriteLine("  money    <dbPath>                          Money-supply ledger: total in circulation, faucet/sink/transfer flows, history.");
         Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered).");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
         Console.WriteLine("  buy      <dbPath> <settlement> <good> <qty> Party buys a good off shop shelves.");
