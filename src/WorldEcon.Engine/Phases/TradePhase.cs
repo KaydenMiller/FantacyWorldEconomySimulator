@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
+using WorldEcon.Engine.Trade;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Measure;
 
@@ -17,7 +18,6 @@ public sealed class TradePhase : ISimulationPhase
 {
     // NOTE: tunable; promote to World params later.
     private const long TravelTicksPerDistance = 12;        // distance-120 route ≈ one in-world day
-    private const long TransportCostUnitsPerDistance = 1;  // Money minor units / distance / good unit (decision threshold only)
 
     private readonly ICostBasisValuation _valuation;
 
@@ -126,8 +126,11 @@ public sealed class TradePhase : ISimulationPhase
                 foreach (var dest in reachable.OrderBy(d => d.Settlement.Value))
                 {
                     long destPrice = await SeatRefPrice(ctx, dest.Settlement, offer.Good, goods[offer.Good]);
-                    long transportPerUnit = dest.Distance * TransportCostUnitsPerDistance;
-                    long profitPerUnit = destPrice - offer.Price - transportPerUnit;
+                    long unitDimWeight = Haulage.DimensionalWeightGrams(
+                        goods[offer.Good].MassPerUnit.Grams, goods[offer.Good].VolumePerUnit.CubicCentimeters,
+                        ctx.World.VolumetricDivisor);
+                    long haulagePerUnit = Haulage.Cost(unitDimWeight, dest.Distance, ctx.World.TransportRate);
+                    long profitPerUnit = destPrice - offer.Price - haulagePerUnit;
                     bool better = profitPerUnit > bestProfit
                         || (profitPerUnit == bestProfit && bestDest is not null
                             && IsBetterTieBreak(offer.Good, dest, bestGoodId, bestDest));
@@ -141,11 +144,19 @@ public sealed class TradePhase : ISimulationPhase
             if (bestDest is null || bestProfit <= 0)
                 continue;
 
-            // TODO (Task 8): derive per-good unit cap from WeightCapacity/VolumeCapacity + GoodPhysical weight/volume.
-            // Stopgap: convert weight capacity (grams) to a rough unit count (1 unit ≈ 10 kg).
-            long cargoUnitCap = Math.Max(1, merchant.WeightCapacity.Grams / 10_000);
-            long affordable = bestSeatPrice == 0 ? cargoUnitCap : merchant.Capital.Units / bestSeatPrice;
-            long quantity = Math.Min(cargoUnitCap, Math.Min(bestSeatQty, affordable));
+            var bestGood = goods[bestGoodId];
+            long capacityUnits = CargoFit.MaxUnits(merchant.WeightCapacity, merchant.VolumeCapacity,
+                bestGood.MassPerUnit, bestGood.VolumePerUnit);
+
+            // Affordable units must cover BOTH the purchase and the per-unit haulage. Use a precise
+            // per-unit haulage numerator (÷1_000_000 = copper) to avoid truncating small per-unit costs to 0.
+            long unitDimWeightBest = Haulage.DimensionalWeightGrams(
+                bestGood.MassPerUnit.Grams, bestGood.VolumePerUnit.CubicCentimeters, ctx.World.VolumetricDivisor);
+            long haulageNumeratorPerUnit = unitDimWeightBest * bestDest.Distance * ctx.World.TransportRate; // ÷1_000_000 = copper
+            long denom = bestSeatPrice * 1_000_000L + haulageNumeratorPerUnit;
+            long affordable = denom > 0 ? merchant.Capital.Units * 1_000_000L / denom : capacityUnits;
+
+            long quantity = Math.Min(capacityUnits, Math.Min(bestSeatQty, affordable));
             if (quantity < 1)
                 continue;
 
@@ -155,6 +166,18 @@ public sealed class TradePhase : ISimulationPhase
                 continue;
             merchant.Spend(new Money(quantity * bestSeatPrice));
             ctx.Money.Record(MoneyChannel.MerchantPurchase, quantity * bestSeatPrice); // sink (source shop uncredited today)
+
+            long totalMassGrams = bestGood.MassPerUnit.Grams * quantity;
+            long totalVolumeCc = bestGood.VolumePerUnit.CubicCentimeters * quantity;
+            long totalDimWeight = Haulage.DimensionalWeightGrams(totalMassGrams, totalVolumeCc, ctx.World.VolumetricDivisor);
+            long totalHaulage = Haulage.Cost(totalDimWeight, bestDest.Distance, ctx.World.TransportRate);
+            if (totalHaulage > merchant.Capital.Units)
+                totalHaulage = merchant.Capital.Units; // affordability gate makes this rare; never overspend
+            if (totalHaulage > 0)
+            {
+                merchant.Spend(new Money(totalHaulage));
+                ctx.Money.Record(MoneyChannel.MerchantHaulage, totalHaulage);
+            }
 
             long travelTicks = bestDest.Distance * TravelTicksPerDistance;
             var arrive = new Tick(tick.Value + travelTicks);
@@ -166,8 +189,7 @@ public sealed class TradePhase : ISimulationPhase
                 $"Caravan dispatched {quantity} {GoodName(bestGoodId)} from {SettlementName(merchant.Seat)} to {SettlementName(bestDest.Settlement)}",
                 tick, LogScopeKind.Merchant, merchant.Id.Value, merchant.Seat);
 
-            // NOTE: transport cost affects only the decision threshold, not a separate gold sink;
-            // risk-from-danger and multi-good cargo are deferred.
+            // NOTE: haulage is now a real MerchantHaulage sink (above). Mode/vehicle/loss-risk are Layer B.
         }
     }
 

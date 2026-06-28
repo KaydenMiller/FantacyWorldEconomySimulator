@@ -105,15 +105,18 @@ public class TradePhaseTests
             caravan.OriginId.Should().Be(seed.A);
             caravan.DestinationId.Should().Be(seed.B);
             caravan.GoodId.Should().Be(seed.GoodId);
-            caravan.Quantity.Should().Be(50); // capacity-bound
+            // Bread/SizeClass.Small has 1 kg/unit; dimensional capacity = min(500 kg/1 kg, 1000 L/1 L) = 500.
+            // Supply (100) is the binding constraint, so all 100 units are taken (supply-bound, not capacity-bound).
+            caravan.Quantity.Should().Be(100);
 
             var aShopId = (await ctx.Shops.SingleAsync(sh => sh.SettlementId == seed.A)).Id.Value;
             var aMarket = await ctx.Stockpiles.SingleAsync(s =>
                 s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == aShopId);
-            aMarket.Quantity.Should().Be(50); // 100 - 50
+            aMarket.Quantity.Should().Be(0); // 100 - 100
 
+            // totalMass = 1 000 g × 100 = 100 000 g; volumetric = 20 000 g (mass binds); haulage = 12 copper.
             var merchant = await ctx.Merchants.SingleAsync(m => m.Id == seed.MerchantId);
-            merchant.Capital.Units.Should().Be(100_000 - 50 * 100);
+            merchant.Capital.Units.Should().Be(100_000 - 100 * 100 - 12);
         }
         finally { File.Delete(seed.Path); }
     }
