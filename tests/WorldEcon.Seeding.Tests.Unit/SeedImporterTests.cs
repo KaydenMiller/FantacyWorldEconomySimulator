@@ -140,6 +140,45 @@ public class SeedImporterTests
     }
 
     [Test]
+    public async Task ImportAsync_Throws_WhenGoodHasMalformedMassString()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"seedbadmass_{Guid.NewGuid():N}.db");
+        try
+        {
+            var seed = new SeedWorld(
+                Name: "Aerthos", Seed: 42UL, RulesetVersion: "1.0.0",
+                Goods: [new SeedGood("Iron Ore", "Raw", 20, "unit", "Medium", 0, false, 0, MassPerUnit: "600kgs")],
+                Recipes: [],
+                Continents:
+                [
+                    new SeedContinent("Mundus",
+                    [
+                        new SeedCountry("Highmark",
+                        [
+                            new SeedRegion("The Reach",
+                            [
+                                new SeedSettlement("Hammerfell", "City", 10, 20, 50_000,
+                                    Shops: [], Market: [], Endowments: [], Production: [], Merchants: []),
+                            ]),
+                        ]),
+                    ]),
+                ],
+                Routes: []);
+
+            await using var ctx = NewContextOnFile(path);
+            await ctx.Database.MigrateAsync();
+
+            var act = async () => await new SeedImporter(ctx).ImportAsync(seed);
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*600kgs*");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
     public async Task ImportAsync_SeedsConsumers_WhenSettlementDeclaresThem()
     {
         var path = Path.Combine(Path.GetTempPath(), $"seedcon_{Guid.NewGuid():N}.db");

@@ -40,8 +40,8 @@ public sealed class SeedImporter(WorldDbContext db)
                 ? NeedTier.Essential
                 : ParseEnum<NeedTier>(g.NeedTier, "good.needTier");
 
-            Mass? mass = g.MassPerUnit is not null && MeasurementFormat.TryParseMass(g.MassPerUnit, out var mm) ? mm : null;
-            Volume? volume = g.VolumePerUnit is not null && MeasurementFormat.TryParseVolume(g.VolumePerUnit, out var vv) ? vv : null;
+            var mass = ParseOptionalMass(g.MassPerUnit, $"good '{g.Name}'");
+            var volume = ParseOptionalVolume(g.VolumePerUnit, $"good '{g.Name}'");
 
             var good = Unwrap(Good.Create(
                 worldId, g.Name,
@@ -175,10 +175,8 @@ public sealed class SeedImporter(WorldDbContext db)
         // Representative merchants seated at this settlement.
         foreach (var mer in NonNull(s.Merchants))
         {
-            var weightCapacity = mer.WeightCapacity is not null && MeasurementFormat.TryParseMass(mer.WeightCapacity, out var wc)
-                ? wc : new Mass(600_000);
-            var volumeCapacity = mer.VolumeCapacity is not null && MeasurementFormat.TryParseVolume(mer.VolumeCapacity, out var vc)
-                ? vc : new Volume(1_000_000);
+            var weightCapacity = ParseOptionalMass(mer.WeightCapacity, $"merchant in '{s.Name}'") ?? new Mass(600_000);
+            var volumeCapacity = ParseOptionalVolume(mer.VolumeCapacity, $"merchant in '{s.Name}'") ?? new Volume(1_000_000);
             var merchant = Unwrap(RepresentativeMerchant.Create(
                 worldId, settlementId, new Money(mer.Capital), weightCapacity, volumeCapacity, mer.Reach));
             db.Merchants.Add(merchant);
@@ -239,4 +237,20 @@ public sealed class SeedImporter(WorldDbContext db)
     }
 
     private static IEnumerable<T> NonNull<T>(IReadOnlyList<T>? list) => list ?? [];
+
+    private static Mass? ParseOptionalMass(string? text, string context)
+    {
+        if (text is null) return null;
+        if (!MeasurementFormat.TryParseMass(text, out var mass))
+            throw new InvalidOperationException($"Seed invalid: invalid mass '{text}' for {context} (expected e.g. '30 kg').");
+        return mass;
+    }
+
+    private static Volume? ParseOptionalVolume(string? text, string context)
+    {
+        if (text is null) return null;
+        if (!MeasurementFormat.TryParseVolume(text, out var volume))
+            throw new InvalidOperationException($"Seed invalid: invalid volume '{text}' for {context} (expected e.g. '4 L').");
+        return volume;
+    }
 }

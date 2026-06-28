@@ -11,8 +11,8 @@ public sealed record SeedWorld(string Name, ulong Seed, string RulesetVersion,
 // NeedTier is optional; omitted goods default to Essential. JSON authors can specify e.g.
 // "NeedTier": "Standard" or "NeedTier": "Comfort" to opt into higher tiers.
 // MassPerUnit/VolumePerUnit are optional familiar-unit strings ("30 kg", "4 L"); omitted → the
-// size-class defaults (Good.DefaultMassForSize / DefaultVolumeForSize). Unparseable strings fall back
-// to the same defaults rather than failing the import.
+// size-class defaults (Good.DefaultMassForSize / DefaultVolumeForSize). A present but unparseable
+// string (e.g. "600kgs") is a typo and fails the import loudly.
 public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size,
     long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp, string? NeedTier = null,
     string? MassPerUnit = null, string? VolumePerUnit = null);
