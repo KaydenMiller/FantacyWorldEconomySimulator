@@ -28,6 +28,8 @@ public class WorldTransportTuningTests
         w.TransportRate.Should().Be(3);
         Action bad = () => w.SetTransportTuning(0, 1);
         bad.Should().Throw<ArgumentOutOfRangeException>();
+        Action badRate = () => w.SetTransportTuning(1, 0);
+        badRate.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Test]
