@@ -12,6 +12,8 @@ public sealed class RepresentativeMerchantConfiguration : IEntityTypeConfigurati
         b.ToTable("merchants");
         b.HasKey(x => x.Id);
         b.Property(x => x.Capital).HasConversion<MoneyConverter>();
+        b.Property(x => x.WeightCapacity).HasConversion<MassConverter>();
+        b.Property(x => x.VolumeCapacity).HasConversion<VolumeConverter>();
         b.HasIndex(x => x.WorldId);
         b.HasIndex(x => x.Seat);
         b.Ignore(x => x.DomainEvents);
