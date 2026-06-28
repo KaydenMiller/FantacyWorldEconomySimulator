@@ -1,7 +1,7 @@
 namespace WorldEcon.SharedKernel.Measure;
 
 /// <summary>Mass as an integer count of grams. Units (g/kg/oz/lb) are a presentation concern
-/// (see MeasurementFormat) and never used in simulation math.</summary>
+/// (see <see cref="MeasurementFormat"/>) and never used in simulation math.</summary>
 public readonly record struct Mass(long Grams)
 {
     public static readonly Mass Zero = new(0);
