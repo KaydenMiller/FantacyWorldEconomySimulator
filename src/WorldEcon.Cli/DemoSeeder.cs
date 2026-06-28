@@ -53,21 +53,34 @@ internal static class DemoSeeder
 
         // ---- Goods --------------------------------------------------------------------------
         // Raw inputs (extracted by farms/mines; not directly consumed by population).
-        var grain = Good_(ctx, w, "Grain", GoodCategory.Raw, 15, "sack", SizeClass.Medium, 0, true);
-        var ironOre = Good_(ctx, w, "Iron Ore", GoodCategory.Raw, 20, "unit", SizeClass.Medium, 0, false);
-        var coal = Good_(ctx, w, "Coal", GoodCategory.Raw, 12, "unit", SizeClass.Medium, 0, false);
-        var wool = Good_(ctx, w, "Wool", GoodCategory.Raw, 25, "bale", SizeClass.Medium, 0, true);
-        var grapes = Good_(ctx, w, "Grapes", GoodCategory.Raw, 18, "crate", SizeClass.Medium, 4320, true);
+        var grain = Good_(ctx, w, "Grain", GoodCategory.Raw, 15, "sack", SizeClass.Medium, 0, true,
+            mass: new Mass(25_000), volume: new Volume(30_000));
+        var ironOre = Good_(ctx, w, "Iron Ore", GoodCategory.Raw, 20, "unit", SizeClass.Medium, 0, false,
+            mass: new Mass(20_000), volume: new Volume(12_000));
+        var coal = Good_(ctx, w, "Coal", GoodCategory.Raw, 12, "unit", SizeClass.Medium, 0, false,
+            mass: new Mass(15_000), volume: new Volume(20_000));
+        var wool = Good_(ctx, w, "Wool", GoodCategory.Raw, 25, "bale", SizeClass.Medium, 0, true,
+            mass: new Mass(5_000), volume: new Volume(80_000));
+        var grapes = Good_(ctx, w, "Grapes", GoodCategory.Raw, 18, "crate", SizeClass.Medium, 4320, true,
+            mass: new Mass(10_000), volume: new Volume(25_000));
         // Processed materials (intermediate; manufactured then consumed downstream).
-        var flour = Good_(ctx, w, "Flour", GoodCategory.Material, 40, "sack", SizeClass.Medium, 0, true);
-        var ironIngot = Good_(ctx, w, "Iron Ingot", GoodCategory.Material, 200, "ingot", SizeClass.Medium, 0, false);
+        var flour = Good_(ctx, w, "Flour", GoodCategory.Material, 40, "sack", SizeClass.Medium, 0, true,
+            mass: new Mass(25_000), volume: new Volume(30_000));
+        var ironIngot = Good_(ctx, w, "Iron Ingot", GoodCategory.Material, 200, "ingot", SizeClass.Medium, 0, false,
+            mass: new Mass(30_000), volume: new Volume(4_000));
         // Consumed goods (drive demand; tiered Essential → Standard → Comfort).
-        var bread = Good_(ctx, w, "Bread", GoodCategory.Food, 30, "loaf", SizeClass.Small, 4320, true, 50, NeedTier.Essential);
-        var cloth = Good_(ctx, w, "Cloth", GoodCategory.Material, 80, "bolt", SizeClass.Small, 0, true, 10, NeedTier.Standard);
-        var tools = Good_(ctx, w, "Tools", GoodCategory.Tool, 150, "set", SizeClass.Medium, 0, false, 5, NeedTier.Standard);
-        var ale = Good_(ctx, w, "Ale", GoodCategory.Luxury, 40, "mug", SizeClass.Small, 720, true, 20, NeedTier.Comfort);
-        var wine = Good_(ctx, w, "Wine", GoodCategory.Luxury, 120, "bottle", SizeClass.Small, 0, false, 15, NeedTier.Comfort);
-        var potion = Good_(ctx, w, "Health Potion", GoodCategory.Potion, 5000, "vial", SizeClass.Small, 0, false);
+        var bread = Good_(ctx, w, "Bread", GoodCategory.Food, 30, "loaf", SizeClass.Small, 4320, true, 50, NeedTier.Essential,
+            mass: new Mass(500), volume: new Volume(2_000));
+        var cloth = Good_(ctx, w, "Cloth", GoodCategory.Material, 80, "bolt", SizeClass.Small, 0, true, 10, NeedTier.Standard,
+            mass: new Mass(2_000), volume: new Volume(60_000));
+        var tools = Good_(ctx, w, "Tools", GoodCategory.Tool, 150, "set", SizeClass.Medium, 0, false, 5, NeedTier.Standard,
+            mass: new Mass(8_000), volume: new Volume(15_000));
+        var ale = Good_(ctx, w, "Ale", GoodCategory.Luxury, 40, "mug", SizeClass.Small, 720, true, 20, NeedTier.Comfort,
+            mass: new Mass(1_000), volume: new Volume(1_000));
+        var wine = Good_(ctx, w, "Wine", GoodCategory.Luxury, 120, "bottle", SizeClass.Small, 0, false, 15, NeedTier.Comfort,
+            mass: new Mass(1_200), volume: new Volume(1_000));
+        var potion = Good_(ctx, w, "Health Potion", GoodCategory.Potion, 5000, "vial", SizeClass.Small, 0, false,
+            mass: new Mass(200), volume: new Volume(200));
 
         // ---- Recipes (factories use these) --------------------------------------------------
         // Each batch is one facility's daily output (the production phase starts ~one batch per node
@@ -162,9 +175,11 @@ internal static class DemoSeeder
 
     private static Good Good_(WorldDbContext ctx, WorldId w, string name, GoodCategory category, long baseValue,
         string unit, SizeClass size, long shelfLifeTicks, bool divisible, long consumptionPerCapitaBp = 0,
-        NeedTier needTier = NeedTier.Essential)
+        NeedTier needTier = NeedTier.Essential, Mass? mass = null, Volume? volume = null)
     {
-        var good = Unwrap(Good.Create(w, name, category, new Money(baseValue), unit, size, shelfLifeTicks, divisible, consumptionPerCapitaBp, needTier), name);
+        var good = Unwrap(Good.Create(w, name, category, new Money(baseValue), unit, size, shelfLifeTicks,
+            divisible, consumptionPerCapitaBp, needTier, peakWillingnessMultipleBasisPoints: null,
+            massPerUnit: mass, volumePerUnit: volume), name);
         ctx.Goods.Add(good);
         return good;
     }

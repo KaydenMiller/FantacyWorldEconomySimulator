@@ -40,12 +40,16 @@ public sealed class SeedImporter(WorldDbContext db)
                 ? NeedTier.Essential
                 : ParseEnum<NeedTier>(g.NeedTier, "good.needTier");
 
+            Mass? mass = g.MassPerUnit is not null && MeasurementFormat.TryParseMass(g.MassPerUnit, out var mm) ? mm : null;
+            Volume? volume = g.VolumePerUnit is not null && MeasurementFormat.TryParseVolume(g.VolumePerUnit, out var vv) ? vv : null;
+
             var good = Unwrap(Good.Create(
                 worldId, g.Name,
                 ParseEnum<GoodCategory>(g.Category, "good.category"),
                 new Money(g.BaseValue), g.BaseUnit,
                 ParseEnum<SizeClass>(g.Size, "good.size"),
-                g.ShelfLifeTicks, g.Divisible, g.ConsumptionPerCapitaBp, needTier));
+                g.ShelfLifeTicks, g.Divisible, g.ConsumptionPerCapitaBp, needTier,
+                peakWillingnessMultipleBasisPoints: null, massPerUnit: mass, volumePerUnit: volume));
 
             if (!byName.TryAdd(good.Name, good.Id))
                 throw new InvalidOperationException($"Seed invalid: duplicate good name '{good.Name}'.");

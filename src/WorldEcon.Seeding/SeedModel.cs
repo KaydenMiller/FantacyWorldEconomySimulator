@@ -10,7 +10,9 @@ public sealed record SeedWorld(string Name, ulong Seed, string RulesetVersion,
 
 // NeedTier is optional; omitted goods default to Essential. JSON authors can specify e.g.
 // "NeedTier": "Standard" or "NeedTier": "Comfort" to opt into higher tiers.
-public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size, long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp, string? NeedTier = null);
+public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size,
+    long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp, string? NeedTier = null,
+    string? MassPerUnit = null, string? VolumePerUnit = null);
 
 public sealed record SeedRecipeLine(string Good, long Quantity);
 
