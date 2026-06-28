@@ -55,7 +55,7 @@ public class FormTests
 
             var ui = new FakeUserInteraction()
                 .EnqueueText("Iron Bar")        // name
-                .EnqueueChoice(1)               // category: Metal (Raw=0, Metal=1)
+                .EnqueueChoice(1)               // category: Food (Raw=0, Food=1, Material=2, ...)
                 .EnqueueNumber(100)             // base value
                 .EnqueueText("ingot")           // base unit
                 .EnqueueChoice(2)               // size: Medium
