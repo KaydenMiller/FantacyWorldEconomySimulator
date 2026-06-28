@@ -19,6 +19,11 @@ public sealed class TradePhase : ISimulationPhase
     // NOTE: tunable; promote to World params later.
     private const long TravelTicksPerDistance = 12;        // distance-120 route ≈ one in-world day
 
+    // Haulage cost is computed in millionths of a copper internally (see Haulage.Cost) so that small
+    // per-unit costs aren't truncated to zero in the affordability division. This scale factor must
+    // match the divisor inside Haulage.Cost (1_000_000).
+    private const long HaulageScaleFactor = 1_000_000L;
+
     private readonly ICostBasisValuation _valuation;
 
     public TradePhase(ICostBasisValuation? valuation = null)
@@ -153,8 +158,8 @@ public sealed class TradePhase : ISimulationPhase
             long unitDimWeightBest = Haulage.DimensionalWeightGrams(
                 bestGood.MassPerUnit.Grams, bestGood.VolumePerUnit.CubicCentimeters, ctx.World.VolumetricDivisor);
             long haulageNumeratorPerUnit = unitDimWeightBest * bestDest.Distance * ctx.World.TransportRate; // ÷1_000_000 = copper
-            long denom = bestSeatPrice * 1_000_000L + haulageNumeratorPerUnit;
-            long affordable = denom > 0 ? merchant.Capital.Units * 1_000_000L / denom : capacityUnits;
+            long denom = bestSeatPrice * HaulageScaleFactor + haulageNumeratorPerUnit;
+            long affordable = denom > 0 ? merchant.Capital.Units * HaulageScaleFactor / denom : capacityUnits;
 
             long quantity = Math.Min(capacityUnits, Math.Min(bestSeatQty, affordable));
             if (quantity < 1)
@@ -168,8 +173,8 @@ public sealed class TradePhase : ISimulationPhase
             ctx.Money.Record(MoneyChannel.MerchantPurchase, quantity * bestSeatPrice); // sink (source shop uncredited today)
 
             long totalMassGrams = bestGood.MassPerUnit.Grams * quantity;
-            long totalVolumeCc = bestGood.VolumePerUnit.CubicCentimeters * quantity;
-            long totalDimWeight = Haulage.DimensionalWeightGrams(totalMassGrams, totalVolumeCc, ctx.World.VolumetricDivisor);
+            long totalVolumeCubicCentimeters = bestGood.VolumePerUnit.CubicCentimeters * quantity;
+            long totalDimWeight = Haulage.DimensionalWeightGrams(totalMassGrams, totalVolumeCubicCentimeters, ctx.World.VolumetricDivisor);
             long totalHaulage = Haulage.Cost(totalDimWeight, bestDest.Distance, ctx.World.TransportRate);
             if (totalHaulage > merchant.Capital.Units)
                 totalHaulage = merchant.Capital.Units; // affordability gate makes this rare; never overspend

@@ -6,6 +6,9 @@ namespace WorldEcon.Engine.Trade;
 /// weight-limited and volume-limited counts (dimensional capacity).</summary>
 public static class CargoFit
 {
+    /// <summary>Units of a single good that fit, given the merchant's weight and volume capacity and the
+    /// good's per-unit mass and volume — the smaller of the two limits. Caller guarantees unit mass and
+    /// volume are ≥ 1 (Good enforces this), so the integer divisions cannot divide by zero.</summary>
     public static long MaxUnits(Mass weightCapacity, Volume volumeCapacity, Mass unitMass, Volume unitVolume)
     {
         long byWeight = weightCapacity.Grams / unitMass.Grams;
