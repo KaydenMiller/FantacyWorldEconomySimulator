@@ -14,7 +14,7 @@ public sealed class MoneyConverter() : ValueConverter<Money, long>(m => m.Units,
 
 public sealed class MassConverter() : ValueConverter<Mass, long>(m => m.Grams, v => new Mass(v));
 
-public sealed class VolumeConverter() : ValueConverter<Volume, long>(v => v.CubicCentimeters, v => new Volume(v));
+public sealed class VolumeConverter() : ValueConverter<Volume, long>(vol => vol.CubicCentimeters, v => new Volume(v));
 
 /// <summary>SQLite has no unsigned 64-bit; bit-cast ulong&lt;-&gt;long round-trips all values.</summary>
 public sealed class UInt64Converter() : ValueConverter<ulong, long>(v => unchecked((long)v), v => unchecked((ulong)v));
