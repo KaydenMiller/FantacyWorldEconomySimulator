@@ -141,7 +141,7 @@ public sealed class TradePhase : ISimulationPhase
             if (bestDest is null || bestProfit <= 0)
                 continue;
 
-            // TODO (Task 11): derive per-good unit cap from WeightCapacity/VolumeCapacity + GoodPhysical weight/volume.
+            // TODO (Task 8): derive per-good unit cap from WeightCapacity/VolumeCapacity + GoodPhysical weight/volume.
             // Stopgap: convert weight capacity (grams) to a rough unit count (1 unit ≈ 10 kg).
             long cargoUnitCap = Math.Max(1, merchant.WeightCapacity.Grams / 10_000);
             long affordable = bestSeatPrice == 0 ? cargoUnitCap : merchant.Capital.Units / bestSeatPrice;

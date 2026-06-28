@@ -26,4 +26,18 @@ public class MerchantCapacityTests
         RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), new Money(1),
             new Mass(1000), new Volume(0), 1000).IsError.Should().BeTrue();
     }
+
+    [Test]
+    public void SetCapacity_UpdatesOnSuccess_RejectsNonPositive()
+    {
+        var m = RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), new Money(1),
+            new Mass(100_000), new Volume(200_000), 1000).Value;
+
+        m.SetCapacity(new Mass(800_000), new Volume(1_500_000)).IsError.Should().BeFalse();
+        m.WeightCapacity.Grams.Should().Be(800_000);
+        m.VolumeCapacity.CubicCentimeters.Should().Be(1_500_000);
+
+        m.SetCapacity(new Mass(0), new Volume(1000)).IsError.Should().BeTrue();
+        m.SetCapacity(new Mass(1000), new Volume(0)).IsError.Should().BeTrue();
+    }
 }
