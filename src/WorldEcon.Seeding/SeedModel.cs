@@ -35,7 +35,9 @@ public sealed record SeedEndowment(string Good, long Abundance);
 
 public sealed record SeedProductionNode(string Recipe, long ThroughputCap);
 
-public sealed record SeedMerchant(long Capital, long CargoCapacity, long Reach);
+// Capacities are optional familiar-unit strings ("600 kg", "1000 L"); omitted → sensible defaults so
+// older fixtures still import. Reach defaults to 1000.
+public sealed record SeedMerchant(long Capital, string? WeightCapacity = null, string? VolumeCapacity = null, long Reach = 1000);
 
 /// <summary>A representative consumer pre-seeded at a settlement so imported worlds have demand from
 /// day 1 (otherwise the first consumers appear only after the weekly ConsumerSpawnPhase). Size is the

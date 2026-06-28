@@ -3,6 +3,7 @@ using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Cli;
 
@@ -213,7 +214,8 @@ internal static class DemoSeeder
     }
 
     private static void Merchant(WorldDbContext ctx, WorldId w, Settlement s, long capital)
-        => ctx.Merchants.Add(Unwrap(RepresentativeMerchant.Create(w, s.Id, new Money(capital), 60, 1000), $"{s.Name} merchant"));
+        => ctx.Merchants.Add(Unwrap(RepresentativeMerchant.Create(w, s.Id, new Money(capital),
+            new Mass(600_000), new Volume(1_000_000), 1000), $"{s.Name} merchant")); // 600 kg / 1000 L
 
     private static void Consumers(WorldDbContext ctx, WorldId w, Settlement s, int count)
     {

@@ -3,6 +3,7 @@ using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Engine.Phases;
 
@@ -140,8 +141,11 @@ public sealed class TradePhase : ISimulationPhase
             if (bestDest is null || bestProfit <= 0)
                 continue;
 
-            long affordable = bestSeatPrice == 0 ? merchant.CargoCapacity : merchant.Capital.Units / bestSeatPrice;
-            long quantity = Math.Min(merchant.CargoCapacity, Math.Min(bestSeatQty, affordable));
+            // TODO (Task 11): derive per-good unit cap from WeightCapacity/VolumeCapacity + GoodPhysical weight/volume.
+            // Stopgap: convert weight capacity (grams) to a rough unit count (1 unit ≈ 10 kg).
+            long cargoUnitCap = Math.Max(1, merchant.WeightCapacity.Grams / 10_000);
+            long affordable = bestSeatPrice == 0 ? cargoUnitCap : merchant.Capital.Units / bestSeatPrice;
+            long quantity = Math.Min(cargoUnitCap, Math.Min(bestSeatQty, affordable));
             if (quantity < 1)
                 continue;
 

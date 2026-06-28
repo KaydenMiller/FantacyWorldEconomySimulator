@@ -3,6 +3,7 @@ using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
 using WorldEcon.SharedKernel;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Engine.Phases;
 
@@ -17,7 +18,8 @@ public sealed class MerchantSpawnPhase : ISimulationPhase
     // NOTE: tunable; promote to World params later.
     private const long MerchantsPerPopulation = 10_000;
     private static readonly Money Capital = new(50_000);
-    private const long CargoCapacity = 50;
+    private static readonly Mass DefaultWeightCapacity = new(600_000);    // 600 kg
+    private static readonly Volume DefaultVolumeCapacity = new(1_000_000); // 1000 L
     private const long Reach = 1000;
 
     public string Name => "MerchantSpawn";
@@ -50,7 +52,7 @@ public sealed class MerchantSpawnPhase : ISimulationPhase
             for (long i = 0; i < target - existing; i++)
             {
                 var merchant = RepresentativeMerchant
-                    .Create(worldId, settlement.Id, Capital, CargoCapacity, Reach).Value;
+                    .Create(worldId, settlement.Id, Capital, DefaultWeightCapacity, DefaultVolumeCapacity, Reach).Value;
                 ctx.Db.Merchants.Add(merchant);
                 await ctx.Log.EmitAsync(LogEventType.MerchantGained,
                     $"A new merchant set up in {settlement.Name}", tick,

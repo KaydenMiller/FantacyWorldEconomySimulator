@@ -4,6 +4,7 @@ using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Seeding;
 
@@ -170,8 +171,12 @@ public sealed class SeedImporter(WorldDbContext db)
         // Representative merchants seated at this settlement.
         foreach (var mer in NonNull(s.Merchants))
         {
+            var weightCapacity = mer.WeightCapacity is not null && MeasurementFormat.TryParseMass(mer.WeightCapacity, out var wc)
+                ? wc : new Mass(600_000);
+            var volumeCapacity = mer.VolumeCapacity is not null && MeasurementFormat.TryParseVolume(mer.VolumeCapacity, out var vc)
+                ? vc : new Volume(1_000_000);
             var merchant = Unwrap(RepresentativeMerchant.Create(
-                worldId, settlementId, new Money(mer.Capital), mer.CargoCapacity, mer.Reach));
+                worldId, settlementId, new Money(mer.Capital), weightCapacity, volumeCapacity, mer.Reach));
             db.Merchants.Add(merchant);
         }
 

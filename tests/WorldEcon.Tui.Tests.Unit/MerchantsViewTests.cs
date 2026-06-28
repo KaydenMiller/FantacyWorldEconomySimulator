@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.SharedKernel;
+using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Tui;
 using WorldEcon.Tui.Navigation;
 
@@ -20,8 +21,8 @@ public class MerchantsViewTests
             var seat = await ctx.Settlements.FirstAsync();
 
             // Two merchants seated at the same settlement → "<Seat> Caravaneer" and "... Caravaneer II".
-            ctx.Merchants.Add(RepresentativeMerchant.Create(tui.World.Id, seat.Id, new Money(100), 50, 1000).Value);
-            ctx.Merchants.Add(RepresentativeMerchant.Create(tui.World.Id, seat.Id, new Money(100), 50, 1000).Value);
+            ctx.Merchants.Add(RepresentativeMerchant.Create(tui.World.Id, seat.Id, new Money(100), new Mass(600_000), new Volume(1_000_000), 1000).Value);
+            ctx.Merchants.Add(RepresentativeMerchant.Create(tui.World.Id, seat.Id, new Money(100), new Mass(600_000), new Volume(1_000_000), 1000).Value);
             await ctx.SaveChangesAsync();
 
             var view = await new Navigator().RootAsync("merchants", tui);

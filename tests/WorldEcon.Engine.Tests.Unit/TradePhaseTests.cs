@@ -6,6 +6,7 @@ using WorldEcon.Engine;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Engine.Tests.Unit;
 
@@ -30,7 +31,7 @@ public class TradePhaseTests
         long aPrice, long aQty,
         long bPrice, long bQty,
         long baseValue,
-        long merchantCapital, long merchantCapacity, long merchantReach,
+        long merchantCapital, Mass merchantWeightCapacity, Volume merchantVolumeCapacity, long merchantReach,
         Action<RepresentativeMerchant, Settlement, Settlement, GoodId, WorldDbContext>? extraSeed = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"we_trade_{Guid.NewGuid():N}.db");
@@ -53,7 +54,7 @@ public class TradePhaseTests
         bMarket.SetMarketPrice(new Money(bPrice));
 
         var merchant = RepresentativeMerchant.Create(world.Id, a.Id, new Money(merchantCapital),
-            merchantCapacity, merchantReach).Value;
+            merchantWeightCapacity, merchantVolumeCapacity, merchantReach).Value;
 
         await using var ctx = NewContextOnFile(path);
         await ctx.Database.MigrateAsync();
@@ -92,7 +93,9 @@ public class TradePhaseTests
             aPrice: 100, aQty: 100,
             bPrice: 300, bQty: 0,
             baseValue: 100,
-            merchantCapital: 100_000, merchantCapacity: 50, merchantReach: 1000);
+            merchantCapital: 100_000,
+            merchantWeightCapacity: new Mass(500_000), merchantVolumeCapacity: new Volume(1_000_000),
+            merchantReach: 1000);
         try
         {
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
@@ -122,7 +125,9 @@ public class TradePhaseTests
             aPrice: 100, aQty: 100,
             bPrice: 100, bQty: 100,
             baseValue: 100,
-            merchantCapital: 100_000, merchantCapacity: 50, merchantReach: 1000);
+            merchantCapital: 100_000,
+            merchantWeightCapacity: new Mass(500_000), merchantVolumeCapacity: new Volume(1_000_000),
+            merchantReach: 1000);
         try
         {
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
@@ -148,7 +153,9 @@ public class TradePhaseTests
             aPrice: 100, aQty: 100,
             bPrice: 300, bQty: 0,
             baseValue: 100,
-            merchantCapital: 0, merchantCapacity: 50, merchantReach: 1, // reach 1 => no dispatch
+            merchantCapital: 0,
+            merchantWeightCapacity: new Mass(500_000), merchantVolumeCapacity: new Volume(1_000_000),
+            merchantReach: 1, // reach 1 => no dispatch
             extraSeed: (merchant, a, b, goodId, ctx) =>
             {
                 preCaravan = Caravan.Create(merchant.WorldId, merchant.Id, a.Id, b.Id, goodId,

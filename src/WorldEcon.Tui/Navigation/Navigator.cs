@@ -4,6 +4,7 @@ using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
 using WorldEcon.Engine.Demand;
+using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Tui.Resources;
 
 namespace WorldEcon.Tui.Navigation;
@@ -352,8 +353,12 @@ public sealed class Navigator : INavigator
         var rows = merchants
             .Select(m => new NavRow(m.Id.Value.ToString(), NavKind.Merchant,
                 [MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinalById[m.Id.Value]),
-                 ctx.FormatMoney(m.Capital), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
-        return new NavView(title, ["Merchant", "Capital", "Capacity", "Reach"], rows);
+                 ctx.FormatMoney(m.Capital),
+                 // Task 5: format via world default; Task 11 swaps for ctx.FormatMass/FormatVolume (runtime toggle).
+                 MeasurementFormat.FormatMass(m.WeightCapacity, ctx.World.DisplayUnitSystem),
+                 MeasurementFormat.FormatVolume(m.VolumeCapacity, ctx.World.DisplayUnitSystem),
+                 m.Reach.ToString()])).ToList();
+        return new NavView(title, ["Merchant", "Capital", "Weight cap", "Volume cap", "Reach"], rows);
     }
 
     private async Task<NavView> ConsumersView(TuiContext ctx, List<RepresentativeConsumer> consumers, string title)
@@ -573,7 +578,11 @@ public sealed class Navigator : INavigator
             .Where(x => x.WorldId == ctx.World.Id && x.Seat == m.Seat).ToListAsync();
         var ordinal = seatMerchants.OrderBy(x => x.Id.Value).ToList().FindIndex(x => x.Id == m.Id);
         var displayName = MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinal);
-        return [$"Name: {displayName}", $"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}", $"Cargo capacity: {m.CargoCapacity}", $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
+        // Task 5: format via world default; Task 11 swaps for ctx.FormatMass/FormatVolume (runtime toggle).
+        return [$"Name: {displayName}", $"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}",
+            $"Weight cap: {MeasurementFormat.FormatMass(m.WeightCapacity, ctx.World.DisplayUnitSystem)}",
+            $"Volume cap: {MeasurementFormat.FormatVolume(m.VolumeCapacity, ctx.World.DisplayUnitSystem)}",
+            $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> ShopDetails(TuiContext ctx, ShopId id)

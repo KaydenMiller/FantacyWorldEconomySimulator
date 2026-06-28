@@ -1,5 +1,6 @@
 using WorldEcon.Domain.Geography;
 using WorldEcon.SharedKernel;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Domain.Economy;
 
@@ -10,6 +11,7 @@ public interface IMerchantAgent
     MerchantId Id { get; }
     SettlementId Seat { get; }
     Money Capital { get; }
-    long CargoCapacity { get; }   // total volume units it can move per caravan
-    long Reach { get; }           // max graph distance it surveys for opportunities
+    Mass WeightCapacity { get; }    // max mass hauled per caravan
+    Volume VolumeCapacity { get; }  // max volume hauled per caravan
+    long Reach { get; }             // max graph distance it surveys for opportunities
 }
