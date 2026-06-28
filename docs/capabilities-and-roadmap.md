@@ -48,6 +48,7 @@ Each item carries a status:
 - ✅ Observed live: `advance` then `consumers` (budgets accumulating), `log city` (sales + stockouts), confirming demand runs.
 
 ### Trade & logistics
+- ✅ **Physical goods + dimensional haulage (Transport Layer A).** Goods carry mass (g) + volume (cm³); caravan capacity is limited by both (dense goods weight-bound, bulky-light goods volume-bound); merchants pay a real `MerchantHaulage` sink = dimensional weight × distance × rate. Mass/volume presented metric/imperial (`World.DisplayUnitSystem` + TUI `u` toggle). Validated live 2026-06-28.
 - 🔨 Representative merchants (seat, capital, cargo capacity, reach), caravans (in-transit → delivered), deterministic trade down price gradients.
 - ✅ Observed live: `caravans` shows goods flowing between settlements after `advance`.
 
@@ -166,7 +167,7 @@ A **full, quantity-driven economy**: real goods are produced, stored, hauled, an
 ### Recommended foundational build ordering
 1. ~~Money-supply ledger + sinks/faucets~~ ✅ **done** (instrument-only ledger; upkeep/idleness sinks still pending).
 2. ~~Price discovery (per-shop belief intervals) + demand elasticity~~ ✅ **done** (double-auction `PriceDiscoveryPhase` + per-unit demand curve; validated 2026-06-27).
-3. Weight/dim-weight + transport modes (makes friction real).  ← **next**
+3. ~~Weight/dim-weight + transport modes (makes friction real).~~ **Layer A done** (weight/volume + dimensional capacity + real MerchantHaulage sink, validated 2026-06-28); **Layer B next** (transport modes, vehicle assets, loss risk, location events, risk-aware dispatch).
 4. Stability guardrails (shortage-aware production) + population migration.
 5. First-class extraction facilities (+ depletion, yield).
 6. Labor & wages (closes the money loop).
