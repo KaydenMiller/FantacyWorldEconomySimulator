@@ -4,7 +4,6 @@ using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
 using WorldEcon.Engine.Demand;
-using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Tui.Resources;
 
 namespace WorldEcon.Tui.Navigation;
@@ -354,9 +353,8 @@ public sealed class Navigator : INavigator
             .Select(m => new NavRow(m.Id.Value.ToString(), NavKind.Merchant,
                 [MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinalById[m.Id.Value]),
                  ctx.FormatMoney(m.Capital),
-                 // Task 5: format via world default; Task 11 swaps for ctx.FormatMass/FormatVolume (runtime toggle).
-                 MeasurementFormat.FormatMass(m.WeightCapacity, ctx.World.DisplayUnitSystem),
-                 MeasurementFormat.FormatVolume(m.VolumeCapacity, ctx.World.DisplayUnitSystem),
+                 ctx.FormatMass(m.WeightCapacity),
+                 ctx.FormatVolume(m.VolumeCapacity),
                  m.Reach.ToString()])).ToList();
         return new NavView(title, ["Merchant", "Capital", "Weight cap", "Volume cap", "Reach"], rows);
     }
@@ -578,10 +576,9 @@ public sealed class Navigator : INavigator
             .Where(x => x.WorldId == ctx.World.Id && x.Seat == m.Seat).ToListAsync();
         var ordinal = seatMerchants.OrderBy(x => x.Id.Value).ToList().FindIndex(x => x.Id == m.Id);
         var displayName = MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinal);
-        // Task 5: format via world default; Task 11 swaps for ctx.FormatMass/FormatVolume (runtime toggle).
         return [$"Name: {displayName}", $"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}",
-            $"Weight cap: {MeasurementFormat.FormatMass(m.WeightCapacity, ctx.World.DisplayUnitSystem)}",
-            $"Volume cap: {MeasurementFormat.FormatVolume(m.VolumeCapacity, ctx.World.DisplayUnitSystem)}",
+            $"Weight cap: {ctx.FormatMass(m.WeightCapacity)}",
+            $"Volume cap: {ctx.FormatVolume(m.VolumeCapacity)}",
             $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
     }
 

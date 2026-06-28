@@ -30,6 +30,17 @@ public interface IEntityForm
 /// user cancels (Esc), and the calling form aborts with <see cref="FormOutcome.Cancelled"/>.</summary>
 internal static class FormPrompts
 {
+    /// <summary>Prompts for an optional string. Returns the trimmed entry (possibly empty) on submit,
+    /// or null if the user cancels (Esc). An empty submit means "use the default" — the caller decides
+    /// how to interpret it; unlike <see cref="RequiredTextAsync"/> this does NOT re-ask on blank.</summary>
+    public static async Task<string?> OptionalTextAsync(IUserInteraction ui, string title, string label)
+    {
+        var t = await ui.AskTextAsync(title, label);
+        if (t is null)
+            return null; // cancelled
+        return t.Trim(); // empty string is a valid (blank) submit — caller treats it as "use default"
+    }
+
     /// <summary>Prompts for a non-blank string, re-asking on blank until a value or cancel.</summary>
     public static async Task<string?> RequiredTextAsync(IUserInteraction ui, string title, string label)
     {

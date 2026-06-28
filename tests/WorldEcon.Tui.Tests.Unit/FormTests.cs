@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
+using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Tui;
 using WorldEcon.Tui.Forms;
 
@@ -27,7 +28,9 @@ public class FormTests
                 .EnqueueNumber(0)               // shelf life
                 .EnqueueChoice(1)               // divisible: Yes
                 .EnqueueNumber(0)               // consumption bp
-                .EnqueueChoice(2);              // need tier: Comfort
+                .EnqueueChoice(2)               // need tier: Comfort
+                .EnqueueText("")                // mass: blank = size default
+                .EnqueueText("");               // volume: blank = size default
 
             var outcome = await new GoodForm().RunAsync(tui, ui);
 
@@ -37,6 +40,38 @@ public class FormTests
             good.BaseValue.Units.Should().Be(500);
             good.BaseUnit.Should().Be("gem");
             good.Need.Should().Be(NeedTier.Comfort);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Test]
+    public async Task GoodForm_CreatesGood_WithExplicitMassAndVolume()
+    {
+        var path = await TestWorld.SeedTempDbAsync();
+        try
+        {
+            await using var ctx = TestWorld.NewContext(path);
+            var tui = await TuiContext.LoadAsync(ctx);
+
+            var ui = new FakeUserInteraction()
+                .EnqueueText("Iron Bar")        // name
+                .EnqueueChoice(1)               // category: Metal (Raw=0, Metal=1)
+                .EnqueueNumber(100)             // base value
+                .EnqueueText("ingot")           // base unit
+                .EnqueueChoice(2)               // size: Medium
+                .EnqueueNumber(0)               // shelf life
+                .EnqueueChoice(0)               // divisible: No
+                .EnqueueNumber(0)               // consumption bp
+                .EnqueueChoice(0)               // need tier: Essential
+                .EnqueueText("5 kg")            // mass: 5 kilograms = 5000 grams
+                .EnqueueText("4 L");            // volume: 4 litres = 4000 cm³
+
+            var outcome = await new GoodForm().RunAsync(tui, ui);
+
+            outcome.Created.Should().BeTrue();
+            var good = await ctx.Goods.SingleAsync(g => g.Name == "Iron Bar");
+            good.MassPerUnit.Grams.Should().Be(5000);
+            good.VolumePerUnit.CubicCentimeters.Should().Be(4000);
         }
         finally { File.Delete(path); }
     }
