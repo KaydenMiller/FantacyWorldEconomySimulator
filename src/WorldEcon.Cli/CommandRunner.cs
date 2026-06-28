@@ -134,9 +134,10 @@ internal static class CommandRunner
         Console.WriteLine();
 
         var goods = await ctx.Goods.ToListAsync();
+        var listUnits = listWorld?.DisplayUnitSystem ?? UnitSystem.Metric;
         Console.WriteLine("Goods:");
         foreach (var g in goods.OrderBy(g => g.Name, StringComparer.Ordinal))
-            Console.WriteLine($"  {g.Name} | {g.Category} | baseValue {listCurrency.Format(g.BaseValue)}");
+            Console.WriteLine($"  {g.Name} | {g.Category} | baseValue {listCurrency.Format(g.BaseValue)} | {MeasurementFormat.FormatMass(g.MassPerUnit, listUnits)} | {MeasurementFormat.FormatVolume(g.VolumePerUnit, listUnits)}");
         Console.WriteLine();
 
         var shops = await ctx.Shops.ToListAsync();
