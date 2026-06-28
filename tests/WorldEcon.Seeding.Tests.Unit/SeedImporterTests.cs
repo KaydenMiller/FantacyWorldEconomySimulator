@@ -43,13 +43,13 @@ public class SeedImporterTests
                             Market: [new SeedStock("Iron Ingot", 25, 200)],
                             Endowments: [],
                             Production: [],
-                            Merchants: [new SeedMerchant(50_000, 50, 1000)]),
+                            Merchants: [new SeedMerchant(50_000, "500 kg", "1000 L", 1000)]),
                         new SeedSettlement("Riverwood", "Village", 12, 25, 800,
                             Shops: [],
                             Market: [],
                             Endowments: [new SeedEndowment("Iron Ore", 30)],
                             Production: [new SeedProductionNode("Smelt Iron", 1)],
-                            Merchants: [new SeedMerchant(50_000, 50, 1000)]),
+                            Merchants: [new SeedMerchant(50_000, "500 kg", "1000 L", 1000)]),
                     ]),
                 ]),
             ]),
@@ -132,6 +132,45 @@ public class SeedImporterTests
 
                 sim.World.CurrentTick.Value.Should().Be(1440);
             }
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task ImportAsync_Throws_WhenGoodHasMalformedMassString()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"seedbadmass_{Guid.NewGuid():N}.db");
+        try
+        {
+            var seed = new SeedWorld(
+                Name: "Aerthos", Seed: 42UL, RulesetVersion: "1.0.0",
+                Goods: [new SeedGood("Iron Ore", "Raw", 20, "unit", "Medium", 0, false, 0, MassPerUnit: "600kgs")],
+                Recipes: [],
+                Continents:
+                [
+                    new SeedContinent("Mundus",
+                    [
+                        new SeedCountry("Highmark",
+                        [
+                            new SeedRegion("The Reach",
+                            [
+                                new SeedSettlement("Hammerfell", "City", 10, 20, 50_000,
+                                    Shops: [], Market: [], Endowments: [], Production: [], Merchants: []),
+                            ]),
+                        ]),
+                    ]),
+                ],
+                Routes: []);
+
+            await using var ctx = NewContextOnFile(path);
+            await ctx.Database.MigrateAsync();
+
+            var act = async () => await new SeedImporter(ctx).ImportAsync(seed);
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*600kgs*");
         }
         finally
         {

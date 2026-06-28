@@ -3,6 +3,7 @@ using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
 using WorldEcon.SharedKernel.Currency;
 using WorldEcon.SharedKernel.Domain;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Domain.Geography;
 
@@ -35,6 +36,15 @@ public sealed class World : AggregateRoot<WorldId>
     private const long DefaultBeliefWidenFraction = 1_000;  // 10%
     private const long DefaultBeliefShiftFraction = 2_000;  // 20%
 
+    // Transport (Layer A). Dimensional-weight haulage cost is computed as
+    // max(mass, volume × 1000 / VolumetricDivisor) grams × distance × TransportRate / 1_000_000 copper.
+    public long VolumetricDivisor { get; private set; }   // cm³ that bill as one kg of volumetric weight
+    public long TransportRate { get; private set; }       // copper per 1000 kg·distance
+    public UnitSystem DisplayUnitSystem { get; private set; }
+
+    private const long DefaultVolumetricDivisor = 5_000;  // real-world air-freight number
+    private const long DefaultTransportRate = 1;
+
     // Parameterless ctor for EF Core materialization (sets private/get-only props via backing fields).
     private World() : base(default)
     {
@@ -59,6 +69,9 @@ public sealed class World : AggregateRoot<WorldId>
         BeliefNarrowFractionBasisPoints = DefaultBeliefNarrowFraction;
         BeliefWidenFractionBasisPoints = DefaultBeliefWidenFraction;
         BeliefShiftFractionBasisPoints = DefaultBeliefShiftFraction;
+        VolumetricDivisor = DefaultVolumetricDivisor;
+        TransportRate = DefaultTransportRate;
+        DisplayUnitSystem = UnitSystem.Metric;
     }
 
     public static ErrorOr<World> Create(string name, ulong seed, CalendarDefinition calendar, string rulesetVersion)
@@ -114,4 +127,18 @@ public sealed class World : AggregateRoot<WorldId>
         BeliefWidenFractionBasisPoints = widenFractionBasisPoints;
         BeliefShiftFractionBasisPoints = shiftFractionBasisPoints;
     }
+
+    /// <summary>DM tuning for haulage cost. Both must be ≥ 1.</summary>
+    public void SetTransportTuning(long volumetricDivisor, long transportRate)
+    {
+        if (volumetricDivisor < 1)
+            throw new ArgumentOutOfRangeException(nameof(volumetricDivisor), volumetricDivisor, "Volumetric divisor must be at least 1.");
+        if (transportRate < 1)
+            throw new ArgumentOutOfRangeException(nameof(transportRate), transportRate, "Transport rate must be at least 1.");
+        VolumetricDivisor = volumetricDivisor;
+        TransportRate = transportRate;
+    }
+
+    /// <summary>Which unit family the UI presents mass/volume in (display-only).</summary>
+    public void SetDisplayUnitSystem(UnitSystem system) => DisplayUnitSystem = system;
 }

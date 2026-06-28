@@ -2,13 +2,15 @@ using FluentAssertions;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.SharedKernel;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Domain.Tests.Unit.Economy;
 
 public class TradeEntitiesTests
 {
-    private static RepresentativeMerchant NewMerchant(long capital = 1_000, long cargo = 100, long reach = 5)
-        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), new Money(capital), cargo, reach).Value;
+    private static RepresentativeMerchant NewMerchant(long capital = 1_000, long reach = 5)
+        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), new Money(capital),
+            new Mass(600_000), new Volume(1_000_000), reach).Value;
 
     // ---- RepresentativeMerchant.Create ----
 
@@ -17,26 +19,36 @@ public class TradeEntitiesTests
     {
         var world = WorldId.New();
         var seat = SettlementId.New();
-        var m = RepresentativeMerchant.Create(world, seat, new Money(2_500), cargoCapacity: 50, reach: 3).Value;
+        var m = RepresentativeMerchant.Create(world, seat, new Money(2_500),
+            weightCapacity: new Mass(50_000), volumeCapacity: new Volume(80_000), reach: 3).Value;
         m.WorldId.Should().Be(world);
         m.Seat.Should().Be(seat);
         m.Capital.Should().Be(new Money(2_500));
-        m.CargoCapacity.Should().Be(50);
+        m.WeightCapacity.Grams.Should().Be(50_000);
+        m.VolumeCapacity.CubicCentimeters.Should().Be(80_000);
         m.Reach.Should().Be(3);
         m.Id.Value.Should().NotBe(Guid.Empty);
     }
 
     [Test]
     public void Merchant_Create_RejectsNegativeCapital()
-        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), new Money(-1), 10, 1).IsError.Should().BeTrue();
+        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), new Money(-1),
+            new Mass(1000), new Volume(1000), 1).IsError.Should().BeTrue();
 
     [Test]
-    public void Merchant_Create_RejectsCargoCapacityBelowOne()
-        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), Money.Zero, 0, 1).IsError.Should().BeTrue();
+    public void Merchant_Create_RejectsWeightCapacityBelowOne()
+        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), Money.Zero,
+            new Mass(0), new Volume(1000), 1).IsError.Should().BeTrue();
+
+    [Test]
+    public void Merchant_Create_RejectsVolumeCapacityBelowOne()
+        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), Money.Zero,
+            new Mass(1000), new Volume(0), 1).IsError.Should().BeTrue();
 
     [Test]
     public void Merchant_Create_RejectsReachBelowOne()
-        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), Money.Zero, 1, 0).IsError.Should().BeTrue();
+        => RepresentativeMerchant.Create(WorldId.New(), SettlementId.New(), Money.Zero,
+            new Mass(1000), new Volume(1000), 0).IsError.Should().BeTrue();
 
     [Test]
     public void Merchant_ImplementsIMerchantAgent()

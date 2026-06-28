@@ -10,7 +10,12 @@ public sealed record SeedWorld(string Name, ulong Seed, string RulesetVersion,
 
 // NeedTier is optional; omitted goods default to Essential. JSON authors can specify e.g.
 // "NeedTier": "Standard" or "NeedTier": "Comfort" to opt into higher tiers.
-public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size, long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp, string? NeedTier = null);
+// MassPerUnit/VolumePerUnit are optional familiar-unit strings ("30 kg", "4 L"); omitted → the
+// size-class defaults (Good.DefaultMassForSize / DefaultVolumeForSize). A present but unparseable
+// string (e.g. "600kgs") is a typo and fails the import loudly.
+public sealed record SeedGood(string Name, string Category, long BaseValue, string BaseUnit, string Size,
+    long ShelfLifeTicks, bool Divisible, long ConsumptionPerCapitaBp, string? NeedTier = null,
+    string? MassPerUnit = null, string? VolumePerUnit = null);
 
 public sealed record SeedRecipeLine(string Good, long Quantity);
 
@@ -35,7 +40,9 @@ public sealed record SeedEndowment(string Good, long Abundance);
 
 public sealed record SeedProductionNode(string Recipe, long ThroughputCap);
 
-public sealed record SeedMerchant(long Capital, long CargoCapacity, long Reach);
+// Capacities are optional familiar-unit strings ("600 kg", "1000 L"); omitted → sensible defaults so
+// older fixtures still import. Reach defaults to 1000.
+public sealed record SeedMerchant(long Capital, string? WeightCapacity = null, string? VolumeCapacity = null, long Reach = 1000);
 
 /// <summary>A representative consumer pre-seeded at a settlement so imported worlds have demand from
 /// day 1 (otherwise the first consumers appear only after the weekly ConsumerSpawnPhase). Size is the

@@ -18,6 +18,8 @@ public sealed class GoodConfiguration : IEntityTypeConfiguration<Good>
         b.Property(x => x.Provenance).HasConversion<string>();
         b.Property(x => x.BaseValue).HasConversion<MoneyConverter>();
         b.Property(x => x.Need).HasConversion<string>();
+        b.Property(x => x.MassPerUnit).HasConversion<MassConverter>();
+        b.Property(x => x.VolumePerUnit).HasConversion<VolumeConverter>();
         b.HasIndex(x => x.WorldId);
         b.Ignore(x => x.DomainEvents);
     }

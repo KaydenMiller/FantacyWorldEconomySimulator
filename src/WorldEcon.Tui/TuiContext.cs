@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
+using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Simulation.Time;
 
 namespace WorldEcon.Tui;
@@ -20,6 +21,7 @@ public sealed class TuiContext
         World = world;
         DbPath = dbPath;
         Calendar = new CalendarSystem(world.Calendar);
+        DisplayUnits = world.DisplayUnitSystem;
     }
 
     public WorldDbContext Db { get; }
@@ -32,6 +34,17 @@ public sealed class TuiContext
 
     /// <summary>Formats a <see cref="Money"/> value using the world's currency (e.g. "3g 2s 1c").</summary>
     public string FormatMoney(Money money) => World.Currency.Format(money);
+
+    /// <summary>Which unit family the UI presents mass/volume in. Initialised from the world default;
+    /// toggled at runtime via <see cref="ToggleUnits"/> (display-only, does not persist).</summary>
+    public UnitSystem DisplayUnits { get; private set; }
+
+    public string FormatMass(Mass mass) => MeasurementFormat.FormatMass(mass, DisplayUnits);
+    public string FormatVolume(Volume volume) => MeasurementFormat.FormatVolume(volume, DisplayUnits);
+
+    /// <summary>Flip metric ↔ imperial for display.</summary>
+    public void ToggleUnits() =>
+        DisplayUnits = DisplayUnits == UnitSystem.Metric ? UnitSystem.Imperial : UnitSystem.Metric;
 
     /// <summary>e.g. "Y1 M1 D11 00:00 (tick 14400)".</summary>
     public string CurrentDateLabel

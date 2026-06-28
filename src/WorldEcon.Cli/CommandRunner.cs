@@ -12,6 +12,7 @@ using WorldEcon.SharedKernel;
 using WorldEcon.Persistence.Snapshots;
 using WorldEcon.Seeding;
 using WorldEcon.SharedKernel.Currency;
+using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Simulation.Time;
 
 namespace WorldEcon.Cli;
@@ -133,9 +134,10 @@ internal static class CommandRunner
         Console.WriteLine();
 
         var goods = await ctx.Goods.ToListAsync();
+        var listUnits = listWorld?.DisplayUnitSystem ?? UnitSystem.Metric;
         Console.WriteLine("Goods:");
         foreach (var g in goods.OrderBy(g => g.Name, StringComparer.Ordinal))
-            Console.WriteLine($"  {g.Name} | {g.Category} | baseValue {listCurrency.Format(g.BaseValue)}");
+            Console.WriteLine($"  {g.Name} | {g.Category} | baseValue {listCurrency.Format(g.BaseValue)} | {MeasurementFormat.FormatMass(g.MassPerUnit, listUnits)} | {MeasurementFormat.FormatVolume(g.VolumePerUnit, listUnits)}");
         Console.WriteLine();
 
         var shops = await ctx.Shops.ToListAsync();
@@ -346,11 +348,12 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"Seat",-16} {"Capital",12} {"CargoCapacity",14} {"Reach",8}");
+        var units = world?.DisplayUnitSystem ?? UnitSystem.Metric;
+        Console.WriteLine($"  {"Seat",-16} {"Capital",12} {"Weight cap",12} {"Volume cap",12} {"Reach",8}");
         foreach (var m in merchants)
         {
             var seat = settlementById.TryGetValue(m.Seat, out var n) ? n : "(unknown)";
-            Console.WriteLine($"  {seat,-16} {currency.Format(m.Capital),12} {m.CargoCapacity,14} {m.Reach,8}");
+            Console.WriteLine($"  {seat,-16} {currency.Format(m.Capital),12} {MeasurementFormat.FormatMass(m.WeightCapacity, units),12} {MeasurementFormat.FormatVolume(m.VolumeCapacity, units),12} {m.Reach,8}");
         }
         return 0;
     }

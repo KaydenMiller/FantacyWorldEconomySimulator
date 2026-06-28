@@ -22,6 +22,9 @@ public enum MoneyChannel
     MerchantPurchase = 2,
     /// <summary>A merchant selling delivered goods. Today no one is debited → a faucet.</summary>
     MerchantSale = 3,
+    /// <summary>What a merchant pays to move a caravan (porter/teamster wages until the labour loop
+    /// exists; also the future hook for paid guards/mercenaries). A sink.</summary>
+    MerchantHaulage = 4,
 }
 
 /// <summary>Classifies each <see cref="MoneyChannel"/> as a faucet or sink.</summary>
@@ -32,6 +35,7 @@ public static class MoneyChannels
         MoneyChannel.ConsumerAllowance => MoneyFlowKind.Faucet,
         MoneyChannel.MerchantPurchase => MoneyFlowKind.Sink,
         MoneyChannel.MerchantSale => MoneyFlowKind.Faucet,
+        MoneyChannel.MerchantHaulage => MoneyFlowKind.Sink,
         _ => throw new System.ArgumentOutOfRangeException(nameof(channel), channel, "Unclassified money channel."),
     };
 }

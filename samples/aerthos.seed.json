@@ -9,9 +9,9 @@
     { "name": "Wool", "category": "Raw", "baseValue": 25, "baseUnit": "bale", "size": "Medium", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 0 },
     { "name": "Grapes", "category": "Raw", "baseValue": 18, "baseUnit": "crate", "size": "Medium", "shelfLifeTicks": 4320, "divisible": true, "consumptionPerCapitaBp": 0 },
     { "name": "Flour", "category": "Material", "baseValue": 40, "baseUnit": "sack", "size": "Medium", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 0 },
-    { "name": "Iron Ingot", "category": "Material", "baseValue": 200, "baseUnit": "ingot", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0 },
+    { "name": "Iron Ingot", "category": "Material", "baseValue": 200, "baseUnit": "ingot", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 0, "massPerUnit": "30 kg", "volumePerUnit": "4 L" },
     { "name": "Bread", "category": "Food", "baseValue": 30, "baseUnit": "loaf", "size": "Small", "shelfLifeTicks": 4320, "divisible": true, "consumptionPerCapitaBp": 50, "needTier": "Essential" },
-    { "name": "Cloth", "category": "Material", "baseValue": 80, "baseUnit": "bolt", "size": "Small", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 10, "needTier": "Standard" },
+    { "name": "Cloth", "category": "Material", "baseValue": 80, "baseUnit": "bolt", "size": "Small", "shelfLifeTicks": 0, "divisible": true, "consumptionPerCapitaBp": 10, "needTier": "Standard", "massPerUnit": "2 kg", "volumePerUnit": "60 L" },
     { "name": "Tools", "category": "Tool", "baseValue": 150, "baseUnit": "set", "size": "Medium", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 5, "needTier": "Standard" },
     { "name": "Ale", "category": "Luxury", "baseValue": 40, "baseUnit": "mug", "size": "Small", "shelfLifeTicks": 720, "divisible": true, "consumptionPerCapitaBp": 20, "needTier": "Comfort" },
     { "name": "Wine", "category": "Luxury", "baseValue": 120, "baseUnit": "bottle", "size": "Small", "shelfLifeTicks": 0, "divisible": false, "consumptionPerCapitaBp": 15, "needTier": "Comfort" },
@@ -73,7 +73,7 @@
                     { "recipe": "Brew Ale", "throughputCap": 1 },
                     { "recipe": "Brew Ale", "throughputCap": 1 }
                   ],
-                  "merchants": [ { "capital": 80000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "merchants": [ { "capital": 80000, "weightCapacity": "600 kg", "volumeCapacity": "1000 L", "reach": 1000 } ],
                   "consumers": [
                     { "size": 1000, "budget": 40000 },
                     { "size": 1000, "budget": 40000 },
@@ -108,7 +108,7 @@
                     { "recipe": "Weave Cloth", "throughputCap": 1 },
                     { "recipe": "Weave Cloth", "throughputCap": 1 }
                   ],
-                  "merchants": [ { "capital": 30000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "merchants": [ { "capital": 30000, "weightCapacity": "600 kg", "volumeCapacity": "1000 L", "reach": 1000 } ],
                   "consumers": [
                     { "size": 1000, "budget": 40000 },
                     { "size": 1000, "budget": 40000 }
@@ -129,7 +129,7 @@
                     { "recipe": "Grind Flour", "throughputCap": 1 },
                     { "recipe": "Bake Bread", "throughputCap": 1 }
                   ],
-                  "merchants": [ { "capital": 10000, "cargoCapacity": 40, "reach": 1000 } ],
+                  "merchants": [ { "capital": 10000, "weightCapacity": "600 kg", "volumeCapacity": "1000 L", "reach": 1000 } ],
                   "consumers": [ { "size": 1000, "budget": 40000 } ]
                 }
               ]
@@ -163,7 +163,7 @@
                     { "recipe": "Forge Tools", "throughputCap": 1 },
                     { "recipe": "Forge Tools", "throughputCap": 1 }
                   ],
-                  "merchants": [ { "capital": 30000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "merchants": [ { "capital": 30000, "weightCapacity": "600 kg", "volumeCapacity": "1000 L", "reach": 1000 } ],
                   "consumers": [
                     { "size": 1000, "budget": 40000 },
                     { "size": 1000, "budget": 40000 }
@@ -209,7 +209,7 @@
                     { "recipe": "Press Wine", "throughputCap": 1 },
                     { "recipe": "Press Wine", "throughputCap": 1 }
                   ],
-                  "merchants": [ { "capital": 80000, "cargoCapacity": 60, "reach": 1000 } ],
+                  "merchants": [ { "capital": 80000, "weightCapacity": "600 kg", "volumeCapacity": "1000 L", "reach": 1000 } ],
                   "consumers": [
                     { "size": 1000, "budget": 40000 },
                     { "size": 1000, "budget": 40000 },
@@ -228,7 +228,7 @@
                   "market": [ { "good": "Grapes", "quantity": 200, "unitCostBasis": 18 } ],
                   "endowments": [ { "good": "Grapes", "abundance": 200 } ],
                   "production": [ { "recipe": "Press Wine", "throughputCap": 1 } ],
-                  "merchants": [ { "capital": 12000, "cargoCapacity": 40, "reach": 1000 } ],
+                  "merchants": [ { "capital": 12000, "weightCapacity": "600 kg", "volumeCapacity": "1000 L", "reach": 1000 } ],
                   "consumers": [ { "size": 1000, "budget": 40000 } ]
                 }
               ]

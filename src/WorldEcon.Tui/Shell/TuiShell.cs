@@ -242,7 +242,7 @@ public sealed class TuiShell : Window
         var hints = new List<string> { ":cmd", "hjk move", "enter drill", "esc back", "d details" };
         if (LogScopeFor(row?.Kind ?? NavKind.Leaf) is not null)
             hints.Add("l log");
-        hints.AddRange(["/filter", "o sort", "n new", "a advance", "S snapshot", "? help", "q quit"]);
+        hints.AddRange(["/filter", "o sort", "u units", "n new", "a advance", "S snapshot", "? help", "q quit"]);
         if (row is not null && EditRegistry.ForKind(row.Kind) is { } ef)
             hints.Add($"E edit {ef.Label}");
         if (row?.Kind == NavKind.City)
@@ -447,6 +447,11 @@ public sealed class TuiShell : Window
             case 'l': ShowLog(); return true;
             case 'n': ShowNewEntityForm(); return true;
             case 'E': ShowEditForm(); return true;
+            case 'u':
+                // 'u' flips metric/imperial for mass/volume display (session-only).
+                _ctx.ToggleUnits();
+                Dispatch(RefreshCurrentAsync);
+                return true;
         }
 
         var global = _globalActions.FirstOrDefault(a => a.Key == ch);
@@ -630,6 +635,7 @@ public sealed class TuiShell : Window
             Row("a", "advance time"),
             Row("S", "snapshot"),
             Row("o", "cycle sort: unsorted → col0 ▲ → col0 ▼ → col1 ▲ → … → unsorted; active column header shows ▲/▼"),
+            Row("u", "toggle metric/imperial for mass/volume display (session-only)"),
             Row("b", "(on a city) buy out a good"),
             Row("x", "(on a city) disable production"),
             Row("e", "(on a city) enable production"),

@@ -2,6 +2,7 @@ using ErrorOr;
 using WorldEcon.Domain.Geography;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Domain;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Domain.Economy;
 
@@ -21,13 +22,16 @@ public sealed class Good : AggregateRoot<GoodId>
     // basis points (10000 = 1× base). Willingness declines linearly to 1× base at the desired quantity,
     // so a higher peak = a more inelastic good (keeps buying when scarce). DM-tunable; tier-defaulted.
     public long PeakWillingnessMultipleBasisPoints { get; private set; }
+    public Mass MassPerUnit { get; private set; }
+    public Volume VolumePerUnit { get; private set; }
     public Provenance Provenance { get; private set; }
 
     private Good() : base(default) { Name = null!; BaseUnit = null!; } // EF
 
     private Good(GoodId id, WorldId worldId, string name, GoodCategory category, Money baseValue,
         string baseUnit, SizeClass size, long shelfLifeTicks, bool divisible, long consumptionPerCapitaBp,
-        long peakWillingnessMultipleBasisPoints, Provenance provenance, NeedTier need) : base(id)
+        long peakWillingnessMultipleBasisPoints, Mass massPerUnit, Volume volumePerUnit,
+        Provenance provenance, NeedTier need) : base(id)
     {
         WorldId = worldId;
         Name = name;
@@ -39,6 +43,8 @@ public sealed class Good : AggregateRoot<GoodId>
         Divisible = divisible;
         ConsumptionPerCapitaBp = consumptionPerCapitaBp;
         PeakWillingnessMultipleBasisPoints = peakWillingnessMultipleBasisPoints;
+        MassPerUnit = massPerUnit;
+        VolumePerUnit = volumePerUnit;
         Provenance = provenance;
         Need = need;
     }
@@ -53,9 +59,32 @@ public sealed class Good : AggregateRoot<GoodId>
         _ => 15_000,
     };
 
+    /// <summary>Default mass per unit by size class (DM-overridable per good).</summary>
+    public static Mass DefaultMassForSize(SizeClass size) => new(size switch
+    {
+        SizeClass.Tiny => 50,
+        SizeClass.Small => 1_000,
+        SizeClass.Medium => 10_000,
+        SizeClass.Large => 50_000,
+        SizeClass.Bulky => 200_000,
+        _ => 10_000,
+    });
+
+    /// <summary>Default volume per unit by size class (DM-overridable per good).</summary>
+    public static Volume DefaultVolumeForSize(SizeClass size) => new(size switch
+    {
+        SizeClass.Tiny => 50,
+        SizeClass.Small => 1_000,
+        SizeClass.Medium => 20_000,
+        SizeClass.Large => 100_000,
+        SizeClass.Bulky => 500_000,
+        _ => 20_000,
+    });
+
     public static ErrorOr<Good> Create(WorldId worldId, string name, GoodCategory category, Money baseValue,
         string baseUnit, SizeClass size, long shelfLifeTicks, bool divisible, long consumptionPerCapitaBp = 0,
-        NeedTier needTier = NeedTier.Essential, long? peakWillingnessMultipleBasisPoints = null)
+        NeedTier needTier = NeedTier.Essential, long? peakWillingnessMultipleBasisPoints = null,
+        Mass? massPerUnit = null, Volume? volumePerUnit = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             return Error.Validation("good.name.blank", "Good name must not be blank.");
@@ -73,8 +102,16 @@ public sealed class Good : AggregateRoot<GoodId>
             return Error.Validation("good.peakwillingness.belowbase",
                 "Peak willingness multiple must be at least 10000 (1× base value).");
 
+        Mass mass = massPerUnit ?? DefaultMassForSize(size);
+        Volume volume = volumePerUnit ?? DefaultVolumeForSize(size);
+        if (mass.Grams < 1)
+            return Error.Validation("good.mass.tooSmall", "Mass per unit must be at least 1 gram.");
+        if (volume.CubicCentimeters < 1)
+            return Error.Validation("good.volume.tooSmall", "Volume per unit must be at least 1 cm³.");
+
         return new Good(GoodId.New(), worldId, name.Trim(), category, baseValue,
-            baseUnit.Trim(), size, shelfLifeTicks, divisible, consumptionPerCapitaBp, peak, Provenance.Authored, needTier);
+            baseUnit.Trim(), size, shelfLifeTicks, divisible, consumptionPerCapitaBp, peak,
+            mass, volume, Provenance.Authored, needTier);
     }
 
     /// <summary>DM tuning: set the peak willingness-to-pay multiple (basis points of base value, ≥ 10000).</summary>
@@ -84,6 +121,24 @@ public sealed class Good : AggregateRoot<GoodId>
             return Error.Validation("good.peakwillingness.belowbase",
                 "Peak willingness multiple must be at least 10000 (1× base value).");
         PeakWillingnessMultipleBasisPoints = basisPoints;
+        return Result.Success;
+    }
+
+    /// <summary>DM tuning: set the mass per unit (≥ 1 gram).</summary>
+    public ErrorOr<Success> SetMassPerUnit(Mass mass)
+    {
+        if (mass.Grams < 1)
+            return Error.Validation("good.mass.tooSmall", "Mass per unit must be at least 1 gram.");
+        MassPerUnit = mass;
+        return Result.Success;
+    }
+
+    /// <summary>DM tuning: set the volume per unit (≥ 1 cm³).</summary>
+    public ErrorOr<Success> SetVolumePerUnit(Volume volume)
+    {
+        if (volume.CubicCentimeters < 1)
+            return Error.Validation("good.volume.tooSmall", "Volume per unit must be at least 1 cm³.");
+        VolumePerUnit = volume;
         return Result.Success;
     }
 }

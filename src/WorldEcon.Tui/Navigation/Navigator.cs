@@ -352,8 +352,11 @@ public sealed class Navigator : INavigator
         var rows = merchants
             .Select(m => new NavRow(m.Id.Value.ToString(), NavKind.Merchant,
                 [MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinalById[m.Id.Value]),
-                 ctx.FormatMoney(m.Capital), m.CargoCapacity.ToString(), m.Reach.ToString()])).ToList();
-        return new NavView(title, ["Merchant", "Capital", "Capacity", "Reach"], rows);
+                 ctx.FormatMoney(m.Capital),
+                 ctx.FormatMass(m.WeightCapacity),
+                 ctx.FormatVolume(m.VolumeCapacity),
+                 m.Reach.ToString()])).ToList();
+        return new NavView(title, ["Merchant", "Capital", "Weight cap", "Volume cap", "Reach"], rows);
     }
 
     private async Task<NavView> ConsumersView(TuiContext ctx, List<RepresentativeConsumer> consumers, string title)
@@ -573,7 +576,10 @@ public sealed class Navigator : INavigator
             .Where(x => x.WorldId == ctx.World.Id && x.Seat == m.Seat).ToListAsync();
         var ordinal = seatMerchants.OrderBy(x => x.Id.Value).ToList().FindIndex(x => x.Id == m.Id);
         var displayName = MerchantNaming.DisplayName(names.Resolve(m.Seat.Value), ordinal);
-        return [$"Name: {displayName}", $"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}", $"Cargo capacity: {m.CargoCapacity}", $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
+        return [$"Name: {displayName}", $"Seat: {names.Resolve(m.Seat.Value)}", $"Capital: {ctx.FormatMoney(m.Capital)}",
+            $"Weight cap: {ctx.FormatMass(m.WeightCapacity)}",
+            $"Volume cap: {ctx.FormatVolume(m.VolumeCapacity)}",
+            $"Reach: {m.Reach}", $"Caravans in flight: {caravans}", $"Id: {m.Id.Value}"];
     }
 
     private async Task<IReadOnlyList<string>> ShopDetails(TuiContext ctx, ShopId id)

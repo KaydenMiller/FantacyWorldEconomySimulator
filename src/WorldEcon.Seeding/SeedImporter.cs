@@ -4,6 +4,7 @@ using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Measure;
 
 namespace WorldEcon.Seeding;
 
@@ -39,12 +40,16 @@ public sealed class SeedImporter(WorldDbContext db)
                 ? NeedTier.Essential
                 : ParseEnum<NeedTier>(g.NeedTier, "good.needTier");
 
+            var mass = ParseOptionalMass(g.MassPerUnit, $"good '{g.Name}'");
+            var volume = ParseOptionalVolume(g.VolumePerUnit, $"good '{g.Name}'");
+
             var good = Unwrap(Good.Create(
                 worldId, g.Name,
                 ParseEnum<GoodCategory>(g.Category, "good.category"),
                 new Money(g.BaseValue), g.BaseUnit,
                 ParseEnum<SizeClass>(g.Size, "good.size"),
-                g.ShelfLifeTicks, g.Divisible, g.ConsumptionPerCapitaBp, needTier));
+                g.ShelfLifeTicks, g.Divisible, g.ConsumptionPerCapitaBp, needTier,
+                peakWillingnessMultipleBasisPoints: null, massPerUnit: mass, volumePerUnit: volume));
 
             if (!byName.TryAdd(good.Name, good.Id))
                 throw new InvalidOperationException($"Seed invalid: duplicate good name '{good.Name}'.");
@@ -170,8 +175,10 @@ public sealed class SeedImporter(WorldDbContext db)
         // Representative merchants seated at this settlement.
         foreach (var mer in NonNull(s.Merchants))
         {
+            var weightCapacity = ParseOptionalMass(mer.WeightCapacity, $"merchant in '{s.Name}'") ?? new Mass(600_000);
+            var volumeCapacity = ParseOptionalVolume(mer.VolumeCapacity, $"merchant in '{s.Name}'") ?? new Volume(1_000_000);
             var merchant = Unwrap(RepresentativeMerchant.Create(
-                worldId, settlementId, new Money(mer.Capital), mer.CargoCapacity, mer.Reach));
+                worldId, settlementId, new Money(mer.Capital), weightCapacity, volumeCapacity, mer.Reach));
             db.Merchants.Add(merchant);
         }
 
@@ -230,4 +237,20 @@ public sealed class SeedImporter(WorldDbContext db)
     }
 
     private static IEnumerable<T> NonNull<T>(IReadOnlyList<T>? list) => list ?? [];
+
+    private static Mass? ParseOptionalMass(string? text, string context)
+    {
+        if (text is null) return null;
+        if (!MeasurementFormat.TryParseMass(text, out var mass))
+            throw new InvalidOperationException($"Seed invalid: invalid mass '{text}' for {context} (expected e.g. '30 kg').");
+        return mass;
+    }
+
+    private static Volume? ParseOptionalVolume(string? text, string context)
+    {
+        if (text is null) return null;
+        if (!MeasurementFormat.TryParseVolume(text, out var volume))
+            throw new InvalidOperationException($"Seed invalid: invalid volume '{text}' for {context} (expected e.g. '4 L').");
+        return volume;
+    }
 }

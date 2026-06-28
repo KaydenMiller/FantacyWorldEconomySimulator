@@ -14,6 +14,12 @@ public class MoneyChannelsTests
     }
 
     [Test]
+    public void MerchantHaulage_IsSink()
+    {
+        MoneyChannels.KindOf(MoneyChannel.MerchantHaulage).Should().Be(MoneyFlowKind.Sink);
+    }
+
+    [Test]
     public void KindOf_HandlesAllDefinedChannels()
     {
         // Guards against adding a channel without classifying it.
