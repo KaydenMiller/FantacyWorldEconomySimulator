@@ -10,6 +10,7 @@ namespace WorldEcon.SharedKernel.Measure;
 /// </summary>
 public static partial class MeasurementFormat
 {
+    // Parse table: unit suffix → base units per unit (grams for mass / cm³ for volume). Lower-cased, '³'→'3'.
     private static readonly (string Unit, double Factor)[] MassUnits =
     [
         ("g", 1), ("gram", 1), ("grams", 1),
@@ -28,16 +29,17 @@ public static partial class MeasurementFormat
         ("ft3", 28316.846592),
     ];
 
+    // Display ladders, largest-first: (divisor-in-base-units, symbol).
     private static readonly (long Divisor, string Symbol)[] MassMetric = [(1_000_000, "t"), (1000, "kg"), (1, "g")];
     private static readonly (long Divisor, string Symbol)[] VolumeMetric = [(1_000_000, "m³"), (1000, "L"), (1, "cm³")];
 
     public static string FormatMass(Mass mass, UnitSystem system) => system == UnitSystem.Metric
         ? FormatBaseMetric(mass.Grams, MassMetric)
-        : FormatImperial(mass.Grams, lbFactor: 453.59237, "lb", ozFactor: 28.349523125, "oz");
+        : FormatImperial(mass.Grams, largeUnitFactor: 453.59237, largeUnitSymbol: "lb", smallUnitFactor: 28.349523125, smallUnitSymbol: "oz");
 
     public static string FormatVolume(Volume volume, UnitSystem system) => system == UnitSystem.Metric
         ? FormatBaseMetric(volume.CubicCentimeters, VolumeMetric)
-        : FormatImperial(volume.CubicCentimeters, lbFactor: 28316.846592, "ft³", ozFactor: 16.387064, "in³");
+        : FormatImperial(volume.CubicCentimeters, largeUnitFactor: 28316.846592, largeUnitSymbol: "ft³", smallUnitFactor: 16.387064, smallUnitSymbol: "in³");
 
     private static string FormatBaseMetric(long value, (long Divisor, string Symbol)[] ladder)
     {
@@ -52,15 +54,16 @@ public static partial class MeasurementFormat
         return $"0 {ladder[^1].Symbol}";
     }
 
-    private static string FormatImperial(long baseValue, double lbFactor, string lbSymbol, double ozFactor, string ozSymbol)
+    // Imperial display picks the larger unit once the value reaches ~1 of it, else the smaller unit.
+    private static string FormatImperial(long baseValue, double largeUnitFactor, string largeUnitSymbol, double smallUnitFactor, string smallUnitSymbol)
     {
-        if (baseValue >= lbFactor)
+        if (baseValue >= largeUnitFactor)
         {
-            double v = baseValue / lbFactor;
-            return $"{v.ToString("0.##", CultureInfo.InvariantCulture)} {lbSymbol}";
+            double v = baseValue / largeUnitFactor;
+            return $"{v.ToString("0.##", CultureInfo.InvariantCulture)} {largeUnitSymbol}";
         }
-        double small = baseValue / ozFactor;
-        return $"{small.ToString("0.##", CultureInfo.InvariantCulture)} {ozSymbol}";
+        double small = baseValue / smallUnitFactor;
+        return $"{small.ToString("0.##", CultureInfo.InvariantCulture)} {smallUnitSymbol}";
     }
 
     public static bool TryParseMass(string text, out Mass mass)
@@ -79,7 +82,7 @@ public static partial class MeasurementFormat
     {
         baseUnits = 0;
         if (string.IsNullOrWhiteSpace(text)) return false;
-        var m = NumberUnit().Match(text.Trim());
+        var m = NumberUnit().Match(text);
         if (!m.Success) return false;
         if (!double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
             return false;

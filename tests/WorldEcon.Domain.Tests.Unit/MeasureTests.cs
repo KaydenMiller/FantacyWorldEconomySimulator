@@ -63,6 +63,13 @@ public class MeasurementFormatTests
     }
 
     [Test]
+    public void FormatVolume_Imperial_IsApproximate()
+    {
+        MeasurementFormat.FormatVolume(new Volume(28317), UnitSystem.Imperial).Should().Be("1 ft³");
+        MeasurementFormat.FormatVolume(new Volume(16), UnitSystem.Imperial).Should().Be("0.98 in³");
+    }
+
+    [Test]
     public void ParseMass_IsSystemAgnostic()
     {
         MeasurementFormat.TryParseMass("5 kg", out var a).Should().BeTrue();
