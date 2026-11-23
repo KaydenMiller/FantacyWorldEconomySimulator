@@ -54,6 +54,8 @@ internal static class CommandRunner
                 "log" => await CmdLog(args),
                 "summary" => await CmdSummary(args),
                 "globe" => await GlobeCommands.RunAsync(args, OpenContext, MissingArgs),
+                "route" => await RouteCommands.RunAsync(args, OpenContext, MissingArgs),
+                "knowledge" => await RouteCommands.KnowledgeAsync(args, OpenContext, MissingArgs),
                 _ => Unknown(args[0]),
             };
         }
@@ -196,6 +198,8 @@ internal static class CommandRunner
         var cells = gen.Layers.Grid.CellCount;
         var generateSeconds = gen.Stages.Sum(s => s.Duration.TotalSeconds);
         Console.WriteLine($"  Globe cells: {cells:N0} (generated in {generateSeconds:F2} s, persisted in {globe.PersistDuration.TotalSeconds:F2} s, of which store {globe.GlobeTablesDuration.TotalSeconds:F2} s)");
+        Console.WriteLine($"  Roads:       {globe.RoadCounts.Routes:N0} routes ({globe.RoadCounts.Voyages:N0} voyages), {globe.RoadCounts.Estimates:N0} travel estimates, generated in {globe.RoadsDuration.TotalSeconds:F2} s" +
+            (globe.RoadTimings.Count == 0 ? "" : " (" + string.Join(", ", globe.RoadTimings.Select(t => $"{t.Key.ToLowerInvariant()} {t.Value.TotalSeconds:F2} s")) + ")"));
         if (gen.Tiles is { } tiles && gen.Regions is { } regions)
         {
             var sizeKm = TileMetrics.SizeKm(settings.Grid.PlanetRadiusKm, tiles.Count);
@@ -236,10 +240,15 @@ internal static class CommandRunner
         Console.WriteLine();
 
         var settlements = await ctx.Settlements.ToListAsync();
+        var entrances = listWorld is null ? (_ => null) : await RouteCommands.EntrancesAsync(ctx, listWorld);
+        var ports = listWorld is null ? (_ => null) : await RouteCommands.PortsAsync(ctx, listWorld);
         Console.WriteLine("Settlements:");
         foreach (var s in settlements.OrderBy(s => s.Name, StringComparer.Ordinal))
-            Console.WriteLine($"  {s.Name} | {s.Type} | pop {s.Population}");
+            Console.WriteLine($"  {s.Name} | {s.Type} | pop {s.Population}" + (ports(s.Id) is { } pk ? $" | {pk}" : "") + (entrances(s.Id) is { } e ? $" | {e}" : ""));
         Console.WriteLine();
+
+        if (listWorld is not null)
+            await RouteCommands.PrintRoutesAsync(ctx, listWorld, args.Contains("--voyages"));
 
         var goods = await ctx.Goods.ToListAsync();
         var listUnits = listWorld?.DisplayUnitSystem ?? UnitSystem.Metric;
@@ -457,11 +466,13 @@ internal static class CommandRunner
         }
 
         var units = world?.DisplayUnitSystem ?? UnitSystem.Metric;
-        Console.WriteLine($"  {"Seat",-16} {"Capital",12} {"Weight cap",12} {"Volume cap",12} {"Reach",8}");
+        Console.WriteLine($"  {"Seat",-16} {"Capital",12} {"Reach",8} {"Prefers",-14} {"Risk",5} Last trips");
         foreach (var m in merchants)
         {
             var seat = settlementById.TryGetValue(m.Seat, out var n) ? n : "(unknown)";
-            Console.WriteLine($"  {seat,-16} {currency.Format(m.Capital),12} {MeasurementFormat.FormatMass(m.WeightCapacity, units),12} {MeasurementFormat.FormatVolume(m.VolumeCapacity, units),12} {m.Reach,8}");
+            Console.WriteLine($"  {seat,-16} {currency.Format(m.Capital),12} {m.Reach,8} {m.VehicleClassName,-14} {m.RiskAversion,5} " +
+                string.Join("; ", m.Trips.OrderBy(t => t.Slot).Select(t =>
+                    $"{(settlementById.TryGetValue(t.From, out var f) ? f : "?")}→{(settlementById.TryGetValue(t.To, out var to) ? to : "?")} by {t.VehicleClass}, {t.Ticks / 1440.0:0.0} d")));
         }
         return 0;
     }
@@ -588,7 +599,8 @@ internal static class CommandRunner
             return 0;
         }
 
-        Console.WriteLine($"  {"Origin",-12} {"Dest",-12} {"Good",-14} {"Qty",6} {"UnitCost",12} {"Depart",10} {"Arrive",10} {"Delivered",10}");
+        var position = await RouteCommands.PositionAsync(ctx, caravanWorld);
+        Console.WriteLine($"  {"Origin",-12} {"Dest",-12} {"Good",-14} {"Qty",6} {"UnitCost",12} {"Depart",10} {"Arrive",10} {"Delivered",10}  Position");
         foreach (var c in caravans)
         {
             var origin = settlementById.TryGetValue(c.OriginId, out var o) ? o : "(unknown)";
@@ -596,7 +608,7 @@ internal static class CommandRunner
             var good = goodById.TryGetValue(c.GoodId, out var g) ? g : "(unknown)";
             var delivered = c.Delivered ? "yes" : "no";
             Console.WriteLine(
-                $"  {origin,-12} {dest,-12} {good,-14} {c.Quantity,6} {caravanCurrency.Format(c.UnitCostBasis),12} {c.DepartTick.Value,10} {c.ArriveTick.Value,10} {delivered,10}");
+                $"  {origin,-12} {dest,-12} {good,-14} {c.Quantity,6} {caravanCurrency.Format(c.UnitCostBasis),12} {c.DepartTick.Value,10} {c.ArriveTick.Value,10} {delivered,10}  {position(c)}");
         }
         return 0;
     }
@@ -883,15 +895,19 @@ internal static class CommandRunner
         Console.WriteLine("                                             earth-10km, small-5km. <file> is a JSON generation block (see globe defaults)");
         Console.WriteLine("                                             whose values override the preset. Prints per-stage times and world statistics.");
         Console.WriteLine("  import   <jsonPath> <dbPath>               Create + migrate DB and import a JSON world seed.");
-        Console.WriteLine("  list     <dbPath>                          List settlements, goods, and shops.");
+        Console.WriteLine("  list     <dbPath> [--voyages]               List settlements (port kind, route entrances), routes by road, voyages");
+        Console.WriteLine("                                             between ports (first 50 unless --voyages), vehicle classes, goods and shops.");
+        Console.WriteLine("  knowledge <dbPath> <settlement>            What a settlement knows about travel times (estimated or reported by merchants).");
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
         Console.WriteLine("  advance  <dbPath> <duration>               Advance in-world time. <duration> is a bare integer (ticks/minutes)");
         Console.WriteLine("                                             or <n><unit> where unit: m=minute h=hour d=day w=week M=month y=year.");
         Console.WriteLine("  stock    <dbPath> <settlement>             Show a settlement's market stockpiles.");
-        Console.WriteLine("  merchants <dbPath>                         List representative merchants and their seats.");
+        Console.WriteLine("  merchants <dbPath>                         List merchants: seat, capital, reach, preferred vehicle, risk aversion, last trips.");
         Console.WriteLine("  consumers <dbPath>                         List representative consumers (seat, size, budget).");
         Console.WriteLine("  money    <dbPath>                          Money-supply ledger: total in circulation, faucet/sink/transfer flows, history.");
-        Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered).");
+        Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered) with their position on the route graph.");
+        Console.WriteLine("  route upgrade <dbPath> <routeId> <surface> Change a route's surface (Track|DirtRoad|Paved for Land) at the current tick;");
+        Console.WriteLine("                                             caravans on it are rescheduled. <routeId>: the id prefix shown by list.");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
         Console.WriteLine("  buy      <dbPath> <settlement> <good> <qty> Party buys a good off shop shelves.");
         Console.WriteLine("  adjust   <dbPath> <settlement> <good> <delta> Party adjusts market stock (delta may be negative).");
@@ -908,7 +924,9 @@ internal static class CommandRunner
         Console.WriteLine("  globe tile <dbPath> --at <lat>,<lon>       climate, globe and region cell, settlements (--at: the tile nearest the point).");
         Console.WriteLine("  globe areas <dbPath> [kind]                List natural areas (optionally one kind).");
         Console.WriteLine("  globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail]");
-        Console.WriteLine("                                             Render a layer to a PNG at Globe, Region or Detail View (settlements as markers).");
+        Console.WriteLine("           [--no-land-routes] [--no-sea-routes] [--no-air-routes]");
+        Console.WriteLine("           [--centre <settlement>] [--no-routes]  Render a layer to a PNG at Globe, Region or Detail View (settlements as markers,");
+        Console.WriteLine("                                             routes as lines: land solid, sea dashed, air dotted). --centre centres the view.");
         Console.WriteLine("  globe find <dbPath> wasatch                Mountain rim cells (not basin floor) with a basin, dry lake bed or lake share of 2,000 bp or more.");
         Console.WriteLine("  globe defaults                             Print the default generation settings as JSON (a template for --generation).");
         Console.WriteLine("  globe settings <dbPath>                    Print the generation settings the world's globe was generated with.");

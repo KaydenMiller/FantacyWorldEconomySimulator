@@ -109,7 +109,10 @@ public class TradeEntitiesTests
             origin ?? SettlementId.New(),
             destination ?? SettlementId.New(),
             GoodId.New(), quantity, new Money(unitCost),
-            new Tick(depart), new Tick(arrive));
+            "Wagon", Legs(depart, arrive));
+
+    private static IReadOnlyList<CaravanLeg> Legs(long depart, long arrive)
+        => [new CaravanLeg(0, RouteId.New(), TravelDirection.AtoB, new Tick(depart), new Tick(arrive), 1_000)];
 
     [Test]
     public void Caravan_Create_SetsFields()
@@ -119,7 +122,7 @@ public class TradeEntitiesTests
         var origin = SettlementId.New();
         var dest = SettlementId.New();
         var good = GoodId.New();
-        var c = Caravan.Create(world, owner, origin, dest, good, 42, new Money(7), new Tick(10), new Tick(60)).Value;
+        var c = Caravan.Create(world, owner, origin, dest, good, 42, new Money(7), "Wagon", Legs(10, 60)).Value;
         c.WorldId.Should().Be(world);
         c.OwnerId.Should().Be(owner);
         c.OriginId.Should().Be(origin);

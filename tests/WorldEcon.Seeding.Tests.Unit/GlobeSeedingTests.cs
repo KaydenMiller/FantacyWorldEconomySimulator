@@ -487,7 +487,7 @@ public class GlobeSeedingTests
     }
 
     [Test]
-    public async Task Import_WarnsOnce_WhenLandRouteCrossesLandmasses()
+    public async Task Different_landmasses_warn_and_new_succeeds_with_air_route()
     {
         // Find a seed whose frequency-16 globe has at least two landmasses with pinnable cells.
         ulong worldSeed = 0;
@@ -508,14 +508,19 @@ public class GlobeSeedingTests
 
         var seed = MinimalSeed(worldSeed,
             [new SeedRegion("The Reach", [Bare("Alderford", cell: a), Bare("Brightwater", cell: b)])],
-            routes: [new SeedRoute("Alderford", "Brightwater", 100, "Plains", 1, "Land")]);
+            routes: [new SeedRoute("Alderford", "Brightwater", 1), new SeedRoute("Alderford", "Brightwater", 1, "Air")])
+            with { Generation = Settings with { Roads = new() { DefaultMaxTier = 7 } } }; // seed generation.Roads values reach generation
 
         var path = TempDb();
         try
         {
             var (_, warnings) = await ImportAsync(path, seed);
-            warnings.Should().ContainSingle();
-            warnings[0].Should().Contain("Alderford").And.Contain("Brightwater");
+            warnings.Should().Contain(w => w.Contains("no land path between Alderford and Brightwater; needs a port or an air route"));
+            await using var ctx = NewContextOnFile(path);
+            var routes = await ctx.Routes.ToListAsync();
+            routes.Where(r => r.Category == Domain.Geography.RouteCategory.Air).Should().ContainSingle().Which.MaxTier.Should().Be(7);
+            routes.Should().NotContain(r => r.Category == Domain.Geography.RouteCategory.Land);
+            (await ctx.Roads.CountAsync()).Should().Be(1);
         }
         finally
         {
@@ -524,50 +529,176 @@ public class GlobeSeedingTests
     }
 
     [Test]
-    public async Task Import_WarnsOnce_WhenShippingLaneEndIsInland()
-    {
-        const ulong worldSeed = 42;
-        var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
-        var inland = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c) && !HasOceanNeighbour(layers, c));
-        var coastal = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c) && HasOceanNeighbour(layers, c));
-
-        var seed = MinimalSeed(worldSeed,
-            [new SeedRegion("The Reach", [Bare("Inlandia", cell: inland), Bare("Harbourton", cell: coastal)])],
-            routes:
-            [
-                new SeedRoute("Harbourton", "Inlandia", 100, "Sea", 1, "ShippingLane"),
-                new SeedRoute("Inlandia", "Harbourton", 100, "Sea", 1, "ShippingLane"),
-            ]);
-
-        var path = TempDb();
-        try
-        {
-            var (_, warnings) = await ImportAsync(path, seed);
-            warnings.Should().ContainSingle();
-            warnings[0].Should().Contain("Inlandia");
-        }
-        finally
-        {
-            File.Delete(path);
-        }
-    }
-
-    [Test]
-    public async Task Import_GivesNoWarnings_WhenRoutesMatchTerrain()
+    public async Task Authored_sea_route_fails()
     {
         const ulong worldSeed = 42;
         var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
         var land = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c));
+        var seed = MinimalSeed(worldSeed, [new SeedRegion("The Reach", [Bare("Alderford", cell: land), Bare("Brightwater", cell: land)])],
+            routes: [new SeedRoute("Alderford", "Brightwater", 1, "Sea")]);
+        var path = TempDb();
+        try
+        {
+            var act = async () => await ImportAsync(path, seed);
+            (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*sea routes are generated between ports*");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task Generated_routes_start_and_end_on_node_tiles_and_roads_list_them_in_order()
+    {
+        const ulong worldSeed = 42;
+        var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
+        var land = Enumerable.Range(0, layers.Grid.CellCount).Where(c => Pinnable(layers, c)).ToList();
+        var near = land.First(c => c != land[0] && RingDistance(layers.Grid, land[0], c, 4) <= 4);
 
         var seed = MinimalSeed(worldSeed,
-            [new SeedRegion("The Reach", [Bare("Alderford", cell: land), Bare("Brightwater", cell: land)])],
-            routes: [new SeedRoute("Alderford", "Brightwater", 100, "Plains", 1, "Land")]);
+            [new SeedRegion("The Reach", [Bare("Alderford", cell: land[0]), Bare("Brightwater", cell: near)])],
+            routes: [new SeedRoute("Alderford", "Brightwater", 2, Surface: "Paved", MaxTier: 1)]);
 
         var path = TempDb();
         try
         {
             var (_, warnings) = await ImportAsync(path, seed);
             warnings.Should().BeEmpty();
+            await using var ctx = NewContextOnFile(path);
+            var nodes = (await ctx.RouteNodes.ToListAsync()).ToDictionary(n => n.Id);
+            var routes = await ctx.Routes.ToListAsync();
+            routes.Should().NotBeEmpty();
+            foreach (var r in routes)
+            {
+                var tiles = await ctx.RouteTiles.Where(t => t.RouteId == r.Id).OrderBy(t => t.Sequence).Select(t => t.TileId).ToListAsync();
+                tiles.Should().HaveCountGreaterThanOrEqualTo(2);
+                tiles[0].Should().Be(nodes[r.NodeA].TileId);
+                tiles[^1].Should().Be(nodes[r.NodeB].TileId);
+                r.LengthMetres.Should().BePositive();
+                (r.Surface, r.MaxTier, r.Danger).Should().Be((Domain.Geography.RouteSurface.Paved, 1, 2));
+            }
+            var road = await ctx.Roads.SingleAsync();
+            road.Name.Should().Be("Alderford–Brightwater");
+            var first = routes.Single(r => r.Id == road.Routes[0].RouteId);
+            nodes[first.Start(road.Routes[0].Direction)].Name.Should().Be("Alderford");
+            var last = routes.Single(r => r.Id == road.Routes[^1].RouteId);
+            nodes[last.End(road.Routes[^1].Direction)].Name.Should().Be("Brightwater");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task Pair_listed_twice_without_names_fails()
+    {
+        const ulong worldSeed = 42;
+        var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
+        var land = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c));
+        var seed = MinimalSeed(worldSeed,
+            [new SeedRegion("The Reach", [Bare("Alderford", cell: land), Bare("Brightwater", cell: land)])],
+            routes: [new SeedRoute("Alderford", "Brightwater"), new SeedRoute("Brightwater", "Alderford")]);
+        var path = TempDb();
+        try
+        {
+            var act = async () => await ImportAsync(path, seed);
+            (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*listed twice*name*");
+            await AssertNothingPersistedAsync(path);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task Unknown_vehicle_class_fails_naming_settlement_and_class()
+    {
+        const ulong worldSeed = 42;
+        var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
+        var land = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c));
+        var town = Bare("Alderford", cell: land) with { Merchants = [new SeedMerchant(1_000, VehicleClass: "Zeppelin")] };
+        var seed = MinimalSeed(worldSeed, [new SeedRegion("The Reach", [town])]);
+        var path = TempDb();
+        try
+        {
+            var act = async () => await ImportAsync(path, seed);
+            (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*Alderford*Zeppelin*");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task Bad_route_category_fails()
+    {
+        const ulong worldSeed = 42;
+        var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
+        var land = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c));
+        var seed = MinimalSeed(worldSeed, [new SeedRegion("The Reach", [Bare("Alderford", cell: land), Bare("Brightwater", cell: land)])],
+            routes: [new SeedRoute("Alderford", "Brightwater", 1, "ShippingLane")]);
+        var path = TempDb();
+        try
+        {
+            var act = async () => await ImportAsync(path, seed);
+            (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*ShippingLane*Land, Sea, Air*");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task Coastal_settlements_get_voyages_and_estimates_without_a_seed_entry()
+    {
+        const ulong worldSeed = 42;
+        var generated = WorldGenerator.Generate(worldSeed, Settings);
+        var tiles = generated.Tiles!;
+        var terrain = WorldEcon.WorldGen.Roads.RoadTerrain.From(tiles, new WorldEcon.WorldGen.Roads.RoadSettings());
+        // Two coastal land tiles whose water connects (a voyage search between them succeeds).
+        var coastal = Enumerable.Range(0, tiles.Count).Where(t => terrain.Coastal(t)
+            && (WorldEcon.WorldGen.Tiles.TileWaterKind)tiles.WaterKind[t] == WorldEcon.WorldGen.Tiles.TileWaterKind.None
+            && Pinnable(generated.Layers, tiles.GlobeParent[t])).ToList();
+        int a = coastal[0], b = -1;
+        foreach (var t in coastal.Skip(50))
+        {
+            var v = WorldEcon.WorldGen.Roads.VoyageGenerator.Generate(terrain,
+                [new("a", a, "a", WorldEcon.WorldGen.Roads.PortKind.Coastal), new("b", t, "b", WorldEcon.WorldGen.Roads.PortKind.Coastal)]).Value;
+            if (v.Count == 1) { b = t; break; }
+        }
+        b.Should().BeGreaterThanOrEqualTo(0);
+        (double Lat, double Lon) LatLon(int t)
+        {
+            var v = tiles.Grid.Centre(t);
+            return (Math.Asin(Math.Clamp(v.Y, -1, 1)) * 180 / Math.PI, Math.Atan2(v.X, v.Z) * 180 / Math.PI);
+        }
+        var (la, lo) = LatLon(a);
+        var (lb, lob) = LatLon(b);
+
+        var seed = MinimalSeed(worldSeed,
+            [new SeedRegion("The Reach", [Bare("Portis", lat: la, lon: lo), Bare("Havenmouth", lat: lb, lon: lob)])]);
+        var path = TempDb();
+        try
+        {
+            var (_, warnings) = await ImportAsync(path, seed);
+            await using var ctx = NewContextOnFile(path);
+            var nodes = await ctx.RouteNodes.ToListAsync();
+            nodes.Should().OnlyContain(n => n.PortKind == Domain.Geography.PortKind.Coastal, string.Join(" | ", warnings));
+            var voyage = (await ctx.Routes.ToListAsync()).Should().ContainSingle().Subject;
+            (voyage.Category, voyage.Surface, voyage.MinTier).Should().Be((Domain.Geography.RouteCategory.Sea, Domain.Geography.RouteSurface.OpenWater, 1));
+            var stored = (await ctx.VoyagePaths.SingleAsync(v => v.RouteId == voyage.Id)).Decode();
+            stored[0].Should().Be(nodes.Single(n => n.Id == voyage.NodeA).TileId);
+            stored[^1].Should().Be(nodes.Single(n => n.Id == voyage.NodeB).TileId);
+            (await ctx.Roads.CountAsync()).Should().Be(0, "voyages belong to no road");
+            // Each port knows the other by every sea class it offers, plus air (offered everywhere) has no route here.
+            var known = await ctx.TravelKnowledge.ToListAsync();
+            known.Should().Contain(k => k.VehicleClass == "Longboat" && k.Source == Domain.Economy.KnowledgeSource.Estimated);
+            known.Select(k => k.KnowerSettlementId).Distinct().Should().HaveCount(2);
         }
         finally
         {

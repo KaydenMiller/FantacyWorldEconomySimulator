@@ -183,6 +183,28 @@ public class HeadlessFlowTests
                 Dispatcher.UIThread.RunJobs();
 
                 // 1c. Layers tab: a check box changes the draw options; the layer picker changes the layer.
+                session.Data.Routes.Should().Contain(r => r.Category == WorldEcon.Domain.Geography.RouteCategory.Air && r.RoadName == "Sky Road");
+                session.RouteLines.Should().HaveCount(session.Data.Routes.Count).And.Contain(r => r.Kind == MapRouteKind.Air);
+                map.DrawOptions.RouteLines.Should().BeSameAs(session.RouteLines);
+                var routesToggle = window.FindControl<CheckBox>("RoutesToggle")!;
+                routesToggle.IsChecked.Should().BeTrue();
+                routesToggle.IsChecked = false;
+                Dispatcher.UIThread.RunJobs();
+                map.DrawOptions.Routes.Should().BeFalse();
+                routesToggle.IsChecked = true;
+                Dispatcher.UIThread.RunJobs();
+                map.DrawOptions.Routes.Should().BeTrue();
+                foreach (var (name, read) in new (string, Func<MapDrawOptions, bool>)[]
+                         { ("LandRoutesToggle", o => o.LandRoutes), ("SeaRoutesToggle", o => o.SeaRoutes), ("AirRoutesToggle", o => o.AirRoutes) })
+                {
+                    var box = window.FindControl<CheckBox>(name)!;
+                    box.IsChecked = false;
+                    Dispatcher.UIThread.RunJobs();
+                    read(map.DrawOptions).Should().BeFalse(name);
+                    box.IsChecked = true;
+                    Dispatcher.UIThread.RunJobs();
+                    read(map.DrawOptions).Should().BeTrue(name);
+                }
                 var rivers = window.FindControl<CheckBox>("RiversToggle")!;
                 rivers.IsChecked = false;
                 Dispatcher.UIThread.RunJobs();

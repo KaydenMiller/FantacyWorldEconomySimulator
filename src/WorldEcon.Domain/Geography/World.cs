@@ -37,9 +37,37 @@ public sealed class World : AggregateRoot<WorldId>
     private const long DefaultBeliefShiftFraction = 2_000;  // 20%
 
     // Transport (Layer A). Dimensional-weight haulage cost is computed as
-    // max(mass, volume × 1000 / VolumetricDivisor) grams × distance × TransportRate / 1_000_000 copper.
+    // max(mass, volume × 1000 / VolumetricDivisor) grams × metres × TransportRate / 1_000_000_000 copper.
     public long VolumetricDivisor { get; private set; }   // cm³ that bill as one kg of volumetric weight
-    public long TransportRate { get; private set; }       // copper per 1000 kg·distance
+    public long TransportRate { get; private set; }       // copper per 1000 kg·km
+
+    // Base travel speed per route surface, metres per in-world day. A vehicle's speed factor and a route's direction
+    // factor and difficulty scale these (TravelTime.Ticks).
+    public long TrackSpeedMpd { get; private set; }
+    public long DirtRoadSpeedMpd { get; private set; }
+    public long PavedSpeedMpd { get; private set; }
+    public long OpenWaterSpeedMpd { get; private set; }
+    public long SkySpeedMpd { get; private set; }
+
+    public const long DefaultTrackSpeedMpd = 20_000;
+    public const long DefaultDirtRoadSpeedMpd = 30_000;
+    public const long DefaultPavedSpeedMpd = 40_000;
+    public const long DefaultOpenWaterSpeedMpd = 100_000;
+    public const long DefaultSkySpeedMpd = 150_000;
+
+    // Trade knowledge and risk (ports and travel knowledge design).
+    /// <summary>Largest chance, %, that a merchant with risk aversion 0 ignores the best trip and gambles.</summary>
+    public int MaxExplorePct { get; private set; }
+
+    /// <summary>Largest expected loss, % of trip cost, a merchant with risk aversion 0 will still gamble on.</summary>
+    public int MaxLossMarginPct { get; private set; }
+
+    /// <summary>Settlements get estimated travel times for destinations within this many ticks of travel.</summary>
+    public long KnowledgeRadiusTicks { get; private set; }
+
+    public const int DefaultMaxExplorePct = 20;
+    public const int DefaultMaxLossMarginPct = 50;
+    public const long DefaultKnowledgeRadiusTicks = 172_800; // 120 days
     public UnitSystem DisplayUnitSystem { get; private set; }
 
     private const long DefaultVolumetricDivisor = 5_000;  // real-world air-freight number
@@ -82,6 +110,14 @@ public sealed class World : AggregateRoot<WorldId>
         BeliefShiftFractionBasisPoints = DefaultBeliefShiftFraction;
         VolumetricDivisor = DefaultVolumetricDivisor;
         TransportRate = DefaultTransportRate;
+        TrackSpeedMpd = DefaultTrackSpeedMpd;
+        DirtRoadSpeedMpd = DefaultDirtRoadSpeedMpd;
+        PavedSpeedMpd = DefaultPavedSpeedMpd;
+        OpenWaterSpeedMpd = DefaultOpenWaterSpeedMpd;
+        SkySpeedMpd = DefaultSkySpeedMpd;
+        MaxExplorePct = DefaultMaxExplorePct;
+        MaxLossMarginPct = DefaultMaxLossMarginPct;
+        KnowledgeRadiusTicks = DefaultKnowledgeRadiusTicks;
         DisplayUnitSystem = UnitSystem.Metric;
         GridFrequency = DefaultGridFrequency;
         PlanetRadiusKm = DefaultPlanetRadiusKm;
@@ -151,6 +187,48 @@ public sealed class World : AggregateRoot<WorldId>
             throw new ArgumentOutOfRangeException(nameof(transportRate), transportRate, "Transport rate must be at least 1.");
         VolumetricDivisor = volumetricDivisor;
         TransportRate = transportRate;
+    }
+
+    /// <summary>Base speed of <paramref name="surface"/> in metres per day.</summary>
+    public long SurfaceSpeed(RouteSurface surface) => surface switch
+    {
+        RouteSurface.Track => TrackSpeedMpd,
+        RouteSurface.DirtRoad => DirtRoadSpeedMpd,
+        RouteSurface.Paved => PavedSpeedMpd,
+        RouteSurface.OpenWater => OpenWaterSpeedMpd,
+        RouteSurface.Sky => SkySpeedMpd,
+        _ => throw new ArgumentOutOfRangeException(nameof(surface), surface, "Unknown surface."),
+    };
+
+    /// <summary>DM tuning: base speed per surface in metres per day. Each must be positive.</summary>
+    public ErrorOr<Success> SetSurfaceSpeeds(long track, long dirtRoad, long paved, long openWater, long sky)
+    {
+        if (track < 1 || dirtRoad < 1 || paved < 1 || openWater < 1 || sky < 1)
+            return Error.Validation("world.surfacespeed.nonpositive", "Every surface speed must be positive.");
+        TrackSpeedMpd = track;
+        DirtRoadSpeedMpd = dirtRoad;
+        PavedSpeedMpd = paved;
+        OpenWaterSpeedMpd = openWater;
+        SkySpeedMpd = sky;
+        return Result.Success;
+    }
+
+    /// <summary>
+    /// DM tuning for merchant gambles and knowledge: explore chance 0–100 %, loss limit 0–1,000 % of trip cost, knowledge
+    /// radius 1,440–10,000,000 ticks.
+    /// </summary>
+    public ErrorOr<Success> SetTradeRisk(int maxExplorePct, int maxLossMarginPct, long knowledgeRadiusTicks)
+    {
+        if (maxExplorePct is < 0 or > 100)
+            return Error.Validation("world.trade.explore", "Explore chance must be between 0 and 100 %.");
+        if (maxLossMarginPct is < 0 or > 1_000)
+            return Error.Validation("world.trade.lossMargin", "Loss margin must be between 0 and 1,000 %.");
+        if (knowledgeRadiusTicks is < 1_440 or > 10_000_000)
+            return Error.Validation("world.trade.knowledgeRadius", "Knowledge radius must be between 1,440 and 10,000,000 ticks.");
+        MaxExplorePct = maxExplorePct;
+        MaxLossMarginPct = maxLossMarginPct;
+        KnowledgeRadiusTicks = knowledgeRadiusTicks;
+        return Result.Success;
     }
 
     /// <summary>Which unit family the UI presents mass/volume in (display-only).</summary>

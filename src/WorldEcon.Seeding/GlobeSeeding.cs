@@ -21,10 +21,20 @@ namespace WorldEcon.Seeding;
 /// </param>
 /// <param name="GlobeTablesDuration">The part of <paramref name="PersistDuration"/> spent in <see cref="GlobeStore.WriteAsync"/> (globe tables only).</param>
 /// <param name="Warnings">
-/// Pin warnings (an auto-placed group anchor whose separation was relaxed, in request order), then route/terrain
-/// contradictions (one line per settlement pair and route category).
+/// Pin warnings (an auto-placed group anchor whose separation was relaxed, in request order), then road warnings (a road
+/// that could not be built, a settlement with no routes).
 /// </param>
-public sealed record GlobeSeedingReport(GeneratedWorld Generated, TimeSpan PersistDuration, TimeSpan GlobeTablesDuration, IReadOnlyList<string> Warnings);
+public sealed record GlobeSeedingReport(GeneratedWorld Generated, TimeSpan PersistDuration, TimeSpan GlobeTablesDuration, IReadOnlyList<string> Warnings)
+{
+    /// <summary>Wall time of road, voyage and travel-estimate generation (inside <see cref="PersistDuration"/>, before its save).</summary>
+    public TimeSpan RoadsDuration { get; init; }
+
+    /// <summary>Rows generated: routes (roads, air and voyages), voyages alone, and travel-knowledge estimates.</summary>
+    public (int Routes, int Voyages, int Estimates) RoadCounts { get; init; }
+
+    /// <summary>Wall time of each part of road generation, in order.</summary>
+    public IReadOnlyDictionary<string, TimeSpan> RoadTimings { get; init; } = new Dictionary<string, TimeSpan>();
+}
 
 /// <summary>
 /// Progress of <see cref="GlobeSeeding.RunAsync"/>: <paramref name="Step"/> is the step about to run or running (a
@@ -39,7 +49,7 @@ public readonly record struct SeedingProgress(string Step, double Fraction);
 
 /// <summary>
 /// Globe generation for a newly seeded world: generate, resolve pins and authored area names, persist, pin
-/// settlements, and report route warnings.
+/// settlements, then generate the route graph from the seed roads (<see cref="RoadSeeding"/>).
 /// <para>
 /// Order: generation and the two lookups (<see cref="PinStage.Run"/>, <see cref="PinStage.NameAreas"/>) run before
 /// anything is written, so a pin or name error throws <see cref="InvalidOperationException"/> without leaving a
@@ -83,8 +93,11 @@ public static class GlobeSeeding
         IReadOnlyList<(Settlement Settlement, PinRequest Request)> pins,
         IReadOnlyList<AreaNameRequest> names,
         IProgress<SeedingProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        RoadSeed? roads = null)
     {
+        roads ??= RoadSeed.Empty;
+        RoadSeeding.Validate(roads, pins.Select(p => p.Settlement.Name).ToList());
         var genProgress = progress is null ? null : new SyncProgress<(WorldGenStage Stage, double Fraction)>(p =>
             progress.Report(new SeedingProgress(p.Stage.ToString(), p.Fraction * GenerationShare)));
         var generated = WorldGenerator.Generate(world.Seed, settings, new WorldGenOptions(Progress: genProgress));
@@ -117,24 +130,41 @@ public static class GlobeSeeding
         await db.SaveChangesAsync(ct);
         await WriteRegionCellsAsync(db, regions, ct);
 
-        var cellOf = new Dictionary<SettlementId, (string Name, int Cell)>();
         for (var i = 0; i < pins.Count; i++)
         {
             var settlement = pins[i].Settlement;
             var cell = pinResults[i].Cell;
             var tile = pinResults[i].TileId;
             Unwrap(settlement.PinTo(new GlobeCellId(cell), tile >= 0 ? tile : null), "pin");
-            cellOf[settlement.Id] = (settlement.Name, cell);
+        }
+        await db.SaveChangesAsync(ct);
+
+        var warnings = pinResults.Where(p => p.Warning is not null).Select(p => p.Warning!).ToList();
+
+        var roadsDuration = TimeSpan.Zero;
+        var roadTimings = new Dictionary<string, TimeSpan>();
+        (int, int, int) counts = (0, 0, 0);
+        // Road graph: vehicle classes always; nodes, routes and roads from the seed roads over the tile layer.
+        db.VehicleClasses.AddRange(VehicleClass.Defaults(world.Id));
+        if (generated.Tiles is null)
+        {
+            if (roads.Routes.Count > 0 || roads.Nodes.Count > 0) warnings.Add("No tile layer; roads not generated.");
+        }
+        else
+        {
+            var pinned = pins.Select((p, i) => (p.Settlement, pinResults[i].TileId)).ToList();
+            var roadsSw = Stopwatch.StartNew();
+            warnings.AddRange(RoadSeeding.Generate(db, world, generated.Tiles, pinned, roads, settings.Roads, roadTimings));
+            roadsSw.Stop();
+            roadsDuration = roadsSw.Elapsed;
+            counts = (db.Routes.Local.Count, db.VoyagePaths.Local.Count, db.TravelKnowledge.Local.Count);
         }
         await db.SaveChangesAsync(ct);
         sw.Stop();
 
-        var routes = await db.Routes.AsNoTracking().Where(r => r.WorldId == world.Id).ToListAsync(ct);
-        var warnings = pinResults.Where(p => p.Warning is not null).Select(p => p.Warning!).ToList();
-        warnings.AddRange(RouteWarnings(layers, routes, cellOf));
         if (ownTx is not null)
             await ownTx.CommitAsync(ct);
-        return new GlobeSeedingReport(generated, sw.Elapsed, globeTables, warnings);
+        return new GlobeSeedingReport(generated, sw.Elapsed, globeTables, warnings) { RoadsDuration = roadsDuration, RoadCounts = counts, RoadTimings = roadTimings };
     }
 
     /// <summary>
@@ -166,54 +196,6 @@ public static class GlobeSeeding
             next++;
         }
         return comp;
-    }
-
-    /// <summary>
-    /// Warnings for routes that contradict the terrain: a <see cref="RouteCategory.Land"/> route whose two ends lie on
-    /// different landmasses, or a <see cref="RouteCategory.ShippingLane"/> with an end that is neither ocean nor next to
-    /// ocean. Directed routes listed in both directions give one warning per settlement pair and category. Routes are
-    /// visited in (from name, to name) ordinal order; routes with an end not in <paramref name="cellOf"/> are skipped.
-    /// </summary>
-    public static List<string> RouteWarnings(WorldLayers layers, IEnumerable<Route> routes, Dictionary<SettlementId, (string Name, int Cell)> cellOf)
-    {
-        var landmass = Landmasses(layers);
-        var seen = new HashSet<(SettlementId, SettlementId, RouteCategory)>();
-        var warnings = new List<string>();
-        var ordered = routes
-            .Where(r => cellOf.ContainsKey(r.FromSettlementId) && cellOf.ContainsKey(r.ToSettlementId))
-            .OrderBy(r => cellOf[r.FromSettlementId].Name, StringComparer.Ordinal)
-            .ThenBy(r => cellOf[r.ToSettlementId].Name, StringComparer.Ordinal);
-        foreach (var r in ordered)
-        {
-            var from = cellOf[r.FromSettlementId];
-            var to = cellOf[r.ToSettlementId];
-            var key = string.CompareOrdinal(from.Name, to.Name) <= 0
-                ? (r.FromSettlementId, r.ToSettlementId, r.Category)
-                : (r.ToSettlementId, r.FromSettlementId, r.Category);
-            if (!seen.Add(key)) continue;
-
-            if (r.Category == RouteCategory.Land)
-            {
-                if (landmass[from.Cell] != landmass[to.Cell])
-                    warnings.Add($"Land route {from.Name} -> {to.Name}: {from.Name} (cell {from.Cell}) and {to.Name} (cell {to.Cell}) are on different landmasses.");
-            }
-            else if (r.Category == RouteCategory.ShippingLane)
-            {
-                var inland = new[] { from, to }.Where(e => !layers.IsOcean(e.Cell) && !HasOceanNeighbour(layers, e.Cell)).ToList();
-                if (inland.Count > 0)
-                    warnings.Add($"Shipping lane {from.Name} -> {to.Name}: " +
-                        string.Join(" and ", inland.Select(e => $"{e.Name} (cell {e.Cell})")) +
-                        (inland.Count == 1 ? " is" : " are") + " inland (no ocean neighbour).");
-            }
-        }
-        return warnings;
-    }
-
-    private static bool HasOceanNeighbour(WorldLayers layers, int cell)
-    {
-        foreach (var nb in layers.Grid.Neighbours(cell))
-            if (layers.IsOcean(nb)) return true;
-        return false;
     }
 
     private static async Task WriteRegionCellsAsync(WorldDbContext db, List<(GeographicRegion Region, GeneratedArea Area)> regions, CancellationToken ct)

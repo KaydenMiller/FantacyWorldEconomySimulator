@@ -111,4 +111,19 @@ public class JsonSeedSourceTests
         var act = async () => await LoadAsync(WithGeneration(generation));
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage(message);
     }
+
+    [Test]
+    public async Task Seed_with_distance_field_fails_naming_field()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"seed_{Guid.NewGuid():N}.json");
+        try
+        {
+            await File.WriteAllTextAsync(path, SampleJson.Replace("\"routes\": []",
+                "\"routes\": [{ \"fromSettlement\": \"A\", \"toSettlement\": \"B\", \"distance\": 60, \"danger\": 1, \"category\": \"Land\" }]"));
+            var act = async () => await new JsonSeedSource(path).LoadAsync();
+            (await act.Should().ThrowAsync<InvalidOperationException>())
+                .WithMessage("Seed invalid: route field 'distance' is not supported; roads are generated from the globe (remove distance/terrain).");
+        }
+        finally { File.Delete(path); }
+    }
 }

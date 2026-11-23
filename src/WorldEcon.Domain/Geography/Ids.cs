@@ -8,6 +8,8 @@ public readonly record struct CountryId(Guid Value) : IStronglyTypedId { public 
 public readonly record struct PoliticalRegionId(Guid Value) : IStronglyTypedId { public static PoliticalRegionId New() => new(Guid.NewGuid()); }
 public readonly record struct SettlementId(Guid Value) : IStronglyTypedId { public static SettlementId New() => new(Guid.NewGuid()); }
 public readonly record struct RouteId(Guid Value) : IStronglyTypedId { public static RouteId New() => new(Guid.NewGuid()); }
+public readonly record struct RouteNodeId(Guid Value) : IStronglyTypedId { public static RouteNodeId New() => new(Guid.NewGuid()); }
+public readonly record struct RoadId(Guid Value) : IStronglyTypedId { public static RoadId New() => new(Guid.NewGuid()); }
 public readonly record struct PoliticalRegionContinentId(Guid Value) : IStronglyTypedId { public static PoliticalRegionContinentId New() => new(Guid.NewGuid()); }
 public readonly record struct TerritorialClaimId(Guid Value) : IStronglyTypedId { public static TerritorialClaimId New() => new(Guid.NewGuid()); }
 public readonly record struct GeographicRegionId(Guid Value) : IStronglyTypedId { public static GeographicRegionId New() => new(Guid.NewGuid()); }

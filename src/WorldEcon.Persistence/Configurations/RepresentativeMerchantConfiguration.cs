@@ -17,5 +17,13 @@ public sealed class RepresentativeMerchantConfiguration : IEntityTypeConfigurati
         b.HasIndex(x => x.WorldId);
         b.HasIndex(x => x.Seat);
         b.Ignore(x => x.DomainEvents);
+        b.OwnsMany(x => x.Trips, t =>
+        {
+            t.ToTable("merchant_trips");
+            t.WithOwner().HasForeignKey("MerchantId");
+            t.HasKey("MerchantId", nameof(MerchantTrip.Slot));
+            t.Property(x => x.Slot).ValueGeneratedNever();
+        });
+        b.Navigation(x => x.Trips).HasField("_trips").UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }

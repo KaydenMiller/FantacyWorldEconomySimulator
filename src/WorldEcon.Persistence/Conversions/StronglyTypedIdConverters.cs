@@ -11,6 +11,8 @@ public sealed class CountryIdConverter() : ValueConverter<CountryId, Guid>(v => 
 public sealed class PoliticalRegionIdConverter() : ValueConverter<PoliticalRegionId, Guid>(v => v.Value, g => new PoliticalRegionId(g));
 public sealed class SettlementIdConverter() : ValueConverter<SettlementId, Guid>(v => v.Value, g => new SettlementId(g));
 public sealed class RouteIdConverter() : ValueConverter<RouteId, Guid>(v => v.Value, g => new RouteId(g));
+public sealed class RouteNodeIdConverter() : ValueConverter<RouteNodeId, Guid>(v => v.Value, g => new RouteNodeId(g));
+public sealed class RoadIdConverter() : ValueConverter<RoadId, Guid>(v => v.Value, g => new RoadId(g));
 public sealed class PoliticalRegionContinentIdConverter() : ValueConverter<PoliticalRegionContinentId, Guid>(v => v.Value, g => new PoliticalRegionContinentId(g));
 public sealed class TerritorialClaimIdConverter() : ValueConverter<TerritorialClaimId, Guid>(v => v.Value, g => new TerritorialClaimId(g));
 public sealed class LogEventIdConverter() : ValueConverter<LogEventId, Guid>(v => v.Value, g => new LogEventId(g));

@@ -20,6 +20,8 @@ namespace WorldEcon.Seeding;
 /// </summary>
 public static class DemoSeeder
 {
+    private const ulong DemoSeed = 42UL;
+
     private const long ConsumerSize = 1000;      // matches ConsumerSpawnPhase.DefaultConsumerSize
     private const long WeeklyBudget = 40_000;    // ≈ ConsumerSize × AllowanceIncome default (40/capita)
 
@@ -34,7 +36,7 @@ public static class DemoSeeder
         IProgress<SeedingProgress>? progress = null, CancellationToken ct = default)
     {
         await using var tx = await ctx.Database.BeginTransactionAsync(ct);
-        var world = Unwrap(World.Create("Aerthos", 42UL, CalendarDefinition.Default, "1.0.0"), "world");
+        var world = Unwrap(World.Create("Aerthos", DemoSeed, CalendarDefinition.Default, "1.0.0"), "world");
         ctx.Worlds.Add(world);
         var w = world.Id;
 
@@ -56,12 +58,18 @@ public static class DemoSeeder
         var vinemoor = Add(ctx.Settlements, Unwrap(Settlement.Create(w, goldcoast.Id, "Vinemoor", SettlementType.Village, 58, 45, 1_200), "Vinemoor"));
 
         // Routes (directed; list both directions for symmetric travel). Reach 1000 covers all of them.
-        Route2Way(ctx, w, hammerfell, greenfield, 60, Terrain.Plains, 2);
-        Route2Way(ctx, w, hammerfell, riverwood, 120, Terrain.Plains, 3);
-        Route2Way(ctx, w, hammerfell, karak, 200, Terrain.Mountain, 6);
-        Route2Way(ctx, w, greenfield, karak, 180, Terrain.Mountain, 5);
-        Route2Way(ctx, w, hammerfell, sunport, 400, Terrain.Coast, 4);
-        Route2Way(ctx, w, sunport, vinemoor, 80, Terrain.Coast, 2);
+        // Roads are generated on the globe after pinning (see the Globe section below); each entry is one two-way road.
+        // Hammerfell–Sunport also has an air route. Sea travel needs no entry: voyages join every pair of ports sharing water.
+        var roads = new RoadSeed(
+        [
+            new SeedRoute(hammerfell.Name, greenfield.Name, 2),
+            new SeedRoute(hammerfell.Name, riverwood.Name, 3),
+            new SeedRoute(hammerfell.Name, karak.Name, 6),
+            new SeedRoute(greenfield.Name, karak.Name, 5),
+            new SeedRoute(hammerfell.Name, sunport.Name, 4),
+            new SeedRoute(sunport.Name, vinemoor.Name, 2),
+            new SeedRoute(hammerfell.Name, sunport.Name, 1, "Air", Name: "Sky Road"),
+        ], []);
 
         // ---- Goods --------------------------------------------------------------------------
         // Raw inputs (extracted by farms/mines; not directly consumed by population).
@@ -121,6 +129,7 @@ public static class DemoSeeder
         Retail(ctx, w, hammerfell, "The Sundries", 2000, 100_000, (bread, 300, 25), (cloth, 150, 70), (ale, 200, 35));
         Retail(ctx, w, hammerfell, "Apothecary", 5000, 100_000, (potion, 40, 4000));
         Merchant(ctx, w, hammerfell, 80_000);
+        Merchant(ctx, w, hammerfell, 40_000, "Airship"); // flies the Sky Road to Sunport
         Consumers(ctx, w, hammerfell, 5);
 
         // Greenfield — the Reach's breadbasket. Surplus grain/flour/wool/cloth to export; feeds itself
@@ -165,6 +174,7 @@ public static class DemoSeeder
         Market(ctx, w, vinemoor, (grapes, 200, 18));
         Retail(ctx, w, vinemoor, "Vintner's Cellar", 1600, 30_000, (wine, 60, 110), (bread, 40, 28));
         Merchant(ctx, w, vinemoor, 12_000);
+        Merchant(ctx, w, vinemoor, 8_000, "Longboat"); // prefers boats when Vinemoor is a port
         Consumers(ctx, w, vinemoor, 1);
 
         // ---- Globe ----------------------------------------------------------------------------
@@ -175,7 +185,7 @@ public static class DemoSeeder
             (karak, ironhills),
             (sunport, goldcoast), (vinemoor, goldcoast),
         }.Select(p => (p.Settlement, new PinRequest(p.Settlement.Name, p.Region.Name, null, null, null))).ToList();
-        var globe = await GlobeSeeding.RunAsync(ctx, world, settings ?? WorldGenPresets.Get(WorldGenPresets.Earth5Km), pins, [], progress, ct);
+        var globe = await GlobeSeeding.RunAsync(ctx, world, settings ?? WorldGenPresets.Get(WorldGenPresets.Earth5Km), pins, [], progress, ct, roads);
 
         await ctx.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -200,12 +210,6 @@ public static class DemoSeeder
     {
         set.Add(entity);
         return entity;
-    }
-
-    private static void Route2Way(WorldDbContext ctx, WorldId w, Settlement a, Settlement b, long distance, Terrain terrain, int danger)
-    {
-        ctx.Routes.Add(Unwrap(Route.Create(w, a.Id, b.Id, distance, terrain, danger, RouteCategory.Land), $"route {a.Name}->{b.Name}"));
-        ctx.Routes.Add(Unwrap(Route.Create(w, b.Id, a.Id, distance, terrain, danger, RouteCategory.Land), $"route {b.Name}->{a.Name}"));
     }
 
     private static Good Good_(WorldDbContext ctx, WorldId w, string name, GoodCategory category, long baseValue,
@@ -263,9 +267,15 @@ public static class DemoSeeder
             ctx.Stockpiles.Add(Unwrap(Stockpile.CreateForShop(w, shop.Id, g.Id, qty, new Money(cost)), $"{name}/{g.Name}"));
     }
 
-    private static void Merchant(WorldDbContext ctx, WorldId w, Settlement s, long capital)
-        => ctx.Merchants.Add(Unwrap(RepresentativeMerchant.Create(w, s.Id, new Money(capital),
-            new Mass(600_000), new Volume(1_000_000), 1000), $"{s.Name} merchant")); // 600 kg / 1000 L
+    private const long MerchantReachTicks = 86_400; // 60 days of travel
+
+    private static void Merchant(WorldDbContext ctx, WorldId w, Settlement s, long capital, string vehicle = VehicleClass.DefaultMerchantClass)
+    {
+        var m = Unwrap(RepresentativeMerchant.Create(w, s.Id, new Money(capital),
+            new Mass(600_000), new Volume(1_000_000), MerchantReachTicks, vehicle), $"{s.Name} merchant"); // 600 kg / 1000 L
+        Unwrap(m.SetRiskAversion(RepresentativeMerchant.DefaultRiskAversion(DemoSeed, m.Id)), $"{s.Name} merchant risk");
+        ctx.Merchants.Add(m);
+    }
 
     private static void Consumers(WorldDbContext ctx, WorldId w, Settlement s, int count)
     {

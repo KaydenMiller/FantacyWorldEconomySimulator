@@ -106,19 +106,17 @@ internal static class GlobeCommands
 
         var settlements = await ctx.Settlements.AsNoTracking().Where(s => s.WorldId == world.Id && s.CellId != null).OrderBy(s => s.Name).ToListAsync();
         Console.WriteLine($"  Settlements:  {settlements.Count} pinned");
-        var cellOf = new Dictionary<SettlementId, (string Name, int Cell)>();
         foreach (var s in settlements)
         {
             var c = s.CellId!.Value.Value;
-            cellOf[s.Id] = (s.Name, c);
             Console.WriteLine($"    {s.Name} -> cell {c} ({Coord(l, c)}) {(Biome)l.BiomeOf[c]}");
         }
 
         var routes = await ctx.Routes.AsNoTracking().Where(r => r.WorldId == world.Id).ToListAsync();
-        var warnings = GlobeSeeding.RouteWarnings(l, routes, cellOf);
-        Console.WriteLine($"  Route warnings: {warnings.Count}");
-        foreach (var w in warnings)
-            Console.WriteLine($"    warning: {w}");
+        var roads = await ctx.Roads.AsNoTracking().Where(r => r.WorldId == world.Id).ToListAsync();
+        Console.WriteLine($"  Routes:       {routes.Count} in {roads.Count} roads, {await ctx.RouteNodes.CountAsync(n => n.WorldId == world.Id)} nodes" +
+            (routes.Count == 0 ? "" : " (" + string.Join(", ", routes.GroupBy(r => r.Category).OrderBy(g => g.Key)
+                .Select(g => $"{g.Key} {g.Count()}, {(g.Sum(r => r.LengthMetres) / 1000.0).ToString("N0", Inv)} km")) + ")"));
 
         var run = await ctx.Set<WorldGenRunRow>().AsNoTracking().FirstOrDefaultAsync(r => r.WorldId == world.Id);
         if (run is null)
@@ -319,7 +317,9 @@ internal static class GlobeCommands
         double yaw = 0, pitch = 0, zoom = 1;
         MapLevel? level = null;
         var size = 1024;
-        bool equator = true, graticule = false, riverArrows = false, riverEnds = false, hexGrid = false;
+        bool equator = true, graticule = false, riverArrows = false, riverEnds = false, hexGrid = false, routes = true;
+        bool landRoutes = true, seaRoutes = true, airRoutes = true;
+        string? centreOn = null;
         for (var i = 5; i < args.Length; i++)
         {
             if (args[i] == "--graticule") { graticule = true; continue; }
@@ -327,6 +327,10 @@ internal static class GlobeCommands
             if (args[i] == "--river-arrows") { riverArrows = true; continue; }
             if (args[i] == "--river-ends") { riverEnds = true; continue; }
             if (args[i] == "--hex-grid") { hexGrid = true; continue; }
+            if (args[i] == "--no-routes") { routes = false; continue; }
+            if (args[i] == "--no-land-routes") { landRoutes = false; continue; }
+            if (args[i] == "--no-sea-routes") { seaRoutes = false; continue; }
+            if (args[i] == "--no-air-routes") { airRoutes = false; continue; }
             if (i + 1 >= args.Length)
                 throw new InvalidOperationException($"Option {args[i]} needs a value.");
             var v = args[i + 1];
@@ -336,6 +340,7 @@ internal static class GlobeCommands
                 case "--pitch" when double.TryParse(v, NumberStyles.Float, Inv, out var p): pitch = p; break;
                 case "--size" when int.TryParse(v, NumberStyles.None, Inv, out var s) && s is >= 64 and <= 8192: size = s; break;
                 case "--zoom" when double.TryParse(v, NumberStyles.Float, Inv, out var z) && z >= 1: zoom = z; break;
+                case "--centre": centreOn = v; break;
                 case "--level" when Enum.TryParse<MapLevel>(v, ignoreCase: true, out var lv) && Enum.IsDefined(lv): level = lv; break;
                 default: throw new InvalidOperationException($"Invalid option or value: {args[i]} {v}");
             }
@@ -351,12 +356,20 @@ internal static class GlobeCommands
         { Imagery = g.Imagery, RiverCourses = g.RiverCourses };
         using var renderer = new MapRenderer(mapWorld);
         var view = mapWorld.ViewFromYawPitch(size, size, yaw, pitch, zoom);
+        if (centreOn is not null)
+        {
+            var s = g.Settlements.FirstOrDefault(x => x.Name.Equals(centreOn, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidOperationException($"No settlement named '{centreOn}'.");
+            var c = s.TileId is { } t ? mapWorld.Tiles!.Centre(t) : g.Layers.Geometry.Centre(s.Cell);
+            view = mapWorld.View(c, 0.45 * size * zoom, size, size);
+        }
         if (level is { } target && target != MapLevel.Globe)
             view = view.WithScale((target == MapLevel.Region ? mapWorld.ScaleForRegionPx(45) : mapWorld.ScaleForTilePx(24)) * zoom);
-        var markers = g.Settlements.Select(s => new MapMarker(s.Cell, s.TileId ?? -1, s.Name)).ToList();
-        var png = GlobePngRenderer.RenderMap(renderer, view, new MapDrawOptions { Layer = layer, Markers = markers, Equator = equator, Graticule = graticule, RiverArrows = riverArrows, RiverEnds = riverEnds, HexGrid = hexGrid });
+        var markers = g.Settlements.Select(s => new MapMarker(s.Cell, s.TileId ?? -1, s.Name, (MapPortKind)(int)s.Port)).ToList();
+        var routeLines = g.Routes.Where(r => r.Tiles.Count >= 2).Select(r => new MapRoute((MapRouteKind)(int)r.Category, r.Tiles)).ToList();
+        var png = GlobePngRenderer.RenderMap(renderer, view, new MapDrawOptions { Layer = layer, Markers = markers, Equator = equator, Graticule = graticule, RiverArrows = riverArrows, RiverEnds = riverEnds, HexGrid = hexGrid, Routes = routes, LandRoutes = landRoutes, SeaRoutes = seaRoutes, AirRoutes = airRoutes, RouteLines = routeLines });
         await File.WriteAllBytesAsync(outPath, png);
-        Console.WriteLine($"Wrote {layer} ({size}x{size}, yaw {yaw.ToString(Inv)}, pitch {pitch.ToString(Inv)}, {renderer.LastLevel} view, scale {view.ScalePxPerRad.ToString("F0", Inv)} px/rad, {markers.Count} markers) to {outPath} ({png.Length} bytes)");
+        Console.WriteLine($"Wrote {layer} ({size}x{size}, yaw {yaw.ToString(Inv)}, pitch {pitch.ToString(Inv)}, {renderer.LastLevel} view, scale {view.ScalePxPerRad.ToString("F0", Inv)} px/rad, {markers.Count} markers, {(routes ? routeLines.Count : 0)} routes) to {outPath} ({png.Length} bytes)");
         return 0;
     }
 

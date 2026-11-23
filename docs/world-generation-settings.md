@@ -2,7 +2,7 @@
 
 _Last updated: 2026-11-22 (generator version 4, tile detail world: Grid multipliers, Tiles section and presets added; LocalMap section, the globe composition settings and the globe hydrology settings removed; tile defaults calibrated in plan task 5)._
 
-`WorldGenSettings` (in `src/WorldEcon.WorldGen/Pipeline/`) holds every number that shapes generated world output: 128 integer settings in 12 sections: the globe stages, `Biomes` and `Hydrology` (read by the tile stages), `Tiles` (23 settings) and the two tile grid multipliers in `Grid`. The former `LocalMap` section is removed (an old `generation` block naming it is an unknown-setting error). Phase 1 exposed the 91 version 2 constants; phase 2 added 19 settings for new mechanisms, replaced three relief thresholds (metres) with slope thresholds (cm per km) and changed 9 existing defaults. Default settings produce generator version 4 output; golden stage hashes are in `tests/WorldEcon.WorldGen.Tests.Unit/GoldenSeedTests.cs`. Version 4 removed 13 settings that no longer shape output (listed in the Biomes, Hydrology and Tiles sections). [Phase 2 changes](#phase-2-changes) lists every new setting and every changed default with its version 2 value.
+`WorldGenSettings` (in `src/WorldEcon.WorldGen/Pipeline/`) holds every number that shapes generated world output: 151 integer settings in 13 sections (the 13th, `Roads`, added 2026-11-23, shapes the route graph and no stage output): the globe stages, `Biomes` and `Hydrology` (read by the tile stages), `Tiles` (23 settings) and the two tile grid multipliers in `Grid`. The former `LocalMap` section is removed (an old `generation` block naming it is an unknown-setting error). Phase 1 exposed the 91 version 2 constants; phase 2 added 19 settings for new mechanisms, replaced three relief thresholds (metres) with slope thresholds (cm per km) and changed 9 existing defaults. Default settings produce generator version 4 output; golden stage hashes are in `tests/WorldEcon.WorldGen.Tests.Unit/GoldenSeedTests.cs`. Version 4 removed 13 settings that no longer shape output (listed in the Biomes, Hydrology and Tiles sections). [Phase 2 changes](#phase-2-changes) lists every new setting and every changed default with its version 2 value.
 
 ## Contents
 
@@ -21,6 +21,7 @@ _Last updated: 2026-11-22 (generator version 4, tile detail world: Grid multipli
 - [Areas](#areas)
 - [Pinning](#pinning)
 - [Tiles](#tiles)
+- [Roads](#roads)
 - [Presets](#presets)
 - [Phase 2 changes](#phase-2-changes)
 - [Numbers that stay constants](#numbers-that-stay-constants)
@@ -300,6 +301,36 @@ Tile stages (TileElevation, TileSeaLevel, TileClimate, TileHydrology, TileLandfo
 | `WetlandMinPrecipMm` | mm/year | 600 | 0–20,000 | TileLandform: Wetland needs tile precipitation at least this. |
 
 Cross-field: `ReliefScaleMinBp` ≤ `ReliefScaleMaxBp`; `OrographicMinBp` ≤ `OrographicMaxBp`; `RiverMinFlow` ≤ `MajorRiverFlow`; `HillsReliefM` < `MountainReliefM`.
+
+## Roads
+
+Road generation (spec `docs/superpowers/specs/2026-11-23-road-graph-design.md`): runs after pinning, outside the staged pipeline, so no stage hash depends on these values. Seeds set them in `generation.Roads`; `new --generation <file>` reads the same block. Land routes are searched with A* over land tiles and Air routes follow the great circle; Sea travel is generated as a voyage between every pair of ports that share water (ocean, lake or river), with no seed entry. All costs are integers; percentages are of 100.
+
+| Setting | Unit | Default | Range | What it changes |
+|---|---|---|---|---|
+| `BaseStepCost` | cost | 100 | 1–10,000 | Land: cost of one step before the landform factor; also the divisor of route difficulty (mean step cost × 100 / this). |
+| `PlainFactorPct` | % | 100 | 1–10,000 | Land: step cost factor onto a plain tile (and any landform not listed below). |
+| `HillsFactorPct` | % | 150 | 1–10,000 | Land: step cost factor onto hills. |
+| `MountainFactorPct` | % | 400 | 1–10,000 | Land: step cost factor onto mountains. |
+| `ValleyFactorPct` | % | 110 | 1–10,000 | Land: step cost factor onto a valley. |
+| `BasinFactorPct` | % | 110 | 1–10,000 | Land: step cost factor onto a basin. |
+| `WetlandFactorPct` | % | 250 | 1–10,000 | Land: step cost factor onto wetland. |
+| `DryLakeBedFactorPct` | % | 130 | 1–10,000 | Land: step cost factor onto a dry lake bed. |
+| `SlopeCostPerM` | cost per m | 2 | 0–1,000 | Land: added step cost per metre of elevation change. |
+| `RiverCostPerLog2Flow` | cost | 10 | 0–1,000 | Land: added cost of stepping onto a river tile, per log2 of its flow (a ford or bridge). |
+| `RoadDiscountPct` | % | 60 | 1–100 | Land: search cost of a step onto a tile an earlier route of the same category uses, so later roads join earlier ones. Not applied to difficulty. |
+| `UphillPenalty` | factor per m/km | 1 | 0–100 | Land: speed factor lost per metre climbed per km of route. |
+| `DownhillBonus` | factor per m/km | 1 | 0–100 | Land: speed factor gained per metre descended per km of route. |
+| `MinDirectionFactor` | % | 25 | 1–100 | Land: lower clamp of a direction's speed factor. |
+| `MaxDirectionFactor` | % | 150 | 100–1,000 | Land: upper clamp of a direction's speed factor. |
+| `SteepSlopeMPerKm` | m per km | 150 | 1–10,000 | Land: a step steeper than this limits the route to tier 1 vehicles (HandCart). |
+| `DefaultMaxTier` | tier | 99 | 1–99 | All: highest vehicle tier a route allows when nothing limits it. |
+| `LakeMaxTier` | tier | 1 | 1–99 | Voyages: highest tier of a voyage that crosses lake water (Longboat, not MerchantVessel). |
+| `RiverDownstreamPct` | % | 130 | 1–1,000 | Voyages: speed factor of a river step with the flow. A voyage's factor per direction is its length ÷ Σ(step metres ÷ step factor). |
+| `RiverUpstreamPct` | % | 60 | 1–1,000 | Voyages: speed factor of a river step against the flow. |
+| `RiverMaxTier` | tier | 1 | 1–99 | Voyages: highest tier of a voyage that uses a river. |
+| `MaxVoyagePorts` | count | 2,000 | 0–100,000 | More ports than this is a seed error (voyages grow with the square of the port count). |
+| `MaxVoyageKm` | km | 8,000 | 1–40,000 | Longest voyage generated (water path); ports farther apart get none, and a search stops once its path would pass this. At 8,000 km a merchant vessel needs about 67 days, beyond the default 60-day merchant reach. |
 
 ## Presets
 

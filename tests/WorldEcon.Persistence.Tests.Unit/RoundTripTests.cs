@@ -29,7 +29,10 @@ public class RoundTripTests
             var region = PoliticalRegion.Create(world.Id, "The Reach", country.Id).Value;
             var hammerfell = Settlement.Create(world.Id, region.Id, "Hammerfell", SettlementType.City, 10, 20, 50_000).Value;
             var riverwood = Settlement.Create(world.Id, region.Id, "Riverwood", SettlementType.Village, 12, 25, 800).Value;
-            var route = Route.Create(world.Id, hammerfell.Id, riverwood.Id, 120, Terrain.Plains, 3, RouteCategory.Land).Value;
+            var nodeA = RouteNode.Create(world.Id, RouteNodeKind.Settlement, 10, hammerfell.Id, "Hammerfell").Value;
+            var nodeB = RouteNode.Create(world.Id, RouteNodeKind.Settlement, 11, riverwood.Id, "Riverwood").Value;
+            var route = Route.Create(world.Id, nodeA.Id, nodeB.Id, RouteCategory.Land, RouteSurface.DirtRoad, 100, 3,
+                120_000, 100, 100, 1, 99, RouteProvenance.Generated).Value;
 
             await using (var ctx = NewContextOnFile(path))
             {
@@ -39,6 +42,7 @@ public class RoundTripTests
                 ctx.Countries.Add(country);
                 ctx.PoliticalRegions.Add(region);
                 ctx.Settlements.AddRange(hammerfell, riverwood);
+                ctx.RouteNodes.AddRange(nodeA, nodeB);
                 ctx.Routes.Add(route);
                 await ctx.SaveChangesAsync();
             }
@@ -53,7 +57,7 @@ public class RoundTripTests
 
                 (await ctx.Settlements.CountAsync()).Should().Be(2);
                 var loadedRoute = await ctx.Routes.SingleAsync();
-                loadedRoute.FromSettlementId.Should().Be(hammerfell.Id);
+                loadedRoute.NodeA.Should().Be(nodeA.Id);
                 loadedRoute.Category.Should().Be(RouteCategory.Land);
 
                 w.Id.Should().Be(world.Id);                       // get-only Id survives via backing field

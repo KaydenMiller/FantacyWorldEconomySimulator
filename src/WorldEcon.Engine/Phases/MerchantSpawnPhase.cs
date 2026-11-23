@@ -20,7 +20,7 @@ public sealed class MerchantSpawnPhase : ISimulationPhase
     private static readonly Money Capital = new(50_000);
     private static readonly Mass DefaultWeightCapacity = new(600_000);    // 600 kg
     private static readonly Volume DefaultVolumeCapacity = new(1_000_000); // 1000 L
-    private const long Reach = 1000;
+    private const long Reach = 86_400; // ticks of travel: 60 days
 
     public string Name => "MerchantSpawn";
     public int Order => 5;
@@ -53,6 +53,7 @@ public sealed class MerchantSpawnPhase : ISimulationPhase
             {
                 var merchant = RepresentativeMerchant
                     .Create(worldId, settlement.Id, Capital, DefaultWeightCapacity, DefaultVolumeCapacity, Reach).Value;
+                merchant.SetRiskAversion(RepresentativeMerchant.DefaultRiskAversion(ctx.World.Seed, merchant.Id));
                 ctx.Db.Merchants.Add(merchant);
                 await ctx.Log.EmitAsync(LogEventType.MerchantGained,
                     $"A new merchant set up in {settlement.Name}", tick,

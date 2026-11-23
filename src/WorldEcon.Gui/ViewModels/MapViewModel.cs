@@ -28,6 +28,10 @@ public sealed class MapViewModel : ObservableObject
     private bool _lakes = true;
     private bool _mountainSymbols = true;
     private bool _settlements = true;
+    private bool _routes = true;
+    private bool _landRoutes = true;
+    private bool _seaRoutes = true;
+    private bool _airRoutes = true;
     private bool _labels = true;
     private bool _arrows = true;
     private bool _equator = true;
@@ -108,6 +112,14 @@ public sealed class MapViewModel : ObservableObject
 
     public bool Settlements { get => _settlements; set => Toggle(ref _settlements, value); }
 
+    public bool Routes { get => _routes; set => Toggle(ref _routes, value); }
+
+    public bool LandRoutes { get => _landRoutes; set => Toggle(ref _landRoutes, value); }
+
+    public bool SeaRoutes { get => _seaRoutes; set => Toggle(ref _seaRoutes, value); }
+
+    public bool AirRoutes { get => _airRoutes; set => Toggle(ref _airRoutes, value); }
+
     public bool Labels { get => _labels; set => Toggle(ref _labels, value); }
 
     public bool Arrows { get => _arrows; set => Toggle(ref _arrows, value); }
@@ -155,6 +167,11 @@ public sealed class MapViewModel : ObservableObject
         Lakes = _lakes,
         MountainSymbols = _mountainSymbols,
         Settlements = _settlements,
+        Routes = _routes,
+        LandRoutes = _landRoutes,
+        SeaRoutes = _seaRoutes,
+        AirRoutes = _airRoutes,
+        RouteLines = _session.RouteLines,
         Labels = _labels,
         Arrows = _arrows,
         Equator = _equator,

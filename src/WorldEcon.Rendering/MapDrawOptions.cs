@@ -4,7 +4,19 @@ namespace WorldEcon.Rendering;
 /// <param name="GlobeCell">Globe cell of the marker.</param>
 /// <param name="TileId">Tile of the marker; −1 places it at the globe cell centre at every level.</param>
 /// <param name="Label">Label text; empty for a dot only.</param>
-public readonly record struct MapMarker(int GlobeCell, int TileId, string Label);
+/// <param name="Port">Port kind: a ring around the dot (thin for a river port, thick for a lake or ocean port).</param>
+public readonly record struct MapMarker(int GlobeCell, int TileId, string Label, MapPortKind Port = MapPortKind.None);
+
+/// <summary>Port kind of a marker: none, river port, or lake/ocean port.</summary>
+public enum MapPortKind { None = 0, River = 1, Coastal = 2 }
+
+/// <summary>Medium of a drawn route: Land (solid), Sea (dashed) or Air (dotted).</summary>
+public enum MapRouteKind { Land = 0, Sea = 1, Air = 2 }
+
+/// <summary>A route drawn as a line through its tile centres, from the first tile to the last.</summary>
+/// <param name="Kind">Land, Sea or Air; picks the line style.</param>
+/// <param name="Tiles">Tile path (tile ids of the world's tile grid), at least two tiles.</param>
+public sealed record MapRoute(MapRouteKind Kind, IReadOnlyList<int> Tiles);
 
 /// <summary>
 /// What is under a pixel at the level drawn there (<see cref="MapRenderer.Pick"/>), also used to outline a selection.
@@ -47,6 +59,21 @@ public sealed record MapDrawOptions
 
     /// <summary>Triangle glyphs on globe cells (Globe View) and region cells (Region View) with mountain share ≥ 2,500 basis points, except cells drawn as water.</summary>
     public bool MountainSymbols { get; init; } = true;
+
+    /// <summary>Route lines (<see cref="RouteLines"/>) under the markers, at every level: the master switch of the Routes group.</summary>
+    public bool Routes { get; init; } = true;
+
+    /// <summary>Land roads (solid), when <see cref="Routes"/> is on.</summary>
+    public bool LandRoutes { get; init; } = true;
+
+    /// <summary>Voyages between ports (dashed, translucent), when <see cref="Routes"/> is on.</summary>
+    public bool SeaRoutes { get; init; } = true;
+
+    /// <summary>Air routes (dotted), when <see cref="Routes"/> is on.</summary>
+    public bool AirRoutes { get; init; } = true;
+
+    /// <summary>Routes to draw when <see cref="Routes"/> is on.</summary>
+    public IReadOnlyList<MapRoute>? RouteLines { get; init; }
 
     /// <summary>Marker dots.</summary>
     public bool Settlements { get; init; } = true;

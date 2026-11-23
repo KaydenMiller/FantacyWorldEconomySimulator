@@ -16,16 +16,18 @@ namespace WorldEcon.Seeding;
 /// Imports an authored <see cref="SeedWorld"/> into a <see cref="WorldDbContext"/> as a single
 /// world. Seed files are authored input: any validation failure (bad enum, blank name, duplicate
 /// name, failed domain invariant, generation settings out of range, settlement pinned on ocean, blank authored
-/// area name, authored area name with no area) throws — failing loud is correct here. Route/terrain contradictions
-/// are returned as warnings instead. The whole import runs in one transaction, so a failure leaves nothing in the
+/// area name, authored area name with no area) throws — failing loud is correct here. A seed road that cannot be
+/// built (no land path, an inland end for a sea route) is returned as a warning instead. The whole import runs in one transaction, so a failure leaves nothing in the
 /// database.
 /// </summary>
 public sealed class SeedImporter(WorldDbContext db)
 {
+    private ulong _worldSeed;
+
     /// <summary>
     /// Imports <paramref name="seed"/>, generates its globe (settings from <see cref="SeedWorld.Generation"/>, defaults
     /// when absent), pins every settlement and applies <see cref="SeedWorld.NaturalAreas"/>. Returns the new world's id
-    /// and the route warnings from <see cref="GlobeSeeding.RunAsync"/>.
+    /// and the pin and road warnings from <see cref="GlobeSeeding.RunAsync"/>.
     /// </summary>
     public async Task<(WorldId WorldId, IReadOnlyList<string> Warnings)> ImportAsync(SeedWorld seed, CancellationToken ct = default)
     {
@@ -56,17 +58,18 @@ public sealed class SeedImporter(WorldDbContext db)
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var world = Unwrap(World.Create(seed.Name, seed.Seed, CalendarDefinition.Default, seed.RulesetVersion));
         db.Worlds.Add(world);
+        _worldSeed = world.Seed;
 
         var goodsByName = ImportGoods(world.Id, seed.Goods);
         var recipesByName = ImportRecipes(world.Id, seed.Recipes, goodsByName);
         var pins = new List<(Settlement Settlement, PinRequest Request)>();
         ImportGeography(world.Id, seed.Continents, goodsByName, recipesByName, pins, out var settlementsByName);
-        ImportRoutes(world.Id, seed.Routes, settlementsByName);
         var names = NonNull(seed.NaturalAreas)
             .Select(a => new AreaNameRequest(a.Name, ParseEnum<GeographicRegionKind>(a.Kind, "naturalArea.kind"), a.Lat, a.Lon))
             .ToList();
 
-        var report = await GlobeSeeding.RunAsync(db, world, settings, pins, names, progress, ct);
+        var roads = new RoadSeed(NonNull(seed.Routes).ToList(), NonNull(seed.Nodes).ToList());
+        var report = await GlobeSeeding.RunAsync(db, world, settings, pins, names, progress, ct, roads);
 
         await db.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -226,8 +229,15 @@ public sealed class SeedImporter(WorldDbContext db)
         {
             var weightCapacity = ParseOptionalMass(mer.WeightCapacity, $"merchant in '{s.Name}'") ?? new Mass(600_000);
             var volumeCapacity = ParseOptionalVolume(mer.VolumeCapacity, $"merchant in '{s.Name}'") ?? new Volume(1_000_000);
+            var vehicleClass = mer.VehicleClass ?? VehicleClass.DefaultMerchantClass;
+            if (!VehicleClass.Defaults(worldId).Any(v => v.Name == vehicleClass))
+                throw new InvalidOperationException(
+                    $"Seed invalid: merchant in '{s.Name}' uses vehicle class '{vehicleClass}'; valid classes: " +
+                    string.Join(", ", VehicleClass.Defaults(worldId).Select(v => v.Name)) + ".");
             var merchant = Unwrap(RepresentativeMerchant.Create(
-                worldId, settlementId, new Money(mer.Capital), weightCapacity, volumeCapacity, mer.Reach));
+                worldId, settlementId, new Money(mer.Capital), weightCapacity, volumeCapacity, mer.Reach, vehicleClass, mer.RiskAversion ?? 50));
+            if (mer.RiskAversion is null)
+                Unwrap(merchant.SetRiskAversion(RepresentativeMerchant.DefaultRiskAversion(_worldSeed, merchant.Id)));
             db.Merchants.Add(merchant);
         }
 
@@ -239,23 +249,6 @@ public sealed class SeedImporter(WorldDbContext db)
             var consumer = Unwrap(RepresentativeConsumer.Create(
                 worldId, settlementId, con.Size, new Money(con.Budget)));
             db.Consumers.Add(consumer);
-        }
-    }
-
-    private void ImportRoutes(WorldId worldId, IReadOnlyList<SeedRoute>? routes, Dictionary<string, SettlementId> settlementsByName)
-    {
-        // We create exactly the routes listed. Routes are directed edges; an author who wants
-        // symmetric travel lists both directions explicitly.
-        foreach (var r in NonNull(routes))
-        {
-            var from = ResolveSettlement(settlementsByName, r.FromSettlement, "route from");
-            var to = ResolveSettlement(settlementsByName, r.ToSettlement, "route to");
-            var route = Unwrap(Route.Create(
-                worldId, from, to, r.Distance,
-                ParseEnum<Terrain>(r.Terrain, "route.terrain"),
-                r.Danger,
-                ParseEnum<RouteCategory>(r.Category, "route.category")));
-            db.Routes.Add(route);
         }
     }
 

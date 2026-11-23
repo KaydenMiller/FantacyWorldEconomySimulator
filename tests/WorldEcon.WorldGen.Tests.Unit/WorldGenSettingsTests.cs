@@ -37,14 +37,14 @@ public class WorldGenSettingsTests
     public void Every_section_and_leaf_is_an_int_property_with_a_section_record()
     {
         WorldGenSettingsJson.Sections.Select(s => s.Name).Should().Equal(
-            "Grid", "Plates", "Elevation", "SeaLevel", "Currents", "Winds", "Climate", "Biomes", "Hydrology", "Areas", "Pinning", "Tiles");
+            "Grid", "Plates", "Elevation", "SeaLevel", "Currents", "Winds", "Climate", "Biomes", "Hydrology", "Areas", "Pinning", "Tiles", "Roads");
         foreach (var section in WorldGenSettingsJson.Sections)
         {
             var all = section.PropertyType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
             all.Should().OnlyContain(p => p.PropertyType == typeof(int), $"{section.Name} leaves are ints so the JSON binder and validator cover them");
         }
 
-        AllLeaves().Count().Should().Be(128);
+        AllLeaves().Count().Should().Be(151);
     }
 
     [Test]
@@ -361,4 +361,14 @@ public class WorldGenSettingsTests
     }
 
     private static ulong Hash(IReadOnlyList<StageResult> stages, WorldGenStage stage) => stages.Single(s => s.Stage == stage).Hash;
+
+    [Test]
+    public void Roads_section_reads_from_json_and_rejects_unknown_names()
+    {
+        var s = WorldGenSettingsJson.Deserialize("{\"Roads\": {\"LakeMaxTier\": 2, \"RoadDiscountPct\": 80}}");
+        (s.Roads.LakeMaxTier, s.Roads.RoadDiscountPct, s.Roads.BaseStepCost).Should().Be((2, 80, 100));
+        var act = () => WorldGenSettingsJson.Deserialize("{\"Roads\": {\"Distance\": 1}}");
+        act.Should().Throw<WorldGenSettingsJsonException>().WithMessage("*Roads.Distance*");
+        WorldGenSettingsJson.Deserialize(WorldGenSettingsJson.Serialize(s)).Roads.Should().Be(s.Roads);
+    }
 }

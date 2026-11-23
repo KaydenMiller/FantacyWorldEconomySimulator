@@ -60,8 +60,8 @@ public class SeedImporterTests
         ],
         Routes:
         [
-            new SeedRoute("Hammerfell", "Riverwood", 120, "Plains", 3, "Land"),
-            new SeedRoute("Riverwood", "Hammerfell", 120, "Plains", 3, "Land"),
+            new SeedRoute("Hammerfell", "Riverwood", 3),
+            new SeedRoute("Hammerfell", "Riverwood", 1, "Air", Name: "Sky Road"),
         ],
         Generation: SmallGlobe);
 
@@ -88,7 +88,9 @@ public class SeedImporterTests
 
                 (await ctx.Settlements.CountAsync()).Should().Be(2);
                 (await ctx.Goods.CountAsync()).Should().Be(2);
-                (await ctx.Routes.CountAsync()).Should().Be(2);
+                (await ctx.Routes.CountAsync(r => r.Category == Domain.Geography.RouteCategory.Air)).Should().Be(1);
+                (await ctx.RouteNodes.CountAsync()).Should().BeGreaterThanOrEqualTo(2);
+                (await ctx.VehicleClasses.CountAsync()).Should().Be(5);
                 (await ctx.Recipes.CountAsync()).Should().Be(1);
                 (await ctx.Merchants.CountAsync()).Should().Be(2);
 

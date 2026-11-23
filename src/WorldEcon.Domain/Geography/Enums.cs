@@ -2,9 +2,26 @@ namespace WorldEcon.Domain.Geography;
 
 public enum SettlementType { Village = 0, Town = 1, City = 2 }
 
-public enum Terrain { Plains = 0, Forest = 1, Mountain = 2, Desert = 3, Coast = 4, Sea = 5 }
+/// <summary>The medium a route crosses. Each category has its own vehicle classes.</summary>
+public enum RouteCategory { Land = 0, Sea = 1, Air = 2 }
 
-public enum RouteCategory { Land = 0, ShippingLane = 1 }
+/// <summary>What a route node stands for.</summary>
+public enum RouteNodeKind { Settlement = 0, Junction = 1, Site = 2 }
+
+/// <summary>
+/// The surface a route is built on. Land routes use Track, DirtRoad or Paved; Sea routes use OpenWater;
+/// Air routes use Sky. Each surface has a base speed in metres per day on <see cref="World"/>.
+/// </summary>
+public enum RouteSurface { Track = 0, DirtRoad = 1, Paved = 2, OpenWater = 3, Sky = 4 }
+
+/// <summary>What water a settlement's tile touches: none, a river only (small craft), or lake/ocean water.</summary>
+public enum PortKind { None = 0, River = 1, Coastal = 2 }
+
+/// <summary>Whether a route or road came from generation or was authored by hand.</summary>
+public enum RouteProvenance { Generated = 0, Authored = 1 }
+
+/// <summary>Direction of travel along a route: from NodeA to NodeB, or back.</summary>
+public enum TravelDirection { AtoB = 0, BtoA = 1 }
 
 /// <summary>Current state of a settlement (a ruined city has no living population).</summary>
 public enum SettlementState { Active = 0, Ruined = 1, Abandoned = 2 }

@@ -37,6 +37,9 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<Guid>("GoodId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("HomeReported")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("OriginId")
                         .HasColumnType("TEXT");
 
@@ -48,6 +51,10 @@ namespace WorldEcon.Persistence.Migrations
 
                     b.Property<long>("UnitCostBasis")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("VehicleClassName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("WorldId")
                         .HasColumnType("TEXT");
@@ -296,7 +303,14 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<long>("Reach")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("RiskAversion")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("Seat")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VehicleClassName")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<long>("VolumeCapacity")
@@ -447,6 +461,43 @@ namespace WorldEcon.Persistence.Migrations
                     b.HasIndex("OwnerKind", "OwnerId", "GoodId");
 
                     b.ToTable("stockpiles", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Economy.TravelKnowledge", b =>
+                {
+                    b.Property<Guid>("KnowerSettlementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("FromSettlementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ToSettlementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VehicleClass")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LengthMetres")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Ticks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UpdatedTick")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("KnowerSettlementId", "FromSettlementId", "ToSettlementId", "VehicleClass");
+
+                    b.HasIndex("WorldId");
+
+                    b.ToTable("travel_knowledge", (string)null);
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Economy.WorkOrder", b =>
@@ -651,6 +702,33 @@ namespace WorldEcon.Persistence.Migrations
                     b.ToTable("political_region_continents", (string)null);
                 });
 
+            modelBuilder.Entity("WorldEcon.Domain.Geography.Road", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provenance")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorldId");
+
+                    b.ToTable("roads", (string)null);
+                });
+
             modelBuilder.Entity("WorldEcon.Domain.Geography.Route", b =>
                 {
                     b.Property<Guid>("Id")
@@ -663,31 +741,126 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<int>("Danger")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long>("Distance")
+                    b.Property<int>("Difficulty")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid>("FromSettlementId")
+                    b.Property<long>("LengthMetres")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxTier")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MinTier")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("NodeA")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("Terrain")
+                    b.Property<Guid>("NodeB")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provenance")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("ToSettlementId")
+                    b.Property<int>("SpeedFactorAtoB")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SpeedFactorBtoA")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Surface")
+                        .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<long>("TrafficCount")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid>("WorldId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FromSettlementId");
+                    b.HasIndex("NodeA");
 
-                    b.HasIndex("ToSettlementId");
+                    b.HasIndex("NodeB");
 
                     b.HasIndex("WorldId");
 
                     b.ToTable("routes", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.RouteNode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PortKind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("SettlementId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SettlementId");
+
+                    b.HasIndex("WorldId", "TileId");
+
+                    b.ToTable("route_nodes", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.RouteTile", b =>
+                {
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TileId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("RouteId", "Sequence");
+
+                    b.HasIndex("TileId");
+
+                    b.ToTable("route_tiles", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.RouteUpgrade", b =>
+                {
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Tick")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FromSurface")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToSurface")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("RouteId", "Tick");
+
+                    b.ToTable("route_upgrades", (string)null);
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Geography.Settlement", b =>
@@ -774,6 +947,55 @@ namespace WorldEcon.Persistence.Migrations
                     b.ToTable("territorial_claims", (string)null);
                 });
 
+            modelBuilder.Entity("WorldEcon.Domain.Geography.VehicleClass", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("MaxMassGrams")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("MaxVolumeCm3")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RatePct")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SpeedFactor")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Tier")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("VolumetricDivisor")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("WorldId", "Name");
+
+                    b.ToTable("vehicle_classes", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.VoyagePath", b =>
+                {
+                    b.Property<Guid>("RouteId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("Tiles")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("RouteId");
+
+                    b.ToTable("voyage_paths", (string)null);
+                });
+
             modelBuilder.Entity("WorldEcon.Domain.Geography.World", b =>
                 {
                     b.Property<Guid>("Id")
@@ -799,6 +1021,9 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<long>("CurrentTick")
                         .HasColumnType("INTEGER");
 
+                    b.Property<long>("DirtRoadSpeedMpd")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("DisplayUnitSystem")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -807,6 +1032,15 @@ namespace WorldEcon.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("GridFrequency")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("KnowledgeRadiusTicks")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxExplorePct")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MaxLossMarginPct")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("MaxPriceMultBp")
@@ -819,6 +1053,12 @@ namespace WorldEcon.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("OpenWaterSpeedMpd")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("PavedSpeedMpd")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("PlanetRadiusKm")
                         .HasColumnType("INTEGER");
 
@@ -830,6 +1070,12 @@ namespace WorldEcon.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<long>("Seed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("SkySpeedMpd")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("TrackSpeedMpd")
                         .HasColumnType("INTEGER");
 
                     b.Property<long>("TransportRate")
@@ -1183,6 +1429,48 @@ namespace WorldEcon.Persistence.Migrations
                     b.ToTable("worldgen_runs", (string)null);
                 });
 
+            modelBuilder.Entity("WorldEcon.Domain.Economy.Caravan", b =>
+                {
+                    b.OwnsMany("WorldEcon.Domain.Economy.CaravanLeg", "Legs", b1 =>
+                        {
+                            b1.Property<Guid>("CaravanId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("Sequence")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("Direction")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.Property<long>("EnterTick")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<long>("ExitTick")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<long>("LengthMetres")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<long>("OffsetMetres")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<Guid>("RouteId")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("CaravanId", "Sequence");
+
+                            b1.HasIndex("RouteId");
+
+                            b1.ToTable("caravan_legs", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("CaravanId");
+                        });
+
+                    b.Navigation("Legs");
+                });
+
             modelBuilder.Entity("WorldEcon.Domain.Economy.MoneyLedgerLine", b =>
                 {
                     b.HasOne("WorldEcon.Domain.Economy.MoneyLedgerSnapshot", null)
@@ -1190,6 +1478,76 @@ namespace WorldEcon.Persistence.Migrations
                         .HasForeignKey("SnapshotId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Economy.RepresentativeMerchant", b =>
+                {
+                    b.OwnsMany("WorldEcon.Domain.Economy.MerchantTrip", "Trips", b1 =>
+                        {
+                            b1.Property<Guid>("MerchantId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("Slot")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<long>("ArriveTick")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<Guid>("From")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<long>("LengthMetres")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<long>("Ticks")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<Guid>("To")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<string>("VehicleClass")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("MerchantId", "Slot");
+
+                            b1.ToTable("merchant_trips", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("MerchantId");
+                        });
+
+                    b.Navigation("Trips");
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.Road", b =>
+                {
+                    b.OwnsMany("WorldEcon.Domain.Geography.RoadRouteEntry", "Routes", b1 =>
+                        {
+                            b1.Property<Guid>("RoadId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("Sequence")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("Direction")
+                                .IsRequired()
+                                .HasColumnType("TEXT");
+
+                            b1.Property<Guid>("RouteId")
+                                .HasColumnType("TEXT");
+
+                            b1.HasKey("RoadId", "Sequence");
+
+                            b1.HasIndex("RouteId");
+
+                            b1.ToTable("road_routes", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("RoadId");
+                        });
+
+                    b.Navigation("Routes");
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Logging.LogEventScope", b =>

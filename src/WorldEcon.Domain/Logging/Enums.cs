@@ -16,4 +16,8 @@ public enum LogEventType
     // Consumed is RETIRED (Phase 2: free consumption replaced by ConsumerDemandPhase, which logs Trade
     // sales at the shop instead). Value kept for historic parse compatibility; no phase emits it.
     Consumed = 15,
+    /// <summary>A merchant's seat has no route node, so it cannot trade (once per merchant per trade run).</summary>
+    MerchantSkippedNoNode = 16,
+    /// <summary>A route's surface changed; caravans on it were rescheduled.</summary>
+    RouteUpgraded = 17,
 }

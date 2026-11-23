@@ -24,7 +24,7 @@ public class TradePhaseTests
         MerchantId MerchantId);
 
     /// <summary>
-    /// Seeds two settlements A and B joined by symmetric distance-120 routes, one good, and a
+    /// Seeds two settlements A and B joined by one 120 km two-way dirt road, one good, and a
     /// market stockpile at each settlement (priced via SetMarketPrice). A merchant is seated at A.
     /// </summary>
     private static async Task<Seed> SeedAsync(
@@ -32,7 +32,7 @@ public class TradePhaseTests
         long bPrice, long bQty,
         long baseValue,
         long merchantCapital, Mass merchantWeightCapacity, Volume merchantVolumeCapacity, long merchantReach,
-        Action<RepresentativeMerchant, Settlement, Settlement, GoodId, WorldDbContext>? extraSeed = null)
+        Action<RepresentativeMerchant, Settlement, Settlement, GoodId, WorldDbContext, Route>? extraSeed = null)
     {
         var path = Path.Combine(Path.GetTempPath(), $"we_trade_{Guid.NewGuid():N}.db");
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
@@ -41,8 +41,6 @@ public class TradePhaseTests
         var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var a = Settlement.Create(world.Id, region.Id, "A", SettlementType.Village, 1, 1, 100).Value;
         var b = Settlement.Create(world.Id, region.Id, "B", SettlementType.Village, 2, 2, 100).Value;
-        var routeAb = Route.Create(world.Id, a.Id, b.Id, 120, Terrain.Plains, 0, RouteCategory.Land).Value;
-        var routeBa = Route.Create(world.Id, b.Id, a.Id, 120, Terrain.Plains, 0, RouteCategory.Land).Value;
         var good = Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(baseValue), "loaf",
             SizeClass.Small, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: 0).Value;
 
@@ -54,7 +52,7 @@ public class TradePhaseTests
         bMarket.SetMarketPrice(new Money(bPrice));
 
         var merchant = RepresentativeMerchant.Create(world.Id, a.Id, new Money(merchantCapital),
-            merchantWeightCapacity, merchantVolumeCapacity, merchantReach).Value;
+            merchantWeightCapacity, merchantVolumeCapacity, merchantReach, riskAversion: 100).Value; // never gambles
 
         await using var ctx = NewContextOnFile(path);
         await ctx.Database.MigrateAsync();
@@ -64,15 +62,16 @@ public class TradePhaseTests
         ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(a);
         ctx.Settlements.Add(b);
-        ctx.Routes.Add(routeAb);
-        ctx.Routes.Add(routeBa);
+        var nodes = RoadGraphFixture.AddNodes(ctx, world.Id, a, b);
+        var route = RoadGraphFixture.AddRoute(ctx, world.Id, nodes[0], nodes[1], 120_000);
+        RoadGraphFixture.AddEstimates(ctx, world, nodes, route);
         ctx.Goods.Add(good);
         ctx.Shops.Add(aShop);
         ctx.Shops.Add(bShop);
         ctx.Stockpiles.Add(aMarket);
         ctx.Stockpiles.Add(bMarket);
         ctx.Merchants.Add(merchant);
-        extraSeed?.Invoke(merchant, a, b, good.Id, ctx);
+        extraSeed?.Invoke(merchant, a, b, good.Id, ctx, route);
         await ctx.SaveChangesAsync();
 
         return new Seed(path, world.Id, a.Id, b.Id, good.Id, merchant.Id);
@@ -95,7 +94,7 @@ public class TradePhaseTests
             baseValue: 100,
             merchantCapital: 100_000,
             merchantWeightCapacity: new Mass(500_000), merchantVolumeCapacity: new Volume(1_000_000),
-            merchantReach: 1000);
+            merchantReach: 86_400);
         try
         {
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
@@ -114,7 +113,7 @@ public class TradePhaseTests
                 s.OwnerKind == StockpileOwnerKind.Shop && s.OwnerId == aShopId);
             aMarket.Quantity.Should().Be(0); // 100 - 100
 
-            // totalMass = 1 000 g × 100 = 100 000 g; volumetric = 20 000 g (mass binds); haulage = 12 copper.
+            // totalMass = 1 000 g × 100 = 100 000 g; volumetric = 20 000 g (mass binds); haulage = 100 000 g × 120 000 m / 10⁹ = 12 copper.
             var merchant = await ctx.Merchants.SingleAsync(m => m.Id == seed.MerchantId);
             merchant.Capital.Units.Should().Be(100_000 - 100 * 100 - 12);
         }
@@ -130,7 +129,7 @@ public class TradePhaseTests
             baseValue: 100,
             merchantCapital: 100_000,
             merchantWeightCapacity: new Mass(500_000), merchantVolumeCapacity: new Volume(1_000_000),
-            merchantReach: 1000);
+            merchantReach: 86_400);
         try
         {
             await AdvanceAsync(seed.Path, seed.WorldId, 1440);
@@ -159,10 +158,11 @@ public class TradePhaseTests
             merchantCapital: 0,
             merchantWeightCapacity: new Mass(500_000), merchantVolumeCapacity: new Volume(1_000_000),
             merchantReach: 1, // reach 1 => no dispatch
-            extraSeed: (merchant, a, b, goodId, ctx) =>
+            extraSeed: (merchant, a, b, goodId, ctx, route) =>
             {
                 preCaravan = Caravan.Create(merchant.WorldId, merchant.Id, a.Id, b.Id, goodId,
-                    10, new Money(100), new Tick(0), new Tick(1440)).Value;
+                    10, new Money(100), "Wagon",
+                    [new CaravanLeg(0, route.Id, TravelDirection.AtoB, new Tick(0), new Tick(1440), route.LengthMetres)]).Value;
                 ctx.Caravans.Add(preCaravan);
             });
         try

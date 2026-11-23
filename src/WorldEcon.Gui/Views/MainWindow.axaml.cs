@@ -109,6 +109,8 @@ public partial class MainWindow : Window
 
     private void OnExit(object? sender, RoutedEventArgs e) => Close();
 
+    private void OnDismissWarnings(object? sender, RoutedEventArgs e) => Vm?.DismissWarnings();
+
     /// <summary>Renders the window into a PNG at its current size and scaling.</summary>
     public void SaveScreenshot(string path)
     {

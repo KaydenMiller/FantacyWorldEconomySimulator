@@ -543,6 +543,7 @@ public sealed partial class MapRenderer : IDisposable
         if (options.Graticule || options.Equator) DrawLatLonLines(canvas, ref frame);
         if (level == MapLevel.Globe && options.Arrows && options.Layer is GlobeLayer.Currents or GlobeLayer.Winds) DrawArrows(canvas, view, options.Layer);
         if (options.HexGrid) DrawHexGrid(canvas, ref frame);
+        if (options.Routes && options.RouteLines is { Count: > 0 } routes) DrawRoutes(canvas, ref frame, routes);
         _labelRects.Clear();
         if (options.Settlements && options.Markers is { Count: > 0 } markers) DrawMarkers(canvas, ref frame, markers, options.Labels);
         if (options.Hover is { } hover) DrawHoverRings(canvas, ref frame, hover, skipCentre: hover == options.Selected);
@@ -555,6 +556,7 @@ public sealed partial class MapRenderer : IDisposable
         {
             if (_disposed) return;
             _disposed = true;
+            DisposeRoutes();
             _cache?.Dispose();
             foreach (var p in _riverPaths) p.Dispose();
             _arrowPath.Dispose();
@@ -1264,6 +1266,7 @@ public sealed partial class MapRenderer : IDisposable
         foreach (var m in markers)
         {
             if (MarkerPoint(ref f, m) is not { } p) continue;
+            if (m.Port != MapPortKind.None) DrawPortRing(canvas, p, m.Port);
             canvas.DrawCircle(p, 4f, _dot);
             canvas.DrawCircle(p, 4f, _ring);
             if (labels && _font is not null && !string.IsNullOrEmpty(m.Label))

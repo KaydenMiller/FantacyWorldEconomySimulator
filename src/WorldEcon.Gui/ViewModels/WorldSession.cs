@@ -27,7 +27,11 @@ public sealed class WorldSession : IDisposable
         World = new MapWorld(data.Layers, data.Regions, data.Lakes, s.Grid.TileMultiplier, _tiles, s.Tiles.RiverMinFlow, s.Tiles.MajorRiverFlow, s.Hydrology)
         { Imagery = data.Imagery, RiverCourses = data.RiverCourses };
         Renderer = new MapRenderer(World);
-        Markers = data.Settlements.Select(x => new MapMarker(x.Cell, x.TileId ?? -1, x.Name)).ToList();
+        Markers = data.Settlements.Select(x => new MapMarker(x.Cell, x.TileId ?? -1, x.Name, (MapPortKind)(int)x.Port)).ToList();
+        RouteLines = data.Routes.Where(r => r.Tiles.Count >= 2)
+            .Select(r => new MapRoute((MapRouteKind)(int)r.Category, r.Tiles)).ToList();
+        _routesByTile = data.Routes.SelectMany(r => r.Tiles.Distinct().Select(t => (t, r)))
+            .GroupBy(x => x.t).ToDictionary(g => g.Key, g => (IReadOnlyList<GlobeRoute>)g.Select(x => x.r).ToList());
         _lakes = data.Lakes.ToDictionary(l => l.Id);
         TileSizeKm = TileMetrics.SizeKm(s.Grid.PlanetRadiusKm, data.TileGrid.Count);
     }
@@ -52,6 +56,14 @@ public sealed class WorldSession : IDisposable
 
     /// <summary>Settlement markers (globe cell, tile or −1, name).</summary>
     public IReadOnlyList<MapMarker> Markers { get; }
+
+    /// <summary>Route lines of the travel graph (one per route, styled by Land, Sea or Air).</summary>
+    public IReadOnlyList<MapRoute> RouteLines { get; }
+
+    private readonly Dictionary<int, IReadOnlyList<GlobeRoute>> _routesByTile;
+
+    /// <summary>Routes whose tile path includes <paramref name="tile"/>.</summary>
+    public IReadOnlyList<GlobeRoute> RoutesOnTile(int tile) => _routesByTile.GetValueOrDefault(tile, []);
 
     /// <summary>Tile size, km: flat-to-flat width √(2A/√3) of a regular hexagon of the mean tile area A (<see cref="TileMetrics.SizeKm"/>; 5.00 km at the earth-5km preset).</summary>
     public double TileSizeKm { get; }

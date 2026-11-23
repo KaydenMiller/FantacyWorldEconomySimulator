@@ -71,6 +71,10 @@
           <CheckBox Name="RiverEndsToggle" Content="River ends (source and mouth dots)" Margin="20,0,0,0" IsChecked="{Binding Map.RiverEnds}" IsEnabled="{Binding Map.Rivers}" />
           <CheckBox Name="LakesToggle" Content="Lakes (large lakes at Globe View)" IsChecked="{Binding Map.Lakes}" />
           <CheckBox Name="MountainsToggle" Content="Mountain symbols" IsChecked="{Binding Map.MountainSymbols}" />
+          <CheckBox Name="RoutesToggle" Content="Routes" IsChecked="{Binding Map.Routes}" />
+          <CheckBox Name="LandRoutesToggle" Content="Land (solid)" Margin="20,0,0,0" IsChecked="{Binding Map.LandRoutes}" IsEnabled="{Binding Map.Routes}" />
+          <CheckBox Name="SeaRoutesToggle" Content="Sea voyages between ports (dashed)" Margin="20,0,0,0" IsChecked="{Binding Map.SeaRoutes}" IsEnabled="{Binding Map.Routes}" />
+          <CheckBox Name="AirRoutesToggle" Content="Air (dotted)" Margin="20,0,0,0" IsChecked="{Binding Map.AirRoutes}" IsEnabled="{Binding Map.Routes}" />
           <CheckBox Name="SettlementsToggle" Content="Settlements" IsChecked="{Binding Map.Settlements}" />
           <CheckBox Name="LabelsToggle" Content="Labels" IsChecked="{Binding Map.Labels}" />
           <CheckBox Name="ArrowsToggle" Content="Arrows (Winds and Currents layers, Globe View)" IsChecked="{Binding Map.Arrows}" />
@@ -117,6 +121,13 @@
       <v:MapView Name="Map" IsVisible="{Binding HasWorld}" />
       <TextBlock IsVisible="{Binding !HasWorld}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8890A0"
                  Text="No world open. File → Open… or File → New world…" />
+      <Border Name="WarningsPanel" IsVisible="{Binding HasWarnings}" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="24"
+              MaxWidth="720" Padding="12,8" Background="#E0302810" BorderBrush="#C0A050" BorderThickness="1" CornerRadius="4">
+        <DockPanel>
+          <Button Name="DismissWarnings" DockPanel.Dock="Right" VerticalAlignment="Top" Margin="8,0,0,0" Content="Dismiss" Click="OnDismissWarnings" />
+          <SelectableTextBlock Name="WarningsText" Text="{Binding WarningsText}" TextWrapping="Wrap" Foreground="#FFF0C8" />
+        </DockPanel>
+      </Border>
       <Border Name="ErrorPanel" IsVisible="{Binding HasError}" VerticalAlignment="Top" Margin="24" Padding="12,8"
               Background="#E0301018" BorderBrush="#C05060" BorderThickness="1" CornerRadius="4">
         <TextBlock Name="ErrorText" Text="{Binding ErrorText}" TextWrapping="Wrap" Foreground="#FFD8DC" />

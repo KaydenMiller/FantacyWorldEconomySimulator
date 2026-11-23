@@ -1,6 +1,7 @@
 namespace WorldEcon.Tui.Forms;
 
-/// <summary>The ordered set of create-forms the shell's <c>n</c> (new) command offers. Grouped
+/// <summary>The ordered set of create-forms the shell's <c>n</c> (new) command offers. Routes have no form: they are
+/// generated on the globe from the seed roads. Grouped
 /// geography → goods → economy → production so the chooser reads top-down through the model.</summary>
 public static class FormRegistry
 {
@@ -10,7 +11,6 @@ public static class FormRegistry
         new CountryForm(),
         new RegionForm(),
         new SettlementForm(),
-        new RouteForm(),
         new GoodForm(),
         new ShopForm(),
         new StockpileForm(),

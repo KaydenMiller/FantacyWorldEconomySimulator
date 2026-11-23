@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using WorldEcon.WorldGen.Pipeline;
 
 namespace WorldEcon.Seeding;
@@ -12,7 +13,8 @@ namespace WorldEcon.Seeding;
 public sealed record SeedWorld(string Name, ulong Seed, string RulesetVersion,
     IReadOnlyList<SeedGood> Goods, IReadOnlyList<SeedRecipe> Recipes,
     IReadOnlyList<SeedContinent> Continents, IReadOnlyList<SeedRoute> Routes,
-    WorldGenSettings? Generation = null, IReadOnlyList<SeedNaturalArea>? NaturalAreas = null);
+    WorldGenSettings? Generation = null, IReadOnlyList<SeedNaturalArea>? NaturalAreas = null,
+    IReadOnlyList<SeedNode>? Nodes = null);
 
 /// <summary>
 /// An authored name for a generated natural area: the generated area of <paramref name="Kind"/>
@@ -60,8 +62,12 @@ public sealed record SeedEndowment(string Good, long Abundance);
 public sealed record SeedProductionNode(string Recipe, long ThroughputCap);
 
 // Capacities are optional familiar-unit strings ("600 kg", "1000 L"); omitted → sensible defaults so
-// older fixtures still import. Reach defaults to 1000.
-public sealed record SeedMerchant(long Capital, string? WeightCapacity = null, string? VolumeCapacity = null, long Reach = 1000);
+// older fixtures still import. Reach is the longest trip in ticks of travel (default 86,400 = 60 days).
+// VehicleClass names one of the world's vehicle classes (VehicleClass.Defaults): HandCart, Wagon, Longboat,
+// MerchantVessel, Airship; default Wagon.
+// RiskAversion 0 (bold) to 100 (cautious); omitted → a deterministic value from the world seed and the merchant id.
+public sealed record SeedMerchant(long Capital, string? WeightCapacity = null, string? VolumeCapacity = null, long Reach = 86_400,
+    string VehicleClass = "Wagon", int? RiskAversion = null);
 
 /// <summary>A representative consumer pre-seeded at a settlement so imported worlds have demand from
 /// day 1 (otherwise the first consumers appear only after the weekly ConsumerSpawnPhase). Size is the
@@ -69,6 +75,23 @@ public sealed record SeedMerchant(long Capital, string? WeightCapacity = null, s
 /// engine's DefaultConsumerSize (1000). Budget is starting spending money (≈ one week's allowance).</summary>
 public sealed record SeedConsumer(long Size, long Budget);
 
-/// <summary>A directed route between two settlements (by name). For symmetric travel, the
-/// author lists both directions explicitly (the importer creates exactly the routes listed).</summary>
-public sealed record SeedRoute(string FromSettlement, string ToSettlement, long Distance, string Terrain, int Danger, string Category);
+/// <summary>
+/// A road to generate between two settlements or <see cref="SeedNode"/>s (by name), travelled in both directions. Its tile
+/// path is generated on the globe: <c>Land</c> roads by A* over land, <c>Air</c> routes along the great circle.
+/// <c>Sea</c> is an error: voyages are generated between every pair of ports sharing water. <paramref name="Surface"/>
+/// defaults to DirtRoad (Land) or Sky (Air). <paramref name="Via"/> names waypoint nodes in order. <paramref name="MinTier"/> and
+/// <paramref name="MaxTier"/> override the generated vehicle-tier range. A pair listed twice needs a
+/// <paramref name="Name"/> on each entry. Distance and terrain are no longer authored: an old seed that has them fails.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record SeedRoute(string FromSettlement, string ToSettlement, int Danger = 0, string Category = "Land",
+    string? Surface = null, string? Name = null, int? MinTier = null, int? MaxTier = null, IReadOnlyList<string>? Via = null);
+
+/// <summary>A named route node that is not a settlement: a <c>Site</c> or <c>Junction</c> at (Lat, Lon) degrees.</summary>
+public sealed record SeedNode(string Kind, string Name, double Lat, double Lon);
+
+/// <summary>The roads to generate and the extra nodes they may name.</summary>
+public sealed record RoadSeed(IReadOnlyList<SeedRoute> Routes, IReadOnlyList<SeedNode> Nodes)
+{
+    public static readonly RoadSeed Empty = new([], []);
+}

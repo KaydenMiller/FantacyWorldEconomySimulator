@@ -13,7 +13,8 @@ public static class LogMagnitudePolicy
         LogEventType.MerchantArrived or LogEventType.MerchantDeparted
             or LogEventType.MerchantGained or LogEventType.MerchantLost
             or LogEventType.ProductionChanged or LogEventType.Stockout => LogMagnitude.Notable,
-        LogEventType.RouteOpened or LogEventType.RouteClosed or LogEventType.ClaimChanged => LogMagnitude.Major,
+        LogEventType.RouteOpened or LogEventType.RouteClosed or LogEventType.ClaimChanged
+            or LogEventType.RouteUpgraded => LogMagnitude.Major,
         LogEventType.SettlementFounded or LogEventType.SettlementRuined => LogMagnitude.Historic,
         LogEventType.PartyAction => LogMagnitude.Major,
         _ => LogMagnitude.Notable,

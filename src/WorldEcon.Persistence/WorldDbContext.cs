@@ -16,6 +16,13 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<PoliticalRegion> PoliticalRegions => Set<PoliticalRegion>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<Route> Routes => Set<Route>();
+    public DbSet<RouteNode> RouteNodes => Set<RouteNode>();
+    public DbSet<RouteTile> RouteTiles => Set<RouteTile>();
+    public DbSet<Road> Roads => Set<Road>();
+    public DbSet<RouteUpgrade> RouteUpgrades => Set<RouteUpgrade>();
+    public DbSet<VehicleClass> VehicleClasses => Set<VehicleClass>();
+    public DbSet<VoyagePath> VoyagePaths => Set<VoyagePath>();
+    public DbSet<TravelKnowledge> TravelKnowledge => Set<TravelKnowledge>();
     public DbSet<PoliticalRegionContinent> PoliticalRegionContinents => Set<PoliticalRegionContinent>();
     public DbSet<TerritorialClaim> TerritorialClaims => Set<TerritorialClaim>();
     public DbSet<Good> Goods => Set<Good>();
@@ -57,6 +64,8 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
         b.Properties<PoliticalRegionId>().HaveConversion<PoliticalRegionIdConverter>();
         b.Properties<SettlementId>().HaveConversion<SettlementIdConverter>();
         b.Properties<RouteId>().HaveConversion<RouteIdConverter>();
+        b.Properties<RouteNodeId>().HaveConversion<RouteNodeIdConverter>();
+        b.Properties<RoadId>().HaveConversion<RoadIdConverter>();
         b.Properties<PoliticalRegionContinentId>().HaveConversion<PoliticalRegionContinentIdConverter>();
         b.Properties<TerritorialClaimId>().HaveConversion<TerritorialClaimIdConverter>();
         b.Properties<GoodId>().HaveConversion<GoodIdConverter>();

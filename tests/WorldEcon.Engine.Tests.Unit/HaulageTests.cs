@@ -16,8 +16,9 @@ public class HaulageMathTests
     [Test]
     public void Cost_ScalesWithDimWeightDistanceAndRate()
     {
-        Haulage.Cost(25_000, 120, 1).Should().Be(3);
-        Haulage.Cost(25_000, 120, 4).Should().Be(12);
+        Haulage.Cost(25_000, 120_000, 1).Should().Be(3);
+        Haulage.Cost(1_000_000, 1_000, 1).Should().Be(1); // one tonne over one km at rate 1
+        Haulage.Cost(25_000, 120_000, 4).Should().Be(12);
     }
 
     [Test]

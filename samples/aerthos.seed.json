@@ -239,17 +239,12 @@
     }
   ],
   "routes": [
-    { "fromSettlement": "Hammerfell", "toSettlement": "Greenfield", "distance": 60, "terrain": "Plains", "danger": 2, "category": "Land" },
-    { "fromSettlement": "Greenfield", "toSettlement": "Hammerfell", "distance": 60, "terrain": "Plains", "danger": 2, "category": "Land" },
-    { "fromSettlement": "Hammerfell", "toSettlement": "Riverwood", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" },
-    { "fromSettlement": "Riverwood", "toSettlement": "Hammerfell", "distance": 120, "terrain": "Plains", "danger": 3, "category": "Land" },
-    { "fromSettlement": "Hammerfell", "toSettlement": "Karak Drûm", "distance": 200, "terrain": "Mountain", "danger": 6, "category": "Land" },
-    { "fromSettlement": "Karak Drûm", "toSettlement": "Hammerfell", "distance": 200, "terrain": "Mountain", "danger": 6, "category": "Land" },
-    { "fromSettlement": "Greenfield", "toSettlement": "Karak Drûm", "distance": 180, "terrain": "Mountain", "danger": 5, "category": "Land" },
-    { "fromSettlement": "Karak Drûm", "toSettlement": "Greenfield", "distance": 180, "terrain": "Mountain", "danger": 5, "category": "Land" },
-    { "fromSettlement": "Hammerfell", "toSettlement": "Sunport", "distance": 400, "terrain": "Coast", "danger": 4, "category": "Land" },
-    { "fromSettlement": "Sunport", "toSettlement": "Hammerfell", "distance": 400, "terrain": "Coast", "danger": 4, "category": "Land" },
-    { "fromSettlement": "Sunport", "toSettlement": "Vinemoor", "distance": 80, "terrain": "Coast", "danger": 2, "category": "Land" },
-    { "fromSettlement": "Vinemoor", "toSettlement": "Sunport", "distance": 80, "terrain": "Coast", "danger": 2, "category": "Land" }
+    { "fromSettlement": "Hammerfell", "toSettlement": "Greenfield", "danger": 2, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Riverwood", "danger": 3, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Karak Drûm", "danger": 6, "category": "Land" },
+    { "fromSettlement": "Greenfield", "toSettlement": "Karak Drûm", "danger": 5, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Sunport", "danger": 4, "category": "Land" },
+    { "fromSettlement": "Sunport", "toSettlement": "Vinemoor", "danger": 2, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Sunport", "danger": 1, "category": "Air", "name": "Sky Road" }
   ]
 }

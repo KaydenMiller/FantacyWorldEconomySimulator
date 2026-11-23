@@ -23,29 +23,4 @@ public class SettlementAndRouteTests
     public void Settlement_Create_RejectsNegativePopulation()
         => Settlement.Create(WorldId.New(), PoliticalRegionId.New(), "X", SettlementType.Town, 0, 0, -1)
             .IsError.Should().BeTrue();
-
-    [Test]
-    public void Route_Create_SetsDirectedEdge()
-    {
-        var from = SettlementId.New();
-        var to = SettlementId.New();
-        var r = Route.Create(WorldId.New(), from, to, distance: 120, Terrain.Plains, danger: 3, RouteCategory.Land).Value;
-        r.FromSettlementId.Should().Be(from);
-        r.ToSettlementId.Should().Be(to);
-        r.Distance.Should().Be(120);
-        r.Danger.Should().Be(3);
-        r.Category.Should().Be(RouteCategory.Land);
-    }
-
-    [Test]
-    public void Route_Create_RejectsNonPositiveDistance()
-        => Route.Create(WorldId.New(), SettlementId.New(), SettlementId.New(), 0, Terrain.Plains, 0, RouteCategory.Land)
-            .IsError.Should().BeTrue();
-
-    [Test]
-    public void Route_Create_RejectsSelfLoop()
-    {
-        var s = SettlementId.New();
-        Route.Create(WorldId.New(), s, s, 10, Terrain.Plains, 0, RouteCategory.Land).IsError.Should().BeTrue();
-    }
 }

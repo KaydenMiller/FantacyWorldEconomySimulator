@@ -95,8 +95,14 @@ public static class DetailFormatter
             new("Globe cell", block.GlobeCell.ToString(Inv)),
             new("Region cell", session.RegionCellOfTile(tile).ToString(Inv)),
             new("Settlements", here.Count == 0 ? "none" : string.Join(", ", here)),
+            new("Routes", RoutesText(session.RoutesOnTile(tile))),
         ];
     }
+
+    /// <summary>"none", or one line per route on the tile: road, ends, category, surface, tiers and length.</summary>
+    internal static string RoutesText(IReadOnlyList<WorldEcon.Application.Globe.GlobeRoute> routes) =>
+        routes.Count == 0 ? "none" : string.Join("\n", routes.Select(r => string.Create(Inv,
+            $"{(r.RoadName.Length == 0 ? "(no road)" : r.RoadName)}: {r.NodeA} – {r.NodeB}, {r.Category} {r.Surface}, tiers {r.MinTier}-{r.MaxTier}, {r.LengthMetres / 1000.0:F1} km, traffic {r.TrafficCount}")));
 
     /// <summary>"none", or the lake's id, kind, water level, tile count and area.</summary>
     private static string LakeText(int lakeId, WorldSession session)

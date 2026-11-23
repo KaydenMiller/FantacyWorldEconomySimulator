@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using ErrorOr;
+using WorldEcon.WorldGen.Roads;
 
 namespace WorldEcon.WorldGen.Pipeline;
 
@@ -31,6 +32,9 @@ public sealed record WorldGenSettings
     public PinSettings Pinning { get; init; } = new();
     public TilesSettings Tiles { get; init; } = new();
 
+    /// <summary>Road generation (after pinning, outside the staged pipeline: it does not change any stage hash).</summary>
+    public RoadSettings Roads { get; init; } = new();
+
     /// <summary>
     /// Range checks, one error per out-of-range property (code <c>settings.&lt;Section&gt;.&lt;Property&gt;</c>), in
     /// section then declaration order, followed by that section's cross-field rules. A cross-field rule is checked only
@@ -51,6 +55,7 @@ public sealed record WorldGenSettings
         Areas.Validate(v.For(nameof(Areas)));
         Pinning.Validate(v.For(nameof(Pinning)));
         Tiles.Validate(v.For(nameof(Tiles)));
+        Roads.Validate(v.For(nameof(Roads)));
         return v.Errors.Count == 0 ? Result.Success : v.Errors.ToList();
     }
 }

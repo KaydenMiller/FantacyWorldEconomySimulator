@@ -135,6 +135,23 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasError => _errorText.Length > 0;
 
+    private string _warningsText = "";
+
+    /// <summary>Warnings from the last File → New world (pins, roads, ports), one per line; empty when there were none or they were dismissed.</summary>
+    public string WarningsText
+    {
+        get => _warningsText;
+        private set
+        {
+            if (Set(ref _warningsText, value)) Raise(nameof(HasWarnings));
+        }
+    }
+
+    public bool HasWarnings => _warningsText.Length > 0;
+
+    /// <summary>Hides the seeding warnings panel.</summary>
+    public void DismissWarnings() => WarningsText = "";
+
     /// <summary>Title of the Areas tab's detail pane (the selected area).</summary>
     public string AreaDetailsTitle
     {
@@ -251,9 +268,12 @@ public sealed class MainViewModel : ObservableObject
         var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
         var temp = Path.Combine(dir, $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         string? closedPath = null;
+        IReadOnlyList<string> warnings = [];
+        WarningsText = "";
         try
         {
-            await Task.Run(() => DemoSeeder.CreateAsync(temp, settings, progress));
+            var (_, report) = await Task.Run(() => DemoSeeder.CreateAsync(temp, settings, progress));
+            warnings = report.Warnings;
             // The open world reads tiles from its file: close it (renderer disposed, tile source closed, running loads
             // drained) before the pools are cleared and the file is replaced, so it never reads the new world's blocks.
             if (_session is { Path: { } open } && SameFile(open, path))
@@ -298,7 +318,13 @@ public sealed class MainViewModel : ObservableObject
 
         IsBusy = false;
         BusyPercentKnown = false;
-        return await OpenAsync(path);
+        var opened = await OpenAsync(path);
+        if (opened && warnings.Count > 0)
+        {
+            WarningsText = $"World created with {warnings.Count} warning{(warnings.Count == 1 ? "" : "s")}:\n" + string.Join("\n", warnings.Select(w => "• " + w));
+            StatusText = $"{StatusText} ({warnings.Count} seeding warning{(warnings.Count == 1 ? "" : "s")})";
+        }
+        return opened;
     }
 
     /// <summary>Reports an exception from a window event handler (the handlers are <c>async void</c> and must not throw).</summary>
