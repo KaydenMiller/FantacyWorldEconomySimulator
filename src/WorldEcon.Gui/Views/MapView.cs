@@ -106,11 +106,13 @@ public sealed class MapView : Control
         var view = _map.View;
         var options = _map.DrawOptions;
         var renderer = _renderer;
+        var overlayOnly = _map.GpuActive; // the GPU control below draws cells and rivers
         context.Custom(new SkiaDrawOperation(new Rect(Bounds.Size), canvas =>
         {
             try
             {
-                renderer.Draw(canvas, view, options);
+                if (overlayOnly) renderer.DrawOverlay(canvas, view, options);
+                else renderer.Draw(canvas, view, options);
             }
             catch (ObjectDisposedException)
             {

@@ -501,19 +501,52 @@ public sealed partial class MapRenderer : IDisposable
                 else DrawRegionRivers(canvas, ref frame);
             }
 
-            if (options.Graticule || options.Equator) DrawLatLonLines(canvas, ref frame);
-            if (level == MapLevel.Globe && options.Arrows && options.Layer is GlobeLayer.Currents or GlobeLayer.Winds) DrawArrows(canvas, view, options.Layer);
-            if (options.HexGrid) DrawHexGrid(canvas, ref frame);
-            _labelRects.Clear();
-            if (options.Settlements && options.Markers is { Count: > 0 } markers) DrawMarkers(canvas, ref frame, markers, options.Labels);
-            if (options.Hover is { } hover) DrawHoverRings(canvas, ref frame, hover, skipCentre: hover == options.Selected);
-            if (options.Selected is { } selected) StrokePick(canvas, ref frame, selected, SKColors.Yellow, 2.5f);
+            DrawOverlayItems(canvas, ref frame);
             LastDrawMs = sw.Elapsed.TotalMilliseconds;
             LastFramePending = _blockPending;
             LastFrameBlockBuilds = _blockBuilds;
             // Builds left unstarted by the per-frame limit: draw again. Running builds raise their own redraw when they finish.
             if (_redrawSoon) ThreadPool.QueueUserWorkItem(_ => TilesLoaded?.Invoke(this, -1));
         }
+    }
+
+    /// <summary>
+    /// For the GPU backend (design 2026-11-23-gpu-map-rendering §5): draws only what the GPU does not, on a transparent
+    /// <paramref name="canvas"/> above the GPU picture: latitude/longitude lines, arrows, hex grid, markers and labels,
+    /// hover and selection. A few hundred items at most, so the CPU cost does not grow with cells, pixels or rivers.
+    /// </summary>
+    public void DrawOverlay(SKCanvas canvas, MapViewState view, MapDrawOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(canvas);
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(options);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var sw = Stopwatch.StartNew();
+            _stamp++;
+            var level = EffectiveLevel(view);
+            var frame = new Frame(view, options, level);
+            DrawOverlayItems(canvas, ref frame);
+            LastOverlayMs = sw.Elapsed.TotalMilliseconds;
+        }
+    }
+
+    /// <summary>CPU time of the last <see cref="DrawOverlay"/> (ms).</summary>
+    public double LastOverlayMs { get; private set; }
+
+    private void DrawOverlayItems(SKCanvas canvas, ref Frame frame)
+    {
+        var options = frame.Options;
+        var view = frame.View;
+        var level = frame.Level;
+        if (options.Graticule || options.Equator) DrawLatLonLines(canvas, ref frame);
+        if (level == MapLevel.Globe && options.Arrows && options.Layer is GlobeLayer.Currents or GlobeLayer.Winds) DrawArrows(canvas, view, options.Layer);
+        if (options.HexGrid) DrawHexGrid(canvas, ref frame);
+        _labelRects.Clear();
+        if (options.Settlements && options.Markers is { Count: > 0 } markers) DrawMarkers(canvas, ref frame, markers, options.Labels);
+        if (options.Hover is { } hover) DrawHoverRings(canvas, ref frame, hover, skipCentre: hover == options.Selected);
+        if (options.Selected is { } selected) StrokePick(canvas, ref frame, selected, SKColors.Yellow, 2.5f);
     }
 
     public void Dispose()
@@ -1325,10 +1358,17 @@ public sealed partial class MapRenderer : IDisposable
 
     // ---- colours ----
 
-    private double RiverT(long flow)
+    /// <summary>Position (0–1) of <paramref name="flow"/> on the river colour ramp shared by all levels (and the GPU palette).</summary>
+    internal double RiverT(long flow)
     {
         if (_logMax <= _logTileMin) return 0;
         return Math.Clamp((Math.Log10(Math.Max(1L, flow)) - _logTileMin) / (_logMax - _logTileMin), 0, 1);
+    }
+
+    /// <summary><see cref="GlobeColours"/> from any thread (serialised with <see cref="Draw"/>); for the GPU backend's cell colour texture.</summary>
+    public uint[] GlobeColoursFor(GlobeLayer layer)
+    {
+        lock (_gate) return GlobeColours(layer);
     }
 
     /// <summary>Globe-cell colours for a layer (cached). Hydrology uses the river scale shared with the region and tile levels.</summary>

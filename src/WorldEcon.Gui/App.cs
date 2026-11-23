@@ -44,6 +44,16 @@ public sealed class App : Avalonia.Application
                         }
 
                         Console.WriteLine(ok ? $"Loaded {db}: {vm.StatusText}" : vm.StatusText);
+                        if (ok && options.ExportGpuDir is { } exportDir && vm.Session is { } session)
+                        {
+                            await Task.Run(() => WorldEcon.Rendering.Gpu.GpuSceneExport.Write(session.Renderer, exportDir));
+                            Console.WriteLine($"Wrote GPU scene export to {exportDir}");
+                            desktop.Shutdown();
+                            return;
+                        }
+
+                        if (ok && (options.ScreenshotPath is not null || options.SpinFrames is not null || options.SweepFrames is not null))
+                            await window.WaitForGpuAsync(TimeSpan.FromSeconds(10));
                         if (options.ScreenshotPath is { } png) window.SaveScreenshotWhenDrawn(png);
                         if (ok && options.SpinFrames is { } frames) window.Spin(frames);
                         if (ok && options.SweepFrames is { } sweep) window.Sweep(sweep);

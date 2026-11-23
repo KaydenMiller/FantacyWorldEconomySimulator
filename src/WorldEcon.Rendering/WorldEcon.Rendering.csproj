@@ -10,4 +10,8 @@
     <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
     <ProjectReference Include="..\WorldEcon.WorldGen\WorldEcon.WorldGen.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Shared GLSL bodies for every GPU backend (desktop OpenGL, WebGL2); see Gpu/GpuShaders.cs. -->
+    <EmbeddedResource Include="Gpu\Shaders\*.glsl" />
+  </ItemGroup>
 </Project>

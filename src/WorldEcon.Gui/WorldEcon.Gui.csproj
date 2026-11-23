@@ -3,6 +3,8 @@
     <OutputType>WinExe</OutputType>
     <RootNamespace>WorldEcon.Gui</RootNamespace>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- The GPU map backend calls OpenGL through function pointers (Views/Gpu/GlApi.cs). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <!-- Persistence transitively pulls SQLite, which carries this advisory.

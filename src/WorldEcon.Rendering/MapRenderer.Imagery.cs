@@ -386,6 +386,16 @@ public sealed partial class MapRenderer
     /// projected corner, before any gap scaling): the one measure both drawing and <see cref="LoadVisibleAsync"/> use to
     /// decide whether the cell is textured from its tile blocks (≥ <see cref="BlockTextureMinPx"/>).
     /// </summary>
+    /// <summary>
+    /// On-screen size of globe cell <paramref name="c"/> (see <see cref="ProjectedDiameter"/>); the GPU backend uses the
+    /// same measure to decide where a cell is drawn from its tile block (at least <see cref="BlockTextureMinPx"/>).
+    /// </summary>
+    public float ProjectedCellDiameter(MapViewState view, int c)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        return ProjectedDiameter(view, c);
+    }
+
     private float ProjectedDiameter(MapViewState view, int c)
     {
         view.ProjectClamped(_gCentres[c], out var cx, out var cy);
@@ -423,6 +433,48 @@ public sealed partial class MapRenderer
 
     private RiverSet[] _courseSets = [];
 
+    /// <summary>One river course level for the GPU export: tolerance, and per river its points, globe cells, width levels and length.</summary>
+    internal readonly record struct RiverCourseLevel(double ToleranceRad, double MinLengthPx, Vector3[][] Points, int[][] Globe, byte[][] Level, double[] LengthRad, double[][] Flow);
+
+    private RiverCourseLevel ToCourseLevel(RiverSet s) =>
+        new(s.ToleranceRad, s.SkipShort ? CourseMinLengthPx : 0, s.Points, s.Globe, s.Level, s.LengthRad, [.. s.Rivers.Select(r => r.Flow)]);
+
+    /// <summary>
+    /// The smoothed river lines of tile block <paramref name="e"/> for the GPU (one level, widths on the tile scale), and
+    /// whether they are final (every block they flow into was loaded; otherwise build again when it is).
+    /// </summary>
+    internal (RiverCourseLevel Level, bool Complete)? BlockRiverCourse(TileBlockGeometry e)
+    {
+        lock (_gate)
+        {
+            if (BlockRiverSet(e) is not { } set) return null;
+            return (ToCourseLevel(set), ReferenceEquals(e.RiverLines, set));
+        }
+    }
+
+    /// <summary>
+    /// The river levels Globe and Region View draw (<see cref="RiverSetFor"/> picks one per frame): the course levels
+    /// (finest first), or the region-cell chains when the world has no river courses; empty without rivers.
+    /// </summary>
+    internal IReadOnlyList<RiverCourseLevel> RiverCourseLevels()
+    {
+        IEnumerable<RiverSet> sets = _courseSets.Length > 0 ? _courseSets : _regionRivers is { } rr ? [rr] : [];
+        return [.. sets.Select(ToCourseLevel)];
+    }
+
+    /// <summary>Index of the river course level Globe and Region View draw for <paramref name="view"/> (as the CPU path picks; 0 without course levels).</summary>
+    public int RiverCourseLevelFor(MapViewState view)
+    {
+        if (_courseSets.Length == 0) return 0;
+        for (var i = _courseSets.Length - 1; i >= 0; i--)
+            if (_courseSets[i].ToleranceRad * view.ScalePxPerRad <= CourseTolerancePx) return i;
+        return 0;
+    }
+
+    /// <summary>Rivers shorter than this on screen are skipped at course level <paramref name="level"/> (pixels; 0: none skipped).</summary>
+    public double RiverMinLengthPx(int level) =>
+        _courseSets.Length == 0 ? 0 : _courseSets[Math.Clamp(level, 0, _courseSets.Length - 1)].SkipShort ? CourseMinLengthPx : 0;
+
     /// <summary>
     /// <see cref="MapWorld.RiverCourses"/> joined into chains and smoothed at the finest tolerance (half a tile); null
     /// when the world has no river courses. Globe and Region View draw these (at a tolerance matched to the zoom)
@@ -440,7 +492,13 @@ public sealed partial class MapRenderer
         public double ToleranceRad { get; } = toleranceRad;
 
         /// <summary>False for a river under <see cref="CourseMinLengthPx"/> on screen (course levels only).</summary>
-        public bool Visible(int k, double scalePxPerRad) => !skipShort || lengthRad[k] * scalePxPerRad >= CourseMinLengthPx;
+        public bool Visible(int k, double scalePxPerRad) => !SkipShort || LengthRad[k] * scalePxPerRad >= CourseMinLengthPx;
+
+        /// <summary>Angular length of each river (radians).</summary>
+        public double[] LengthRad { get; } = lengthRad;
+
+        /// <summary>True when rivers shorter than <see cref="CourseMinLengthPx"/> on screen are skipped.</summary>
+        public bool SkipShort { get; } = skipShort;
     }
 
     private RiverSet MakeRiverSet(IReadOnlyList<SmoothedRiver> rivers, double toleranceRad, bool skipShort = false, double? logMin = null)

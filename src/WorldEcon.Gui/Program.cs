@@ -5,7 +5,7 @@ namespace WorldEcon.Gui;
 /// <summary>
 /// Desktop app entry point. Usage:
 /// <c>WorldEcon.Gui [&lt;db&gt;] [--centre &lt;lat&gt;,&lt;lon&gt;] [--zoom-to globe|region|detail] [--layer &lt;name&gt;]
-/// [--screenshot &lt;png&gt;] [--exit-after &lt;seconds&gt;] [--spin &lt;frames&gt;] [--sweep &lt;frames&gt;]</c>.
+/// [--screenshot &lt;png&gt;] [--exit-after &lt;seconds&gt;] [--spin &lt;frames&gt;] [--sweep &lt;frames&gt;] [--renderer gpu|cpu] [--export-gpu &lt;dir&gt;]</c>.
 /// <c>--centre</c> turns the map to a point after load; <c>--zoom-to</c> sets the scale where that view is shown (Region
 /// View: region cells 45 px; Detail View: tiles 26 px; the visible tile blocks are loaded before the screenshot);
 /// <c>--layer</c> picks the colour layer. <c>--screenshot</c> saves a PNG of the main window once the world has loaded
@@ -40,13 +40,19 @@ public static class Program
 /// <summary>Command-line options of the desktop app.</summary>
 internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double? ExitAfterSeconds, int? SpinFrames)
 {
-    public const string Usage = "Usage: WorldEcon.Gui [<db>] [--centre <lat>,<lon>] [--zoom-to globe|region|detail] [--layer <name>] [--screenshot <png>] [--exit-after <seconds>] [--spin <frames>] [--sweep <frames>]";
+    public const string Usage = "Usage: WorldEcon.Gui [<db>] [--centre <lat>,<lon>] [--zoom-to globe|region|detail] [--layer <name>] [--screenshot <png>] [--exit-after <seconds>] [--spin <frames>] [--sweep <frames>] [--renderer gpu|cpu] [--export-gpu <dir>]";
 
     /// <summary>Map centre after load (degrees), or null to keep the default (the first settlement).</summary>
     public (double LatDeg, double LonDeg)? Centre { get; init; }
 
     /// <summary>View to zoom to after load, or null for Globe View.</summary>
     public WorldEcon.Rendering.MapLevel? ZoomTo { get; init; }
+
+    /// <summary>Diagnostic: folder to write the GPU scene export to (manifest, binaries, shaders) after load, then exit.</summary>
+    public string? ExportGpuDir { get; init; }
+
+    /// <summary>Map renderer: the GPU backend (default; falls back to the CPU when OpenGL is unavailable) or the CPU renderer only.</summary>
+    public string Renderer { get; init; } = "gpu";
 
     /// <summary>Diagnostic: frames over which to wheel-zoom Globe → Detail → Globe after load and print timings per level, or null.</summary>
     public int? SweepFrames { get; init; }
@@ -76,6 +82,14 @@ internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double
                     if (!int.TryParse(f, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var frames) || frames <= 0)
                         throw new ArgumentException($"--spin expects a positive number of frames, not '{f}'.");
                     o = o with { SpinFrames = frames };
+                    break;
+                case "--export-gpu":
+                    o = o with { ExportGpuDir = Value() };
+                    break;
+                case "--renderer":
+                    var rn = Value();
+                    if (rn is not ("gpu" or "cpu")) throw new ArgumentException($"--renderer expects gpu or cpu, not '{rn}'.");
+                    o = o with { Renderer = rn };
                     break;
                 case "--sweep":
                     var sw = Value();

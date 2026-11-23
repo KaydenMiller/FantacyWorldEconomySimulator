@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:WorldEcon.Gui.ViewModels"
         xmlns:v="using:WorldEcon.Gui.Views"
+        xmlns:g="using:WorldEcon.Gui.Views.Gpu"
         x:Class="WorldEcon.Gui.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="WorldEcon — Map"
@@ -111,6 +112,8 @@
     </TabControl>
 
     <Panel>
+      <!-- GPU picture (cells, rivers) under the Skia map control, which draws the overlay and handles input. -->
+      <g:GlMapView Name="GlMap" IsVisible="{Binding HasWorld}" />
       <v:MapView Name="Map" IsVisible="{Binding HasWorld}" />
       <TextBlock IsVisible="{Binding !HasWorld}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8890A0"
                  Text="No world open. File → Open… or File → New world…" />

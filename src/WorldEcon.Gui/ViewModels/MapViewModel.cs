@@ -39,6 +39,7 @@ public sealed class MapViewModel : ObservableObject
     private MapPick? _hover;
     private IReadOnlySet<int>? _highlighted;
     private MapLevel _level;
+    private bool _gpuActive;
 
     public MapViewModel(WorldSession session)
     {
@@ -53,6 +54,19 @@ public sealed class MapViewModel : ObservableObject
     public event EventHandler? Invalidated;
 
     public MapRenderer Renderer => _session.Renderer;
+
+    /// <summary>
+    /// True while the GPU backend draws the cells and rivers of the current view (set by the GPU control); the map
+    /// control then draws only the overlay on top. Changing it redraws.
+    /// </summary>
+    public bool GpuActive
+    {
+        get => _gpuActive;
+        set
+        {
+            if (Set(ref _gpuActive, value)) Invalidate();
+        }
+    }
 
     public MapViewState View => _view;
 

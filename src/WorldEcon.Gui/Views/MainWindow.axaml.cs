@@ -20,6 +20,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
+        // --renderer cpu: no GPU control, the map stays on the CPU renderer.
+        if (Program.Options.Renderer == "cpu" && GlMap.Parent is Panel panel) panel.Children.Remove(GlMap);
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
@@ -117,11 +119,42 @@ public partial class MainWindow : Window
         bitmap.Save(path, PngBitmapEncoderOptions.Default);
     }
 
+    /// <summary>
+    /// Diagnostics: completes when the GPU control draws the map (its scene uploaded and the level covered), or after
+    /// <paramref name="timeout"/>, or at once with <c>--renderer cpu</c>; so scripted screenshots and timings measure the
+    /// renderer in use rather than the CPU frames drawn while the GPU scene is still being built.
+    /// </summary>
+    public async Task WaitForGpuAsync(TimeSpan timeout)
+    {
+        if (GlMap.Parent is null || Vm?.Map is not { } map) return;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        while (!map.GpuActive && clock.Elapsed < timeout && Gpu.GlMapView.FailureReason is null)
+        {
+            GlMap.RequestNextFrameRendering();
+            await Task.Delay(50);
+        }
+
+        // Then until the visible tile blocks have meshes (no build pending over 5 consecutive checks).
+        var settled = 0;
+        while (map.GpuActive && settled < 5 && clock.Elapsed < timeout)
+        {
+            GlMap.RequestNextFrameRendering();
+            await Task.Delay(50);
+            settled = GlMap.PendingTileBlocks == 0 ? settled + 1 : 0;
+        }
+
+        Console.WriteLine(map.GpuActive
+            ? $"GPU renderer active after {clock.Elapsed.TotalMilliseconds:F0} ms, {GlMap.LastTileBlocks} tile blocks drawn"
+            : $"GPU renderer not active ({Gpu.GlMapView.FailureReason ?? "level not covered or not ready"}); CPU renderer in use");
+    }
+
     /// <summary>Saves a screenshot after the next layout and render pass (diagnostic <c>--screenshot</c>).</summary>
     public void SaveScreenshotWhenDrawn(string path, Action? done = null)
     {
         RequestAnimationFrame(_ => Dispatcher.UIThread.Post(() =>
         {
+            // The window capture does not include the OpenGL layer: the GPU frame is written next to it.
+            if (Vm?.Map is { GpuActive: true } && GlMap.Parent is not null) GlMap.CaptureNextFrame(Path.ChangeExtension(path, ".gpu.png"));
             SaveScreenshot(path);
             Console.WriteLine($"Wrote screenshot {path} ({Bounds.Width}x{Bounds.Height} at scaling {RenderScaling})");
             if (Vm?.Session?.Renderer is { } r)
@@ -141,6 +174,9 @@ public partial class MainWindow : Window
         var intervals = new List<double>();
         var builds = new List<double>();
         var draws = new List<double>();
+        var submits = new List<double>();
+        var overlays = new List<double>();
+        var gpuFrames = 0;
         int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
         var gcPause0 = GC.GetTotalPauseDuration();
         var clock = System.Diagnostics.Stopwatch.StartNew();
@@ -153,6 +189,12 @@ public partial class MainWindow : Window
                 intervals.Add(now - last);
                 builds.Add(session.Renderer.LastBuildMs);
                 draws.Add(session.Renderer.LastDrawMs);
+                if (map.GpuActive)
+                {
+                    gpuFrames++;
+                    submits.Add(Gpu.GlMapView.LastSubmitMs);
+                    overlays.Add(session.Renderer.LastOverlayMs);
+                }
             }
 
             last = now;
@@ -169,6 +211,8 @@ public partial class MainWindow : Window
                 var gcMs = (GC.GetTotalPauseDuration() - gcPause0).TotalMilliseconds;
                 Console.WriteLine($"Spin {frames} frames at {map.LevelName} View, {session.Renderer.LastDrawnCells} cells drawn: frame interval {Stats(intervals)}");
                 Console.WriteLine($"  CPU build {Stats(builds)}; whole draw {Stats(draws)}");
+                if (gpuFrames > 0)
+                    Console.WriteLine($"  GPU renderer on {gpuFrames}/{intervals.Count} frames: GL submit {Stats(submits)}; Skia overlay {Stats(overlays)}");
                 Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture,
                     $"  worst build at frame {worst}; garbage collections gen0/1/2 {GC.CollectionCount(0) - gc0}/{GC.CollectionCount(1) - gc1}/{GC.CollectionCount(2) - gc2}, total pause {gcMs:F1} ms"));
                 done?.Invoke();
@@ -208,14 +252,16 @@ public partial class MainWindow : Window
             var now = clock.Elapsed.TotalMilliseconds;
             if (last >= 0)
             {
-                var level = session.Renderer.LastLevel.ToString();
+                // The level and CPU time of the renderer in use: GPU submit + Skia overlay, or the CPU renderer's whole draw.
+                var level = map.LevelName;
+                var r = session.Renderer;
+                var cpuMs = map.GpuActive ? Gpu.GlMapView.LastSubmitMs + r.LastOverlayMs : r.LastDrawMs;
                 if (!byLevel.TryGetValue(level, out var bucket)) byLevel[level] = bucket = ([], []);
                 bucket.Intervals.Add(now - last);
-                bucket.Draws.Add(session.Renderer.LastDrawMs);
+                bucket.Draws.Add(cpuMs);
                 all.Intervals.Add(now - last);
-                all.Draws.Add(session.Renderer.LastDrawMs);
-                var r = session.Renderer;
-                if (r.LastDrawMs > worst.Ms) worst = (r.LastDrawMs, step, r.LastBuildMs, r.LastCellsMs, level);
+                all.Draws.Add(cpuMs);
+                if (cpuMs > worst.Ms) worst = (cpuMs, step, map.GpuActive ? Gpu.GlMapView.LastSubmitMs : r.LastBuildMs, map.GpuActive ? r.LastOverlayMs : r.LastCellsMs, level);
             }
 
             last = now;
@@ -229,11 +275,11 @@ public partial class MainWindow : Window
                         $"median {v[v.Count / 2]:F2} ms, p95 {v[(int)(v.Count * 0.95)]:F2} ms, max {v[^1]:F2} ms, {over}/{v.Count} over 16.7 ms");
                 }
 
-                Console.WriteLine($"Sweep {frames} frames Globe -> Detail -> Globe: frame interval {Stats(all.Intervals)}; whole draw {Stats(all.Draws)}");
+                Console.WriteLine($"Sweep {frames} frames Globe -> Detail -> Globe ({(map.GpuActive ? "GPU" : "CPU")} renderer): frame interval {Stats(all.Intervals)}; CPU per frame {Stats(all.Draws)}");
                 foreach (var (level, b) in byLevel)
-                    Console.WriteLine($"  {level}: frame interval {Stats(b.Intervals)}; whole draw {Stats(b.Draws)}");
+                    Console.WriteLine($"  {level}: frame interval {Stats(b.Intervals)}; CPU per frame {Stats(b.Draws)}");
                 Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                    $"  worst draw {worst.Ms:F1} ms at step {worst.Step} ({worst.Level}): build {worst.Build:F1} ms, cells done at {worst.Cells:F1} ms"));
+                    $"  worst CPU frame {worst.Ms:F1} ms at step {worst.Step} ({worst.Level}): GPU submit or CPU build {worst.Build:F1} ms, overlay or cells {worst.Cells:F1} ms"));
                 done?.Invoke();
                 return;
             }

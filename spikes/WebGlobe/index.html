@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WorldEcon WebGL2 globe</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #080a14; color: #d8dce8; font: 13px system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  #hud { position: fixed; top: 8px; left: 8px; background: #000a; padding: 6px 10px; border-radius: 4px; }
+  #hud select { margin-left: 6px; }
+</style>
+</head>
+<body>
+<canvas id="map"></canvas>
+<div id="hud">
+  <span id="status">Loading scene…</span>
+  <label>Layer <select id="layer"></select></label>
+  <span id="fps"></span>
+</div>
+<script type="module" src="main.js"></script>
+</body>
+</html>
