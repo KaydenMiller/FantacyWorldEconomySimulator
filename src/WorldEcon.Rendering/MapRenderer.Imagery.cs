@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Numerics;
 using SkiaSharp;
 using WorldEcon.WorldGen.Grid;
@@ -21,7 +22,12 @@ public sealed partial class MapRenderer
     /// <summary>Tile size (pixels) from which tiles are drawn as polygons at Region View, as at Detail View.</summary>
     public const float TilePolygonMinPx = 8f;
 
+    /// <summary>Block-texture builds started per frame at most (each runs on the thread pool).</summary>
     private const int BlockTextureBuildsPerFrame = 4;
+
+    /// <summary>Block-texture builds running at once at most; further cells keep their fallback until one finishes.</summary>
+    private const int MaxBlockTextureBuildsInFlight = 8;
+
     /// <summary>Block textures held beyond the current frame (textures used in the frame being drawn are never dropped).</summary>
     internal int BlockTextureCapacity { get; init; } = 600;
 
@@ -33,7 +39,19 @@ public sealed partial class MapRenderer
     private readonly TextureSink _textured = new();
     private readonly Dictionary<int, BlockTexture> _blockTextures = [];
     private int _blockBuilds;
-    private bool _blockPending;
+    private bool _blockPending; // the frame is not final (textures or the texel table still to come)
+    private bool _redrawSoon; // builds were left unstarted by the per-frame limit: draw again at once
+
+    // Background builds (design: built on the thread pool, handed to the draw thread through these; see DrainBuilds).
+    private readonly ConcurrentQueue<(int Cell, BlockTexture? Texture)> _builtTextures = new();
+    private readonly HashSet<int> _texturesInFlight = []; // draw thread only
+    private Task? _imageryBuild; // draw thread only
+    private GlobeLayer _imageryBuildLayer; // draw thread only
+    private volatile ImageryTable? _imageryReady; // written by the build, taken by the draw thread
+    private readonly object _buildsGate = new();
+    private readonly List<Task> _buildsRunning = []; // guarded by _buildsGate (for WhenBuildsIdleAsync)
+
+    private sealed record ImageryTable(GlobeLayer Layer, uint[] Colours);
 
     private sealed class BlockTexture(uint[] pixels, int size, GlobeLayer layer)
     {
@@ -82,22 +100,118 @@ public sealed partial class MapRenderer
         }
     }
 
-    /// <summary>Colours of every stored texel for <paramref name="layer"/> (kept for the last layer drawn).</summary>
-    private uint[] ImageryColours(GlobeLayer layer)
+    /// <summary>
+    /// Colours of every stored texel for <paramref name="layer"/> (kept for the last layer drawn), or null while they are
+    /// being built on the thread pool (the frame draws flat cell colours; the finished build raises <see cref="TilesLoaded"/>
+    /// for a redraw). Draw thread only. The table holds one colour per texel of every cell (16 × 16 × cell count, 42 MB at
+    /// 40,962 cells), measured at 15–300 ms to build, so it is never built inside a frame.
+    /// </summary>
+    private uint[]? ImageryColours(GlobeLayer layer)
     {
         if (_imageryColours is not null && _imageryLayer == layer) return _imageryColours;
+
+        // A finished table is taken by DrainBuilds at the start of a frame, never mid-frame, so one frame is all flat or all texels.
+        // One table build at a time: a build for another layer finishes first; its redraw starts this one.
+        if (_imageryBuild is null || (_imageryBuild.IsCompleted && _imageryBuildLayer != layer) || _imageryBuild.IsFaulted)
+            StartImageryBuild(layer);
+        _blockPending = true;
+        return null;
+    }
+
+    /// <summary>Starts building the texel colour table of <paramref name="layer"/> on the thread pool. Draw thread (or constructor) only.</summary>
+    private void StartImageryBuild(GlobeLayer layer)
+    {
         var img = _w.Imagery!;
-        var cellColours = GlobeColours(layer);
-        var colours = new uint[img.Biome.Length];
-        Parallel.For(0, img.CellCount, c =>
+        var cellColours = GlobeColours(layer); // per-layer cache of the draw thread: read here, not in the build
+        _imageryBuildLayer = layer;
+        _imageryBuild = RunBuild(() =>
         {
-            var start = c * CellImagery.TexelsPerCell;
-            for (var k = start; k < start + CellImagery.TexelsPerCell; k++)
-                colours[k] = TexelColour(img, k, layer, cellColours[c]);
+            var colours = new uint[img.Biome.Length];
+            Parallel.For(0, img.CellCount, c =>
+            {
+                var start = c * CellImagery.TexelsPerCell;
+                for (var k = start; k < start + CellImagery.TexelsPerCell; k++)
+                    colours[k] = TexelColour(img, k, layer, cellColours[c]);
+            });
+            _imageryReady = new ImageryTable(layer, colours);
         });
-        _imageryColours = colours;
-        _imageryLayer = layer;
-        return colours;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="build"/> on the thread pool and raises <see cref="TilesLoaded"/> (cell −1) when it ends, so
+    /// the view draws again and takes the result. An exception is kept on the task (the caller sees it as faulted) and
+    /// still triggers the redraw, which starts the build again.
+    /// </summary>
+    private Task RunBuild(Action build)
+    {
+        var task = Task.Run(() =>
+        {
+            try
+            {
+                build();
+            }
+            finally
+            {
+                if (!_disposed) TilesLoaded?.Invoke(this, -1);
+            }
+        });
+        lock (_buildsGate)
+        {
+            _buildsRunning.RemoveAll(t => t.IsCompleted);
+            _buildsRunning.Add(task);
+        }
+
+        return task;
+    }
+
+    /// <summary>
+    /// Completes when every background build started so far (texel colour table, block textures) has finished. Draw again
+    /// afterwards to use the results; tests loop draw + wait while <see cref="LastFramePending"/>.
+    /// </summary>
+    public Task WhenBuildsIdleAsync()
+    {
+        Task[] running;
+        lock (_buildsGate) running = [.. _buildsRunning];
+        return Task.WhenAll(running).ContinueWith(_ => { }, TaskScheduler.Default); // faults surface as a rebuild, not here
+    }
+
+    /// <summary>Takes the texel table and block textures finished since the last frame. Draw thread, start of a frame.</summary>
+    private void DrainBuilds()
+    {
+        if (_imageryReady is { } ready)
+        {
+            _imageryColours = ready.Colours;
+            _imageryLayer = ready.Layer;
+            _imageryReady = null;
+        }
+
+        while (_builtTextures.TryDequeue(out var done))
+        {
+            _texturesInFlight.Remove(done.Cell);
+            if (done.Texture is { } built)
+            {
+                built.Stamp = _stamp;
+                _blockTextures[done.Cell] = built;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Drops least recently used textures beyond <see cref="BlockTextureCapacity"/>, never one used in this frame (a view
+    /// with more textured cells than the capacity keeps them all instead of rebuilding them every frame). Draw thread, end
+    /// of a frame: by then every texture the frame drew carries this frame's stamp.
+    /// </summary>
+    private void TrimBlockTextures()
+    {
+        while (_blockTextures.Count > BlockTextureCapacity)
+        {
+            var oldest = -1;
+            var oldestStamp = _stamp;
+            foreach (var (cell, t) in _blockTextures)
+                if (t.Stamp < oldestStamp) (oldest, oldestStamp) = (cell, t.Stamp);
+            if (oldest < 0) return;
+            _blockTextures.Remove(oldest);
+        }
     }
 
     /// <summary>The tile palette (as <see cref="BuildTileColours"/>) applied to a stored texel; layers without tile data use the cell colour.</summary>
@@ -147,9 +261,16 @@ public sealed partial class MapRenderer
         {
             (texels, offset, size) = (block.Pixels, 0, block.Size);
         }
+        else if (ImageryColours(f.Options.Layer) is { } stored)
+        {
+            (texels, offset, size) = (stored, c * CellImagery.TexelsPerCell, CellImagery.Size);
+        }
         else
         {
-            (texels, offset, size) = (ImageryColours(f.Options.Layer), c * CellImagery.TexelsPerCell, CellImagery.Size);
+            // Texel table still building (first frame of a layer): the cell's flat colour until the redraw.
+            EmitFan(_cells, centre, pts[..n], 1f, Shade(ref f, _gCentres[c], GlobeColours(f.Options.Layer)[c], tint));
+            LastDrawnCells++;
+            return;
         }
 
         var shade = ShadeFactor(ref f, _gCentres[c]);
@@ -165,8 +286,11 @@ public sealed partial class MapRenderer
 
     /// <summary>
     /// A texture of <paramref name="size"/>² texels for cell <paramref name="c"/> sampled from the tile blocks of the cell
-    /// and its neighbours (a texel near the edge can fall on a neighbour's tile), or null while any of them is not loaded
-    /// (they are requested) or this frame's build budget is spent (a redraw is scheduled).
+    /// and its neighbours (a texel near the edge can fall on a neighbour's tile), or null (or a held texture of another
+    /// size for the layer) while any of them is not loaded (they are requested) or the texture is being built. The build
+    /// runs on the thread pool (16,384 nearest-tile lookups at 128², measured 5–10 ms each) and is taken into the held set
+    /// by <see cref="DrainBuilds"/> on a later frame; at most <see cref="BlockTextureBuildsPerFrame"/> start per frame and
+    /// <see cref="MaxBlockTextureBuildsInFlight"/> run at once.
     /// </summary>
     private BlockTexture? BlockTextureFor(int c, int size, GlobeLayer layer)
     {
@@ -191,52 +315,64 @@ public sealed partial class MapRenderer
         // While loading or over budget, a held texture of another size for this layer still beats the stored 16 × 16.
         var fallback = held is not null && held.Layer == layer ? held : null;
         if (missing) return fallback;
+        _blockPending = true; // built below or later: the redraw that takes it is raised when a build finishes
+        if (_texturesInFlight.Contains(c) || _texturesInFlight.Count >= MaxBlockTextureBuildsInFlight) return fallback;
         if (_blockBuilds >= BlockTextureBuildsPerFrame)
         {
-            _blockPending = true;
+            _redrawSoon = true; // no build of this frame will finish for this cell: draw again to start it
             return fallback;
         }
 
         _blockBuilds++;
+        _texturesInFlight.Add(c);
+        // Inputs read on the draw thread (the per-layer colour caches are draw-thread only); the build reads only these
+        // and immutable geometry (the chart, tile ids, TileGrid.Nearest).
         var chart = _charts[c];
+        var tileIds = new int[blocks.Length][];
         var colours = new uint[blocks.Length][];
-        for (var k = 0; k < blocks.Length; k++) colours[k] = blocks[k]!.ColoursFor(layer, _buildTileColours);
-        var stored = ImageryColours(layer);
-        var px = new uint[size * size];
-        for (var j = 0; j < size; j++)
-            for (var i = 0; i < size; i++)
-            {
-                var tile = tiles.Nearest(chart.TexelCentre(i, j, size));
-                var colour = 0u;
-                var found = false;
-                for (var k = 0; k < blocks.Length && !found; k++)
-                {
-                    var local = Array.BinarySearch(blocks[k]!.Block.TileIds, tile);
-                    if (local < 0) continue;
-                    colour = colours[k][local];
-                    found = true;
-                }
-
-                // A tile outside the cell and its neighbours (not expected): the stored texel under it.
-                if (!found)
-                    colour = stored[CellImagery.Index(c, i * CellImagery.Size / size, j * CellImagery.Size / size)];
-                px[(j * size) + i] = colour;
-            }
-
-        var built = new BlockTexture(px, size, layer) { Stamp = _stamp };
-        _blockTextures[c] = built;
-        // Drop the least recently used texture beyond the capacity, but never one used in this frame: a view with more
-        // textured cells than the capacity keeps them all instead of rebuilding them every frame.
-        if (_blockTextures.Count > BlockTextureCapacity)
+        for (var k = 0; k < blocks.Length; k++)
         {
-            var oldest = -1;
-            var oldestStamp = _stamp;
-            foreach (var (cell, t) in _blockTextures)
-                if (t.Stamp < oldestStamp) (oldest, oldestStamp) = (cell, t.Stamp);
-            if (oldest >= 0) _blockTextures.Remove(oldest);
+            tileIds[k] = blocks[k]!.Block.TileIds;
+            colours[k] = blocks[k]!.ColoursFor(layer, _buildTileColours);
         }
 
-        return built;
+        var stored = ImageryColours(layer);
+        var cellColour = GlobeColours(layer)[c];
+        RunBuild(() =>
+        {
+            BlockTexture? built = null;
+            try
+            {
+                var px = new uint[size * size];
+                for (var j = 0; j < size; j++)
+                    for (var i = 0; i < size; i++)
+                    {
+                        var tile = tiles.Nearest(chart.TexelCentre(i, j, size));
+                        var colour = 0u;
+                        var found = false;
+                        for (var k = 0; k < tileIds.Length && !found; k++)
+                        {
+                            var local = Array.BinarySearch(tileIds[k], tile);
+                            if (local < 0) continue;
+                            colour = colours[k][local];
+                            found = true;
+                        }
+
+                        // A tile outside the cell and its neighbours (not expected): the stored texel under it, or the
+                        // cell colour while the texel table is still building.
+                        if (!found)
+                            colour = stored?[CellImagery.Index(c, i * CellImagery.Size / size, j * CellImagery.Size / size)] ?? cellColour;
+                        px[(j * size) + i] = colour;
+                    }
+
+                built = new BlockTexture(px, size, layer);
+            }
+            finally
+            {
+                _builtTextures.Enqueue((c, built)); // null on failure: the cell leaves the in-flight set and is built again
+            }
+        });
+        return fallback;
     }
 
     private void Request(int cell, TileBlockState state)

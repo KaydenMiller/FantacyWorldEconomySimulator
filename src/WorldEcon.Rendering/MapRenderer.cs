@@ -246,6 +246,8 @@ public sealed partial class MapRenderer : IDisposable
         if (SKTypeface.Default is { } typeface) _font = new SKFont(typeface, 12); // null when fontconfig has no fonts: labels skipped
 
         InitImagery();
+        // The default layer's texel table is built while the rest of start-up runs, so the first frame rarely waits for it.
+        if (HasImagery) StartImageryBuild(GlobeLayer.Biome);
         InitRiverCourses();
         if (world.TileSource is { } source && world.Tiles is { } tiles)
         {
@@ -471,6 +473,8 @@ public sealed partial class MapRenderer : IDisposable
             _blend.Reset();
             _blockBuilds = 0;
             _blockPending = false;
+            _redrawSoon = false;
+            DrainBuilds();
 
             // Imagery needs the frame bitmap (textured spans); on a scaled canvas the bitmap is drawn scaled.
             var pixels = !HasImagery && (UseVertexFill || !IsPixelAligned(canvas.TotalMatrix)) ? null : FrameBitmap((int)Math.Ceiling(view.Width), (int)Math.Ceiling(view.Height));
@@ -478,6 +482,7 @@ public sealed partial class MapRenderer : IDisposable
             var frame = new Frame(view, options, level);
             if (level == MapLevel.Globe) EmitGlobeCells(ref frame);
             else EmitGroups(ref frame);
+            TrimBlockTextures();
             LastBuildMs = sw.Elapsed.TotalMilliseconds;
             _cells.Flush(canvas, _fill, pixels);
             if (_textured.Count > 0) _textured.Fill(pixels!);
@@ -506,7 +511,8 @@ public sealed partial class MapRenderer : IDisposable
             LastDrawMs = sw.Elapsed.TotalMilliseconds;
             LastFramePending = _blockPending;
             LastFrameBlockBuilds = _blockBuilds;
-            if (_blockPending) ThreadPool.QueueUserWorkItem(_ => TilesLoaded?.Invoke(this, -1)); // more textures to build: draw again
+            // Builds left unstarted by the per-frame limit: draw again. Running builds raise their own redraw when they finish.
+            if (_redrawSoon) ThreadPool.QueueUserWorkItem(_ => TilesLoaded?.Invoke(this, -1));
         }
     }
 
@@ -1508,28 +1514,31 @@ public sealed partial class MapRenderer : IDisposable
         /// </summary>
         private static class TriangleSpans
         {
+            /// <summary>Fills the groups' triangles in group order, in horizontal bands in parallel (<see cref="RasterBands"/>).</summary>
             public static unsafe void Fill(SKBitmap bitmap, List<Group> groups, int used)
             {
                 int width = bitmap.Width, height = bitmap.Height;
-                var basePtr = (byte*)bitmap.GetPixels();
+                var basePtr = bitmap.GetPixels(); // nint: a pointer cannot be captured by the band lambda
                 var rowBytes = bitmap.RowBytes;
-                for (var gi = 0; gi < used; gi++)
+                RasterBands.Run(height, (rowStart, rowEnd) =>
                 {
-                    var g = groups[gi];
-                    var pos = g.Pos;
-                    for (var t = 0; t + 2 < g.Fill; t += 3)
-                        Fill(basePtr, rowBytes, width, height, pos[t], pos[t + 1], pos[t + 2], g.Colour);
-                }
+                    for (var gi = 0; gi < used; gi++)
+                    {
+                        var g = groups[gi];
+                        var pos = g.Pos;
+                        for (var t = 0; t + 2 < g.Fill; t += 3)
+                            Fill((byte*)basePtr, rowBytes, width, rowStart, rowEnd, pos[t], pos[t + 1], pos[t + 2], g.Colour);
+                    }
+                });
             }
 
-            private static unsafe void Fill(byte* basePtr, int rowBytes, int width, int height, SKPoint a, SKPoint b, SKPoint c, uint colour)
+            private static unsafe void Fill(byte* basePtr, int rowBytes, int width, int rowStart, int rowEnd, SKPoint a, SKPoint b, SKPoint c, uint colour)
             {
                 // Sort by y: a.Y <= b.Y <= c.Y.
                 if (b.Y < a.Y) (a, b) = (b, a);
                 if (c.Y < b.Y) (b, c) = (c, b);
                 if (b.Y < a.Y) (a, b) = (b, a);
-                var y0 = Math.Max(0, (int)MathF.Ceiling(a.Y - 0.5f));
-                var y1 = Math.Min(height, (int)MathF.Ceiling(c.Y - 0.5f));
+                var (y0, y1) = RasterBands.Rows(a.Y, c.Y, rowStart, rowEnd);
                 if (y0 >= y1 || c.Y - a.Y <= 0) return;
                 var minX = MathF.Min(a.X, MathF.Min(b.X, c.X));
                 var maxX = MathF.Max(a.X, MathF.Max(b.X, c.X));

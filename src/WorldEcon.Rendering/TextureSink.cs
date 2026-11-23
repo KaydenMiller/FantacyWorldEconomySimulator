@@ -47,17 +47,24 @@ internal sealed class TextureSink
         _tris[Count++] = new Triangle { A = a, B = b, C = c, Ta = ta, Tb = tb, Tc = tc, Texture = tex, Offset = offset, Size = size, Shade = shade, Tint = tint };
     }
 
+    /// <summary>Fills every triangle into <paramref name="bitmap"/>, in horizontal bands in parallel (<see cref="RasterBands"/>).</summary>
     public unsafe void Fill(SKBitmap bitmap)
     {
-        int width = bitmap.Width, height = bitmap.Height;
-        var basePtr = (byte*)bitmap.GetPixels();
+        int width = bitmap.Width, height = bitmap.Height, count = Count;
+        var basePtr = bitmap.GetPixels(); // nint: a pointer cannot be captured by the band lambda
         var rowBytes = bitmap.RowBytes;
-        for (var i = 0; i < Count; i++) Fill(basePtr, rowBytes, width, height, ref _tris[i]);
+        RasterBands.Run(height, (rowStart, rowEnd) =>
+        {
+            for (var i = 0; i < count; i++) Fill((byte*)basePtr, rowBytes, width, rowStart, rowEnd, ref _tris[i]);
+        });
     }
 
-    private unsafe void Fill(byte* basePtr, int rowBytes, int width, int height, ref Triangle t)
+    private unsafe void Fill(byte* basePtr, int rowBytes, int width, int rowStart, int rowEnd, ref Triangle t)
     {
         SKPoint a = t.A, b = t.B, c = t.C;
+        // Band reject first: most triangles lie outside a given band.
+        var (r0, r1) = RasterBands.Rows(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)), MathF.Max(a.Y, MathF.Max(b.Y, c.Y)), rowStart, rowEnd);
+        if (r0 >= r1) return;
         // Affine texture mapping: u(x, y) = ua + dudx (x − xa) + dudy (y − ya), from the unsorted vertices.
         var det = ((b.X - a.X) * (c.Y - a.Y)) - ((c.X - a.X) * (b.Y - a.Y));
         if (MathF.Abs(det) < 1e-9f) return;
@@ -71,8 +78,7 @@ internal sealed class TextureSink
         if (b.Y < a.Y) (a, b) = (b, a);
         if (c.Y < b.Y) (b, c) = (c, b);
         if (b.Y < a.Y) (a, b) = (b, a);
-        var y0 = Math.Max(0, (int)MathF.Ceiling(a.Y - 0.5f));
-        var y1 = Math.Min(height, (int)MathF.Ceiling(c.Y - 0.5f));
+        var (y0, y1) = RasterBands.Rows(a.Y, c.Y, rowStart, rowEnd);
         if (y0 >= y1 || c.Y - a.Y <= 0) return;
         var maxX = MathF.Max(a.X, MathF.Max(b.X, c.X));
         var minX = MathF.Min(a.X, MathF.Min(b.X, c.X));

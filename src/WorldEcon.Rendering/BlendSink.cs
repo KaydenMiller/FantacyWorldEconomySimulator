@@ -32,12 +32,17 @@ internal sealed class BlendSink
         _tris[Count++] = new Triangle { A = a, B = b, C = c, Ca = ca, Cb = cb, Cc = cc, Ka = ka, Kb = kb, Kc = kc, Continuous = continuous, Shade = shade, Tint = tint };
     }
 
+    /// <summary>Fills every triangle into <paramref name="bitmap"/>, in horizontal bands in parallel (<see cref="RasterBands"/>).</summary>
     public unsafe void Fill(SKBitmap bitmap)
     {
-        int width = bitmap.Width, height = bitmap.Height;
-        var basePtr = (byte*)bitmap.GetPixels();
+        int width = bitmap.Width, height = bitmap.Height, count = Count;
+        var basePtr = bitmap.GetPixels(); // nint: a pointer cannot be captured by the band lambda
         var rowBytes = bitmap.RowBytes;
-        for (var i = 0; i < Count; i++) Fill(basePtr, rowBytes, width, height, ref _tris[i]);
+        var tris = _tris;
+        RasterBands.Run(height, (rowStart, rowEnd) =>
+        {
+            for (var i = 0; i < count; i++) Fill((byte*)basePtr, rowBytes, width, rowStart, rowEnd, ref tris[i]);
+        });
     }
 
     /// <summary>The colour at barycentric weights (wa, wb, wc) by the rule in the class summary.</summary>
@@ -67,9 +72,12 @@ internal sealed class BlendSink
             | (uint)Math.Clamp((int)MathF.Round(b / w), 0, 255);
     }
 
-    private static unsafe void Fill(byte* basePtr, int rowBytes, int width, int height, ref Triangle t)
+    private static unsafe void Fill(byte* basePtr, int rowBytes, int width, int rowStart, int rowEnd, ref Triangle t)
     {
         SKPoint a = t.A, b = t.B, c = t.C;
+        // Band reject first: most triangles lie outside a given band.
+        var (r0, r1) = RasterBands.Rows(MathF.Min(a.Y, MathF.Min(b.Y, c.Y)), MathF.Max(a.Y, MathF.Max(b.Y, c.Y)), rowStart, rowEnd);
+        if (r0 >= r1) return;
         var det = ((b.X - a.X) * (c.Y - a.Y)) - ((c.X - a.X) * (b.Y - a.Y));
         if (MathF.Abs(det) < 1e-9f) return;
         // Barycentric weights of B and C are affine in (x, y): wb = ((x − ax)(cy − ay) − (cx − ax)(y − ay)) / det, etc.
@@ -83,8 +91,7 @@ internal sealed class BlendSink
         if (q.Y < p.Y) (p, q) = (q, p);
         if (r.Y < q.Y) (q, r) = (r, q);
         if (q.Y < p.Y) (p, q) = (q, p);
-        var y0 = Math.Max(0, (int)MathF.Ceiling(p.Y - 0.5f));
-        var y1 = Math.Min(height, (int)MathF.Ceiling(r.Y - 0.5f));
+        var (y0, y1) = RasterBands.Rows(p.Y, r.Y, rowStart, rowEnd);
         if (y0 >= y1 || r.Y - p.Y <= 0) return;
         var maxX = MathF.Max(p.X, MathF.Max(q.X, r.X));
         var minX = MathF.Min(p.X, MathF.Min(q.X, r.X));

@@ -46,6 +46,7 @@ public sealed class App : Avalonia.Application
                         Console.WriteLine(ok ? $"Loaded {db}: {vm.StatusText}" : vm.StatusText);
                         if (options.ScreenshotPath is { } png) window.SaveScreenshotWhenDrawn(png);
                         if (ok && options.SpinFrames is { } frames) window.Spin(frames);
+                        if (ok && options.SweepFrames is { } sweep) window.Sweep(sweep);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {

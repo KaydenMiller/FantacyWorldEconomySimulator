@@ -5,7 +5,7 @@ namespace WorldEcon.Gui;
 /// <summary>
 /// Desktop app entry point. Usage:
 /// <c>WorldEcon.Gui [&lt;db&gt;] [--centre &lt;lat&gt;,&lt;lon&gt;] [--zoom-to globe|region|detail] [--layer &lt;name&gt;]
-/// [--screenshot &lt;png&gt;] [--exit-after &lt;seconds&gt;] [--spin &lt;frames&gt;]</c>.
+/// [--screenshot &lt;png&gt;] [--exit-after &lt;seconds&gt;] [--spin &lt;frames&gt;] [--sweep &lt;frames&gt;]</c>.
 /// <c>--centre</c> turns the map to a point after load; <c>--zoom-to</c> sets the scale where that view is shown (Region
 /// View: region cells 45 px; Detail View: tiles 26 px; the visible tile blocks are loaded before the screenshot);
 /// <c>--layer</c> picks the colour layer. <c>--screenshot</c> saves a PNG of the main window once the world has loaded
@@ -40,13 +40,16 @@ public static class Program
 /// <summary>Command-line options of the desktop app.</summary>
 internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double? ExitAfterSeconds, int? SpinFrames)
 {
-    public const string Usage = "Usage: WorldEcon.Gui [<db>] [--centre <lat>,<lon>] [--zoom-to globe|region|detail] [--layer <name>] [--screenshot <png>] [--exit-after <seconds>] [--spin <frames>]";
+    public const string Usage = "Usage: WorldEcon.Gui [<db>] [--centre <lat>,<lon>] [--zoom-to globe|region|detail] [--layer <name>] [--screenshot <png>] [--exit-after <seconds>] [--spin <frames>] [--sweep <frames>]";
 
     /// <summary>Map centre after load (degrees), or null to keep the default (the first settlement).</summary>
     public (double LatDeg, double LonDeg)? Centre { get; init; }
 
     /// <summary>View to zoom to after load, or null for Globe View.</summary>
     public WorldEcon.Rendering.MapLevel? ZoomTo { get; init; }
+
+    /// <summary>Diagnostic: frames over which to wheel-zoom Globe → Detail → Globe after load and print timings per level, or null.</summary>
+    public int? SweepFrames { get; init; }
 
     /// <summary>Colour layer after load, or null for the default (Biome).</summary>
     public WorldEcon.Rendering.GlobeLayer? Layer { get; init; }
@@ -73,6 +76,12 @@ internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double
                     if (!int.TryParse(f, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var frames) || frames <= 0)
                         throw new ArgumentException($"--spin expects a positive number of frames, not '{f}'.");
                     o = o with { SpinFrames = frames };
+                    break;
+                case "--sweep":
+                    var sw = Value();
+                    if (!int.TryParse(sw, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var sweep) || sweep < 2)
+                        throw new ArgumentException($"--sweep expects a number of frames of at least 2, not '{sw}'.");
+                    o = o with { SweepFrames = sweep };
                     break;
                 case "--centre":
                 case "--center":

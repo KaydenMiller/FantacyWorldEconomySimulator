@@ -141,6 +141,8 @@ public partial class MainWindow : Window
         var intervals = new List<double>();
         var builds = new List<double>();
         var draws = new List<double>();
+        int gc0 = GC.CollectionCount(0), gc1 = GC.CollectionCount(1), gc2 = GC.CollectionCount(2);
+        var gcPause0 = GC.GetTotalPauseDuration();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var last = -1.0;
         void Step(TimeSpan _)
@@ -163,13 +165,81 @@ public partial class MainWindow : Window
                         $"median {v[v.Count / 2]:F2} ms, p95 {v[(int)(v.Count * 0.95)]:F2} ms, max {v[^1]:F2} ms");
                 }
 
+                var worst = builds.IndexOf(builds.Max());
+                var gcMs = (GC.GetTotalPauseDuration() - gcPause0).TotalMilliseconds;
                 Console.WriteLine($"Spin {frames} frames at {map.LevelName} View, {session.Renderer.LastDrawnCells} cells drawn: frame interval {Stats(intervals)}");
                 Console.WriteLine($"  CPU build {Stats(builds)}; whole draw {Stats(draws)}");
+                Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"  worst build at frame {worst}; garbage collections gen0/1/2 {GC.CollectionCount(0) - gc0}/{GC.CollectionCount(1) - gc1}/{GC.CollectionCount(2) - gc2}, total pause {gcMs:F1} ms"));
                 done?.Invoke();
                 return;
             }
 
             map.Pan(4, 0);
+            RequestAnimationFrame(Step);
+        }
+
+        RequestAnimationFrame(Step);
+    }
+
+    /// <summary>
+    /// Diagnostic (<c>--sweep</c>): wheel-zooms at the map centre from the current scale to Detail View over the first half
+    /// of <paramref name="frames"/> animation frames and back over the second half (equal zoom factor per frame), then
+    /// prints frame interval and whole-draw times overall and per level. Tile blocks load as they would for a user.
+    /// </summary>
+    public void Sweep(int frames, Action? done = null)
+    {
+        if (Vm?.Map is not { } map || Vm.Session is not { } session) return;
+        var startScale = map.View.ScalePxPerRad;
+        map.ZoomToLevel(WorldEcon.Rendering.MapLevel.Detail);
+        var detailScale = map.View.ScalePxPerRad;
+        map.ZoomOutToGlobe();
+        var half = frames / 2;
+        var notchesPerFrame = Math.Log(detailScale / startScale) / Math.Log(MapViewModel.WheelStep) / half;
+        double cx = map.View.Width / 2, cy = map.View.Height / 2;
+        var byLevel = new SortedDictionary<string, (List<double> Intervals, List<double> Draws)>();
+        var all = (Intervals: new List<double>(), Draws: new List<double>());
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var last = -1.0;
+        var step = 0;
+        var worst = (Ms: 0.0, Step: -1, Build: 0.0, Cells: 0.0, Level: "");
+        void Step(TimeSpan _)
+        {
+            var now = clock.Elapsed.TotalMilliseconds;
+            if (last >= 0)
+            {
+                var level = session.Renderer.LastLevel.ToString();
+                if (!byLevel.TryGetValue(level, out var bucket)) byLevel[level] = bucket = ([], []);
+                bucket.Intervals.Add(now - last);
+                bucket.Draws.Add(session.Renderer.LastDrawMs);
+                all.Intervals.Add(now - last);
+                all.Draws.Add(session.Renderer.LastDrawMs);
+                var r = session.Renderer;
+                if (r.LastDrawMs > worst.Ms) worst = (r.LastDrawMs, step, r.LastBuildMs, r.LastCellsMs, level);
+            }
+
+            last = now;
+            if (step >= frames)
+            {
+                static string Stats(List<double> v)
+                {
+                    v.Sort();
+                    var over = v.Count(x => x > 1000.0 / 60);
+                    return string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                        $"median {v[v.Count / 2]:F2} ms, p95 {v[(int)(v.Count * 0.95)]:F2} ms, max {v[^1]:F2} ms, {over}/{v.Count} over 16.7 ms");
+                }
+
+                Console.WriteLine($"Sweep {frames} frames Globe -> Detail -> Globe: frame interval {Stats(all.Intervals)}; whole draw {Stats(all.Draws)}");
+                foreach (var (level, b) in byLevel)
+                    Console.WriteLine($"  {level}: frame interval {Stats(b.Intervals)}; whole draw {Stats(b.Draws)}");
+                Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                    $"  worst draw {worst.Ms:F1} ms at step {worst.Step} ({worst.Level}): build {worst.Build:F1} ms, cells done at {worst.Cells:F1} ms"));
+                done?.Invoke();
+                return;
+            }
+
+            map.ZoomBy(step < half ? notchesPerFrame : -notchesPerFrame, cx, cy);
+            step++;
             RequestAnimationFrame(Step);
         }
 

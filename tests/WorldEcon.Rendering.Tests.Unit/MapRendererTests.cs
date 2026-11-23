@@ -36,7 +36,25 @@ public class MapRendererTests
         Layer = GlobeLayer.Temperature, Rivers = false, Lakes = false, MountainSymbols = false, Settlements = false, Arrows = false, Equator = false, Borders = true,
     };
 
+    /// <summary>
+    /// A settled frame: draws, and while the frame is not final (<see cref="MapRenderer.LastFramePending"/>: the texel table
+    /// or block textures still building on the thread pool) waits for the builds and draws again, at most 50 times. Tests
+    /// that pin pixels compare settled frames; <see cref="RenderOnce"/> is the single draw a user's frame is.
+    /// </summary>
     private static SKBitmap Render(MapRenderer r, MapViewState view, MapDrawOptions options)
+    {
+        var bmp = RenderOnce(r, view, options);
+        for (var i = 0; i < 50 && r.LastFramePending; i++)
+        {
+            r.WhenBuildsIdleAsync().GetAwaiter().GetResult();
+            bmp.Dispose();
+            bmp = RenderOnce(r, view, options);
+        }
+
+        return bmp;
+    }
+
+    private static SKBitmap RenderOnce(MapRenderer r, MapViewState view, MapDrawOptions options)
     {
         var bmp = new SKBitmap(new SKImageInfo((int)view.Width, (int)view.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
         using var canvas = new SKCanvas(bmp);
@@ -751,6 +769,70 @@ public class MapRendererTests
         using (Render(r, view, options)) { }
         r.LastFrameBlockBuilds.Should().Be(0, "a still view rebuilds nothing once its textures are built");
         r.BlockTextureCount.Should().BeGreaterThan(21, "textures visible in this frame are kept beyond the capacity");
+    }
+
+    [Test]
+    public async Task Block_textures_are_built_off_the_draw_and_used_by_a_later_frame()
+    {
+        var w = ImageryB();
+        var l = w.Globe;
+        using var r = new MapRenderer(w);
+        var cell = Enumerable.Range(0, l.Grid.CellCount).First(c => !l.IsOcean(c));
+        var view = w.View(l.Geometry.Centre(cell), 80 / w.GlobeCellAngle, W, H);
+        await r.LoadVisibleAsync(view);
+        var options = Plain with { Layer = GlobeLayer.Biome };
+
+        using (RenderOnce(r, view, options)) { }
+        r.LastFrameBlockBuilds.Should().BeGreaterThan(0, "the frame starts builds");
+        r.LastFramePending.Should().BeTrue("the frame drew fallbacks while the builds run");
+        r.BlockTextureCount.Should().Be(0, "no build finishes inside the frame that started it");
+
+        await r.WhenBuildsIdleAsync();
+        using (RenderOnce(r, view, options)) { }
+        r.BlockTextureCount.Should().BeGreaterThan(0, "finished builds are taken at the start of the next frame");
+    }
+
+    [Test]
+    public async Task A_new_layer_draws_flat_cell_colours_until_its_texel_table_is_built()
+    {
+        var w = ImageryB();
+        var img = w.Imagery!;
+        var l = w.Globe;
+        using var r = new MapRenderer(w);
+        // A land cell with interior texels of two land types: flat colouring paints both alike, texels do not.
+        (int Cell, (int I, int J) A, (int I, int J) B) pick = default;
+        foreach (var c in Enumerable.Range(0, l.Grid.CellCount).Where(c => !l.IsOcean(c)))
+        {
+            // Middle of the chart only: texels near its square edge lie outside the hexagon (in a neighbour on screen).
+            var texels = InteriorTexels(img, c, _ => true).Where(t => Math.Abs(t.I - 7.5) <= 3 && Math.Abs(t.J - 7.5) <= 3).ToList();
+            var a = texels.FirstOrDefault(t => img.Water[CellImagery.Index(c, t.I, t.J)] == (byte)TileWaterKind.None);
+            var b = texels.FirstOrDefault(t => img.Water[CellImagery.Index(c, t.I, t.J)] == (byte)TileWaterKind.None
+                && LayerPalette.LandformColor((Landform)img.Landform[CellImagery.Index(c, t.I, t.J)]) != LayerPalette.LandformColor((Landform)img.Landform[CellImagery.Index(c, a.I, a.J)])
+                && InteriorTexels(img, c, k => img.Landform[k] == img.Landform[CellImagery.Index(c, t.I, t.J)]).Contains(t)
+                && InteriorTexels(img, c, k => img.Landform[k] == img.Landform[CellImagery.Index(c, a.I, a.J)]).Contains(a));
+            if (b != default) { pick = (c, a, b); break; }
+        }
+
+        pick.Cell.Should().NotBe(0, "the test world has a land cell with two land types inside");
+        var view = w.View(l.Geometry.Centre(pick.Cell), 40 / w.GlobeCellAngle, W, H);
+        var chart = CellChart.For(l.Grid, l.Geometry, pick.Cell);
+        (int X, int Y) At((int I, int J) t)
+        {
+            var (x, y) = view.Project(chart.TexelCentre(t.I, t.J, CellImagery.Size))!.Value;
+            return ((int)x, (int)y);
+        }
+
+        var (pa, pb) = (At(pick.A), At(pick.B));
+        using (Render(r, view, Plain with { Layer = GlobeLayer.Biome })) { }
+
+        using var first = RenderOnce(r, view, Plain with { Layer = GlobeLayer.Landform });
+        r.LastFramePending.Should().BeTrue("the Landform texel table is building");
+        first.GetPixel(pa.X, pa.Y).Should().Be(first.GetPixel(pb.X, pb.Y), "flat cell colour while the table builds");
+
+        await r.WhenBuildsIdleAsync();
+        using var settled = RenderOnce(r, view, Plain with { Layer = GlobeLayer.Landform });
+        r.LastFramePending.Should().BeFalse();
+        settled.GetPixel(pa.X, pa.Y).Should().NotBe(settled.GetPixel(pb.X, pb.Y), "texels once the table is built");
     }
 
     [Test]
