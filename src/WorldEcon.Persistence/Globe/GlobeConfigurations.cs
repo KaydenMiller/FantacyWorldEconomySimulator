@@ -122,6 +122,17 @@ public sealed class LakeRowConfiguration : IEntityTypeConfiguration<LakeRow>
     }
 }
 
+public sealed class MapImageryRowConfiguration : IEntityTypeConfiguration<MapImageryRow>
+{
+    public void Configure(EntityTypeBuilder<MapImageryRow> b)
+    {
+        b.ToTable("map_imagery", t => t.HasCheckConstraint("CK_map_imagery_Id", "\"Id\" IN (0, 1)"));
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever();
+        b.Property(x => x.Data).IsRequired();
+    }
+}
+
 public sealed class RegionLevelRowConfiguration : IEntityTypeConfiguration<RegionLevelRow>
 {
     public void Configure(EntityTypeBuilder<RegionLevelRow> b)

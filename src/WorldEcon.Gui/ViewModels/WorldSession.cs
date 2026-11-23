@@ -24,7 +24,8 @@ public sealed class WorldSession : IDisposable
         Path = path;
         var s = data.Settings;
         _tiles = new ClosableTileSource(data.Tiles);
-        World = new MapWorld(data.Layers, data.Regions, data.Lakes, s.Grid.TileMultiplier, _tiles, s.Tiles.RiverMinFlow, s.Tiles.MajorRiverFlow, s.Hydrology);
+        World = new MapWorld(data.Layers, data.Regions, data.Lakes, s.Grid.TileMultiplier, _tiles, s.Tiles.RiverMinFlow, s.Tiles.MajorRiverFlow, s.Hydrology)
+        { Imagery = data.Imagery, RiverCourses = data.RiverCourses };
         Renderer = new MapRenderer(World);
         Markers = data.Settlements.Select(x => new MapMarker(x.Cell, x.TileId ?? -1, x.Name)).ToList();
         _lakes = data.Lakes.ToDictionary(l => l.Id);

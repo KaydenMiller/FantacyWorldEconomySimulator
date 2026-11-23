@@ -1058,6 +1058,23 @@ namespace WorldEcon.Persistence.Migrations
                     b.ToTable("lakes", (string)null);
                 });
 
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.MapImageryRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("map_imagery", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_map_imagery_Id", "\"Id\" IN (0, 1)");
+                        });
+                });
+
             modelBuilder.Entity("WorldEcon.Persistence.Globe.PlateRow", b =>
                 {
                     b.Property<Guid>("WorldId")

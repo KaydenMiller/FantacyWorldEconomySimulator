@@ -28,4 +28,8 @@ public enum TileWaterKind : byte
 /// <param name="Evaporation">Σ over the lake's tiles of (<see cref="HydrologySettings.EvaporationBaseMm"/> + <see cref="HydrologySettings.EvaporationMmPerDegree"/> × max(0, tile °C)) × tile area, rounded per tile, mm·km²/yr. A full lake whose water level reaches a saddle inside it can consist of several components (several <see cref="TileLake"/> entries at one level, linked into one drainage tree); the component holding the exit carries the evaporation of all of them and the others carry 0. Inflow and Evaporation default to 0 for lakes loaded from storage that does not hold them.</param>
 /// <param name="ExitTile">Full lake: the tile where its evaporation is booked; it passes Inflow − min(Inflow, Evaporation) downstream. The outlet for a lake filling the whole basin, otherwise the saddle tile the lake spills over (outside the lake). −1 for terminal lakes, dry lake beds and the non-exit components of a multi-component lake.</param>
 public sealed record TileLake(int Id, TileWaterKind Kind, int WaterLevelM, int TileCount, double AreaKm2, int OutletTile, int LowestTile,
-    long Inflow = 0, long Evaporation = 0, int ExitTile = -1);
+    long Inflow = 0, long Evaporation = 0, int ExitTile = -1)
+{
+    /// <summary>What leaves the lake through its outlet: Inflow − min(Inflow, Evaporation) (0 without an outlet).</summary>
+    public long Outflow => OutletTile < 0 ? 0 : Inflow - Math.Min(Inflow, Evaporation);
+}

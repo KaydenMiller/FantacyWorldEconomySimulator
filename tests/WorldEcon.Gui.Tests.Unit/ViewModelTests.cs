@@ -338,7 +338,9 @@ public class ViewModelTests
         map.LayerNames.Should().Equal(Enum.GetNames<GlobeLayer>());
         map.LayerNames.Should().Contain(nameof(GlobeLayer.Landform));
         var o = map.DrawOptions;
-        new[] { o.Borders, o.Rivers, o.Lakes, o.MountainSymbols, o.Settlements, o.Labels, o.Arrows }.Should().AllBeEquivalentTo(true);
+        new[] { o.Rivers, o.Lakes, o.MountainSymbols, o.Settlements, o.Labels, o.Arrows }.Should().AllBeEquivalentTo(true);
+        o.Borders.Should().BeFalse("the map is one continuous picture; gaps are optional");
+        o.HexGrid.Should().BeFalse("the hex grid is an optional overlay");
         o.Equator.Should().BeTrue("the equator is on by default");
         o.Graticule.Should().BeFalse("latitude and longitude lines are off by default");
         o.RiverArrows.Should().BeFalse("river arrows are off by default");
@@ -347,7 +349,8 @@ public class ViewModelTests
         var redraws = 0;
         map.Invalidated += (_, _) => redraws++;
         map.LayerIndex = (int)GlobeLayer.Landform;
-        map.Borders = false;
+        map.Borders = true;
+        map.HexGrid = true;
         map.Rivers = false;
         map.Lakes = false;
         map.MountainSymbols = false;
@@ -359,10 +362,12 @@ public class ViewModelTests
         map.RiverArrows = true;
         map.RiverEnds = true;
 
-        redraws.Should().Be(12);
+        redraws.Should().Be(13);
         o = map.DrawOptions;
         o.Layer.Should().Be(GlobeLayer.Landform);
-        new[] { o.Borders, o.Rivers, o.Lakes, o.MountainSymbols, o.Settlements, o.Labels, o.Arrows }.Should().AllBeEquivalentTo(false);
+        new[] { o.Rivers, o.Lakes, o.MountainSymbols, o.Settlements, o.Labels, o.Arrows }.Should().AllBeEquivalentTo(false);
+        o.Borders.Should().BeTrue();
+        o.HexGrid.Should().BeTrue();
         o.Equator.Should().BeFalse();
         o.Graticule.Should().BeTrue();
         o.RiverArrows.Should().BeTrue();

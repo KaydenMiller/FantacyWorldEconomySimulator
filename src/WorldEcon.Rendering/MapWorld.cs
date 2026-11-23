@@ -57,16 +57,38 @@ public sealed class MapWorld
     }
 
     /// <summary>A generated world with its in-memory tile source.</summary>
-    public static MapWorld FromGenerated(GeneratedWorld generated, WorldGenSettings settings, ITileBlockSource? tileSource = null)
+    /// <param name="withImagery">False leaves out the imagery and river courses (flat cell colours, region-cell rivers).</param>
+    public static MapWorld FromGenerated(GeneratedWorld generated, WorldGenSettings settings, ITileBlockSource? tileSource = null, bool withImagery = true)
     {
         ArgumentNullException.ThrowIfNull(generated);
         ArgumentNullException.ThrowIfNull(settings);
         var source = tileSource ?? (generated.Tiles is { } t ? new InMemoryTileBlockSource(t) : null);
         return new MapWorld(generated.Layers, generated.Regions, generated.Lakes, settings.Grid.TileMultiplier, source,
-            settings.Tiles.RiverMinFlow, settings.Tiles.MajorRiverFlow, settings.Hydrology);
+            settings.Tiles.RiverMinFlow, settings.Tiles.MajorRiverFlow, settings.Hydrology)
+        { Imagery = withImagery ? generated.Imagery : null, RiverCourses = withImagery ? generated.RiverCourses : null };
     }
 
     public WorldLayers Globe { get; }
+
+    /// <summary>
+    /// Stored per-globe-cell texel samples; with them the map draws continuous imagery (each cell shows its tiles' land and
+    /// water instead of one colour). Null draws flat cell colours. Must match the globe grid.
+    /// </summary>
+    public CellImagery? Imagery
+    {
+        get => _imagery;
+        init
+        {
+            if (value is not null && value.CellCount != Globe.Grid.CellCount)
+                throw new ArgumentException($"Imagery holds {value.CellCount} globe cells; the globe has {Globe.Grid.CellCount}.", nameof(Imagery));
+            _imagery = value;
+        }
+    }
+
+    private readonly CellImagery? _imagery;
+
+    /// <summary>Major river edges at tile resolution; with them Globe and Region View rivers are traced from the tiles. Needs <see cref="Tiles"/>.</summary>
+    public RiverCourses? RiverCourses { get; init; }
 
     public RegionSummary? Regions { get; }
 

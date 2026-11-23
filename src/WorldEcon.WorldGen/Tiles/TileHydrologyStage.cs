@@ -14,7 +14,8 @@ namespace WorldEcon.WorldGen.Tiles;
 /// at the start; the ocean tiles with a land neighbour are pushed at their own elevation. Each pop visits the unvisited
 /// neighbours in slot order and gives each filled = max(own elevation, popped level) and the popped tile as flood parent.
 /// Keys are unique (the id breaks ties), so the order is deterministic. The flood parent is a neighbour with the lowest
-/// filled level; among equal levels the earliest popped, so flats drain in flood order. A world without ocean is seeded
+/// filled level; among equal levels the earliest popped. Keys order equal levels by hop distance from where the flood entered that level
+/// (then a per-tile hash, then the id), so flats drain by shortest routes toward their outlet (see <c>Key</c>). A world without ocean is seeded
 /// with its lowest tile (ties: lowest id), a sink without downstream (the synthetic outlet, as on the globe level).
 /// </para>
 /// <para>
@@ -362,15 +363,39 @@ public static class TileHydrologyStage
                 parent[u] = t;
                 short f = Math.Max(elev[u], level);
                 filled[u] = f;
-                heap.Push(Key(f, u));
+                heap.Push(Child(key, f, u));
             }
         }
         return order;
     }
 
-    private static long Key(short level, int id) => ((long)(level - short.MinValue) << 32) | (uint)id;
+    // Heap key: level (16 bits, from bit 47, so the key stays positive) | hop (9 bits, from bit 38) | jitter (6 bits, from
+    // bit 32) | tile id (32 bits). Within one filled level, tiles pop in rings of hop distance from where the flood entered
+    // that level (a breadth-first order), so every flat tile's flood parent lies one ring closer to the way out: flats
+    // drain by shortest routes toward their outlet instead of in tile-id (lattice row) order. The jitter, a hash of the
+    // tile id, breaks ties within a ring, so the choice among equally short routes has no lattice bias. Deterministic.
+    private const int MaxHop = 511;
+
+    private static long Key(short level, int id) => Key(level, 0, id);
+
+    private static long Key(short level, int hop, int id) =>
+        ((long)(level - short.MinValue) << 47) | ((long)((Math.Min(hop, MaxHop) << 6) | Jitter(id)) << 32) | (uint)id;
+
+    /// <summary>The key of a tile reached from the tile popped with <paramref name="parentKey"/> at filled level <paramref name="level"/>.</summary>
+    private static long Child(long parentKey, short level, int id) =>
+        Key(level, level == KeyLevel(parentKey) ? KeyHop(parentKey) + 1 : 0, id);
+
     private static int KeyId(long key) => (int)(key & 0xFFFF_FFFFL);
-    private static short KeyLevel(long key) => (short)((key >> 32) + short.MinValue);
+    private static short KeyLevel(long key) => (short)((key >> 47) + short.MinValue);
+    private static int KeyHop(long key) => (int)((key >> 38) & MaxHop);
+
+    private static int Jitter(int id)
+    {
+        var z = (ulong)(uint)id + 0x9E3779B97F4A7C15UL;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
+        return (int)((z ^ (z >> 31)) & 63);
+    }
 
     public static ulong Hash(TileLayers t)
     {
@@ -807,7 +832,7 @@ public static class TileHydrologyStage
                         if (comp[lu] != c || routed[lu]) continue;
                         routed[lu] = true;
                         _down[u] = t;
-                        _heap.Push(Key(Math.Max(_elev[u], lv), u));
+                        _heap.Push(Child(key, Math.Max(_elev[u], lv), u));
                     }
                 }
             }
@@ -987,7 +1012,7 @@ public static class TileHydrologyStage
                     short kv = Math.Max(_elev[u], lv);
                     if (inC[lu]) { if (first < 0) first = lu; }
                     else _elev[u] = kv;
-                    _heap.Push(Key(kv, u));
+                    _heap.Push(Child(key, kv, u));
                 }
             }
 
@@ -1056,7 +1081,7 @@ public static class TileHydrologyStage
                     if (routed[lu] || (only is not null && !only[lu])) continue;
                     routed[lu] = true;
                     _down[u] = t;
-                    _heap.Push(Key(Math.Max(_elev[u], lv), u));
+                    _heap.Push(Child(key, Math.Max(_elev[u], lv), u));
                 }
             }
         }

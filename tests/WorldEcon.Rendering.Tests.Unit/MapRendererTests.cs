@@ -23,13 +23,17 @@ public class MapRendererTests
     private const int W = 1280;
     private const int H = 800;
 
-    private static MapWorld WorldA(ITileBlockSource? source = null) => MapWorld.FromGenerated(GenA.Value, SettingsA, source);
+    // Flat-colour worlds (no imagery): these tests pin cell colours, gaps, picks and overlays drawn over flat cells.
+    private static MapWorld WorldA(ITileBlockSource? source = null) => MapWorld.FromGenerated(GenA.Value, SettingsA, source, withImagery: false);
 
-    private static MapWorld WorldB(ITileBlockSource? source = null) => MapWorld.FromGenerated(GenB.Value, SettingsB, source);
+    private static MapWorld WorldB(ITileBlockSource? source = null) => MapWorld.FromGenerated(GenB.Value, SettingsB, source, withImagery: false);
+
+    /// <summary>World B with its imagery and river courses (continuous imagery).</summary>
+    private static MapWorld ImageryB(ITileBlockSource? source = null) => MapWorld.FromGenerated(GenB.Value, SettingsB, source);
 
     private static readonly MapDrawOptions Plain = new()
     {
-        Layer = GlobeLayer.Temperature, Rivers = false, Lakes = false, MountainSymbols = false, Settlements = false, Arrows = false, Equator = false,
+        Layer = GlobeLayer.Temperature, Rivers = false, Lakes = false, MountainSymbols = false, Settlements = false, Arrows = false, Equator = false, Borders = true,
     };
 
     private static SKBitmap Render(MapRenderer r, MapViewState view, MapDrawOptions options)
@@ -645,6 +649,356 @@ public class MapRendererTests
         source.Requests.Should().Equal(0);
     }
 
+    // ---- continuous imagery ----
+
+    /// <summary>Texels of cell c whose 3 × 3 block of texels holds one value (robust to the screen mapping).</summary>
+    private static IEnumerable<(int I, int J)> InteriorTexels(CellImagery img, int c, Func<int, bool> pick)
+    {
+        for (var j = 1; j < CellImagery.Size - 1; j++)
+            for (var i = 1; i < CellImagery.Size - 1; i++)
+            {
+                var ok = true;
+                for (var dj = -1; dj <= 1 && ok; dj++)
+                    for (var di = -1; di <= 1 && ok; di++)
+                        ok = pick(CellImagery.Index(c, i + di, j + dj));
+                if (ok) yield return (i, j);
+            }
+    }
+
+    [Test]
+    public void A_coastal_cell_shows_water_where_its_tiles_are_water_and_land_where_they_are_land()
+    {
+        var w = ImageryB();
+        var img = w.Imagery!;
+        var l = w.Globe;
+        using var r = new MapRenderer(w);
+        var options = Plain with { Layer = GlobeLayer.Biome };
+        var ocean = (byte)TileWaterKind.Ocean;
+        // A land-majority cell with an interior patch of sea texels: flat colouring would paint it all land.
+        var cell = Enumerable.Range(0, l.Grid.CellCount).First(c => !l.IsOcean(c)
+            && InteriorTexels(img, c, k => img.Water[k] == ocean).Any() && InteriorTexels(img, c, k => img.Water[k] != ocean).Any());
+        var view = w.View(l.Geometry.Centre(cell), 40 / w.GlobeCellAngle, W, H);
+        r.EffectiveLevel(view).Should().Be(MapLevel.Globe);
+        using var bmp = Render(r, view, options);
+        var chart = CellChart.For(l.Grid, l.Geometry, cell);
+        foreach (var (i, j) in InteriorTexels(img, cell, k => img.Water[k] == ocean).Take(3))
+        {
+            var (x, y) = view.Project(chart.TexelCentre(i, j, CellImagery.Size))!.Value;
+            bmp.GetPixel((int)x, (int)y).Should().Be(new SKColor(LayerPalette.BiomeColor(Biome.Ocean)), $"sea texel ({i}, {j}) of land cell {cell}");
+        }
+
+        foreach (var (i, j) in InteriorTexels(img, cell, k => img.Water[k] != ocean).Take(3))
+        {
+            var (x, y) = view.Project(chart.TexelCentre(i, j, CellImagery.Size))!.Value;
+            bmp.GetPixel((int)x, (int)y).Should().Be(new SKColor(LayerPalette.BiomeColor((Biome)img.Biome[CellImagery.Index(cell, i, j)])), $"land texel ({i}, {j})");
+        }
+    }
+
+    [Test]
+    public async Task Large_cells_are_textured_from_their_tiles()
+    {
+        var w = ImageryB();
+        var l = w.Globe;
+        using var r = new MapRenderer(w);
+        var cell = Enumerable.Range(0, l.Grid.CellCount).First(c => !l.IsOcean(c));
+        var view = w.View(l.Geometry.Centre(cell), 80 / w.GlobeCellAngle, W, H);
+        (w.TileAngle * view.ScalePxPerRad).Should().BeLessThan(MapRenderer.TilePolygonMinPx, "below tile polygons");
+        await r.LoadVisibleAsync(view);
+        var options = Plain with { Layer = GlobeLayer.Biome };
+        using var bmp = Render(r, view, options);
+        for (var i = 0; i < 200 && r.LastFramePending; i++) { using var again = Render(r, view, options); }
+        using var done = Render(r, view, options);
+        r.LastFramePending.Should().BeFalse();
+        r.BlockTextureCount.Should().BeGreaterThan(0);
+
+        // Tiles whose neighbours share their colour: the pixel at the tile centre has that colour.
+        var e = r.Cache!.TryGet(cell, out _)!;
+        var colours = r.BuildTileColours(e, GlobeLayer.Biome);
+        var tiles = w.Tiles!;
+        Span<int> nb = stackalloc int[6];
+        var checkedTiles = 0;
+        for (var t = 0; t < e.Block.Count && checkedTiles < 20; t++)
+        {
+            var n = tiles.Neighbours(e.Block.TileIds[t], nb);
+            var same = true;
+            for (var k = 0; k < n && same; k++)
+            {
+                var local = Array.BinarySearch(e.Block.TileIds, nb[k]);
+                same = local >= 0 && colours[local] == colours[t];
+            }
+
+            if (!same || view.Project(tiles.Centre(e.Block.TileIds[t])) is not { } p) continue;
+            done.GetPixel((int)p.X, (int)p.Y).Should().Be(new SKColor(colours[t]), $"tile {e.Block.TileIds[t]}");
+            checkedTiles++;
+        }
+
+        checkedTiles.Should().BeGreaterThan(5);
+    }
+
+    [Test]
+    public async Task More_textured_cells_than_the_texture_capacity_finish_building_and_stop_redrawing()
+    {
+        var w = ImageryB();
+        var l = w.Globe;
+        using var r = new MapRenderer(w) { BlockTextureCapacity = 20 };
+        var cell = Enumerable.Range(0, l.Grid.CellCount).First(c => !l.IsOcean(c));
+        var view = w.View(l.Geometry.Centre(cell), 70 / w.GlobeCellAngle, W, H);
+        await r.LoadVisibleAsync(view);
+        var options = Plain with { Layer = GlobeLayer.Biome };
+        var draws = 0;
+        do { using var _ = Render(r, view, options); draws++; } while (r.LastFramePending && draws < 200);
+        r.LastFramePending.Should().BeFalse($"every visible texture gets built (after {draws} draws), none evicted while visible");
+        using (Render(r, view, options)) { }
+        r.LastFrameBlockBuilds.Should().Be(0, "a still view rebuilds nothing once its textures are built");
+        r.BlockTextureCount.Should().BeGreaterThan(21, "textures visible in this frame are kept beyond the capacity");
+    }
+
+    [Test]
+    public async Task Loading_for_a_view_covers_every_cell_the_draw_textures_from_blocks()
+    {
+        var w = ImageryB();
+        var l = w.Globe;
+        using var r = new MapRenderer(w);
+        var cell = Enumerable.Range(0, l.Grid.CellCount).First(c => !l.IsOcean(c));
+        // Spacing 56 px: corner diameter about 1.24 × spacing ≈ 69 px ≥ 64, so drawing textures these cells from blocks.
+        var view = w.View(l.Geometry.Centre(cell), 56 / w.GlobeCellAngle, W, H);
+        await r.LoadVisibleAsync(view);
+        var options = Plain with { Layer = GlobeLayer.Biome };
+        var draws = 0;
+        do { using var _ = Render(r, view, options); draws++; } while (r.LastFramePending && draws < 200);
+        r.BlockTextureCount.Should().BeGreaterThan(0, "the blocks the draw needs were loaded beforehand");
+    }
+
+    [Test]
+    public void Region_view_river_threshold_falls_from_major_to_the_midpoint_toward_the_smallest()
+    {
+        var w = ImageryB();
+        using var r = new MapRenderer(w);
+        var midpoint = Math.Sqrt((double)w.MajorRiverFlow * w.RiverMinFlow);
+        r.RegionRiverMinFlow(4).Should().BeApproximately(w.MajorRiverFlow, 1);
+        r.RegionRiverMinFlow(2).Should().BeApproximately(w.MajorRiverFlow, 1, "no smaller rivers before Region View starts");
+        r.RegionRiverMinFlow(22).Should().BeApproximately(midpoint, 1);
+        r.RegionRiverMinFlow(40).Should().BeApproximately(midpoint, 1);
+        r.RegionRiverMinFlow(10).Should().BeLessThan(w.MajorRiverFlow).And.BeGreaterThan(midpoint);
+    }
+
+    [Test]
+    public async Task Zoomed_region_view_adds_mid_size_rivers_from_the_tiles()
+    {
+        var w = ImageryB();
+        var regions = w.Regions!;
+        using var r = new MapRenderer(w);
+        var river = r.DrawnRiverCourses!.OrderByDescending(d => d.Points.Length).First();
+        var mid = river.Points[river.Points.Length / 2];
+        var start = w.View(mid, 4 / w.TileAngle, W, H);
+        var zoomed = w.View(mid, 12 / w.TileAngle, W, H);
+        r.EffectiveLevel(zoomed).Should().Be(MapLevel.Region);
+        await r.LoadVisibleAsync(zoomed);
+        await r.LoadVisibleAsync(start);
+        var options = Plain with { Layer = GlobeLayer.Biome, Rivers = true };
+        using (Render(r, start, options)) { }
+        r.LastMinorRiverPieces.Should().Be(0, "where Region View starts only major rivers show");
+        using (Render(r, zoomed, options)) { }
+        r.LastMinorRiverPieces.Should().BeGreaterThan(0, "zoomed in, mid-size rivers from the tiles appear");
+    }
+
+    [Test]
+    public async Task Detail_river_lines_meet_exactly_where_they_cross_a_block_border()
+    {
+        var w = ImageryB();
+        var tiles = w.Tiles!;
+        using var r = new MapRenderer(w, cacheCapacity: 5000);
+        var cells = w.Globe.Grid.CellCount;
+        for (var g = 0; g < cells; g++) await r.Cache!.EnsureLoadedAsync(g);
+        var crossings = 0;
+        for (var g = 0; g < cells; g++)
+        {
+            var e = r.Cache!.TryGet(g, out _)!;
+            foreach (var s in r.BlockRiverLines(e)!)
+            {
+                var last = s.Chain.Cells[^1];
+                if (s.Chain.End == RiverChainEnd.Water || Array.BinarySearch(e.Block.TileIds, last) >= 0) continue;
+                var next = r.Cache.TryGet(GridHierarchy.Parent(tiles, w.GlobeTiles, last), out _)!;
+                var centre = tiles.Centre(last);
+                // A river can end in a basin with no outflow (a dry lake bed): nothing continues there.
+                if (next.Block.Downstream[Array.BinarySearch(next.Block.TileIds, last)] < 0) continue;
+                r.BlockRiverLines(next)!.SelectMany(x => x.Points).Should().Contain(p => (p - centre).Length < 1e-9,
+                    $"the line leaving globe cell {g} at tile {last} continues from that tile's centre");
+                crossings++;
+            }
+        }
+
+        crossings.Should().BeGreaterThan(50);
+    }
+
+    /// <summary>A land tile with two neighbouring sea tiles that are neighbours of each other (a hex corner on the coast).</summary>
+    private static (int Land, int SeaA, int SeaB, int GlobeCell)? CoastCorner(MapWorld w, MapRenderer r)
+    {
+        var tiles = w.Tiles!;
+        Span<int> nb = stackalloc int[6];
+        for (var g = 0; g < w.Globe.Grid.CellCount; g++)
+        {
+            if (w.Globe.IsOcean(g)) continue;
+            r.Cache!.EnsureLoadedAsync(g).GetAwaiter().GetResult();
+            var e = r.Cache.TryGet(g, out _)!;
+            for (var i = 0; i < e.Block.Count; i++)
+            {
+                if (e.Block.Water[i] == (byte)TileWaterKind.Ocean) continue;
+                var n = tiles.Neighbours(e.Block.TileIds[i], nb);
+                for (var k = 0; k < n; k++)
+                {
+                    int a = nb[k], b = nb[(k + 1) % n];
+                    int la = Array.BinarySearch(e.Block.TileIds, a), lb = Array.BinarySearch(e.Block.TileIds, b);
+                    if (la >= 0 && lb >= 0 && e.Block.Water[la] == (byte)TileWaterKind.Ocean && e.Block.Water[lb] == (byte)TileWaterKind.Ocean)
+                        return (e.Block.TileIds[i], a, b, g);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    [Test]
+    public async Task Detail_view_coast_is_blended_between_tile_centres_not_hex_edges()
+    {
+        var w = ImageryB();
+        var tiles = w.Tiles!;
+        using var r = new MapRenderer(w);
+        var (land, seaA, seaB, _) = CoastCorner(w, r)!.Value;
+        // 40 % land, 30 % each sea: nearer the land centre than either sea centre (nearest-tile drawing shows land), but the
+        // sea holds 60 % of the weight, so the blended coast shows sea there.
+        var p = ((tiles.Centre(land) * 0.4) + (tiles.Centre(seaA) * 0.3) + (tiles.Centre(seaB) * 0.3)).Normalize();
+        var view = w.View(p, w.ScaleForTilePx(40), W, H);
+        r.EffectiveLevel(view).Should().Be(MapLevel.Detail);
+        await r.LoadVisibleAsync(view);
+        using var bmp = Render(r, view, Plain with { Layer = GlobeLayer.Biome });
+        var (x, y) = view.Project(p)!.Value;
+        bmp.GetPixel((int)x, (int)y).Should().Be(new SKColor(LayerPalette.BiomeColor(Biome.Ocean)));
+        var q = ((tiles.Centre(land) * 0.8) + (tiles.Centre(seaA) * 0.1) + (tiles.Centre(seaB) * 0.1)).Normalize();
+        var (qx, qy) = view.Project(q)!.Value;
+        bmp.GetPixel((int)qx, (int)qy).Should().NotBe(new SKColor(LayerPalette.BiomeColor(Biome.Ocean)), "near the land centre it is land");
+    }
+
+    [Test]
+    public async Task Detail_view_rivers_are_smoothed_chains_through_the_tile_centres()
+    {
+        var w = ImageryB();
+        var tiles = w.Tiles!;
+        using var r = new MapRenderer(w);
+        var cell = Enumerable.Range(0, w.Globe.Grid.CellCount).First(c => !w.Globe.IsOcean(c));
+        await r.Cache!.EnsureLoadedAsync(cell);
+        foreach (var nb in w.Globe.Grid.Neighbours(cell).ToArray()) await r.Cache.EnsureLoadedAsync(nb);
+        var e = r.Cache.TryGet(cell, out _)!;
+        var rivers = r.BlockRiverLines(e)!;
+        var expected = new List<(int, int)>();
+        for (var k = 0; k < e.RiverTiles.Length; k++)
+        {
+            var i = e.RiverTiles[k];
+            if (e.Block.Flow[i] < w.RiverMinFlow || e.Block.Water[i] == (byte)TileWaterKind.Ocean) continue;
+            // A lake tile counts only as an outlet: draining onto land.
+            if (e.Block.Water[i] == (byte)TileWaterKind.Lake)
+            {
+                // Only a lake's own outlet tile starts a river (other shore tiles may point at land without draining there).
+                if (w.Lakes.First(l => l.Id == e.Block.LakeId[i]).OutletTile != e.Block.TileIds[i]) continue;
+                var other = e.RiverToGlobe[k] == cell ? e : r.Cache.TryGet(e.RiverToGlobe[k], out _)!;
+                if (other.IsOcean(e.RiverToTile[k]) || other.IsLake(e.RiverToTile[k])) continue;
+                // The water leaving the lake (after evaporation) is the downstream tile's flow; below a river, no line.
+                if (w.Lakes.First(l => l.Id == e.Block.LakeId[i]).Outflow < w.RiverMinFlow) continue;
+            }
+
+            expected.Add((e.Block.TileIds[i], e.RiverToTile[k]));
+        }
+
+        expected.Should().NotBeEmpty();
+        rivers.SelectMany(s => s.Chain.Cells.Zip(s.Chain.Cells.Skip(1))).Should().BeEquivalentTo(expected);
+        foreach (var s in rivers.Where(s => s.Chain.StartsInWater))
+            (s.Points[0] - (tiles.Centre(s.Chain.Cells[0]) + tiles.Centre(s.Chain.Cells[1])).Normalize()).Length.Should().BeLessThan(1e-9, "an outlet starts on the lake shore");
+        var tolerance = (0.5 * w.TileAngle) + 1e-9;
+        foreach (var s in rivers)
+        {
+            var route = s.Chain.Cells.Select(tiles.Centre).ToArray();
+            if (s.Chain.End == RiverChainEnd.Water) route[^1] = (route[^2] + route[^1]).Normalize();
+            foreach (var pt in s.Points)
+            {
+                var best = double.MaxValue;
+                for (var i = 0; i + 1 < route.Length; i++) best = Math.Min(best, RiverChains.AngleToSegment(pt, route[i], route[i + 1]));
+                best.Should().BeLessThanOrEqualTo(tolerance);
+            }
+        }
+    }
+
+    [Test]
+    public void Hover_rings_fade_with_distance_and_stop_after_the_third()
+    {
+        var w = ImageryB();
+        var l = w.Globe;
+        using var r = new MapRenderer(w);
+        var cell = Enumerable.Range(0, l.Grid.CellCount).First(c => l.Grid.Neighbours(c).Length == 6 && !l.IsOcean(c));
+        var view = w.View(l.Geometry.Centre(cell), 60 / w.GlobeCellAngle, W, H);
+        var options = Plain with { Layer = GlobeLayer.Biome, Borders = false };
+        using var off = Render(r, view, options);
+        using var on = Render(r, view, options with { Hover = new MapPick(MapLevel.Globe, cell, cell, -1) });
+
+        // Ring distance of every cell near the hovered one.
+        var ring = new Dictionary<int, int> { [cell] = 0 };
+        var frontier = new List<int> { cell };
+        for (var d = 1; d <= 5; d++)
+        {
+            var next = new List<int>();
+            foreach (var c in frontier)
+                foreach (var nb in l.Grid.Neighbours(c))
+                    if (ring.TryAdd(nb, d)) next.Add(nb);
+            frontier = next;
+        }
+
+        // Brightness added at the midpoint of an edge between two cells of the same ring.
+        double EdgeDelta(int d)
+        {
+            var deltas = new List<int>();
+            foreach (var (a, da) in ring.Where(kv => kv.Value == d))
+                foreach (var b in l.Grid.Neighbours(a))
+                {
+                    if (ring.GetValueOrDefault(b, -1) != d) continue;
+                    var shared = l.Grid.CornerTriangles(a).ToArray().Intersect(l.Grid.CornerTriangles(b).ToArray()).ToArray();
+                    if (shared.Length != 2) continue;
+                    var m = (l.Geometry.Corner(shared[0]) + l.Geometry.Corner(shared[1])).Normalize();
+                    if (view.Project(m) is not { } p) continue;
+                    SKColor x = on.GetPixel((int)p.X, (int)p.Y), y = off.GetPixel((int)p.X, (int)p.Y);
+                    deltas.Add(x.Red + x.Green + x.Blue - y.Red - y.Green - y.Blue);
+                }
+
+            return deltas.Count == 0 ? double.NaN : deltas.Average();
+        }
+
+        double r1 = EdgeDelta(1), r2 = EdgeDelta(2), r3 = EdgeDelta(3), r4 = EdgeDelta(4);
+        r1.Should().BeGreaterThan(r2);
+        r2.Should().BeGreaterThan(r3);
+        r3.Should().BeGreaterThan(0);
+        r4.Should().Be(0, "nothing is drawn beyond the third ring");
+    }
+
+    [Test]
+    public void Globe_and_region_rivers_are_traced_from_the_tiles_and_end_on_the_tile_coast()
+    {
+        var w = ImageryB();
+        var tiles = w.Tiles!;
+        using var r = new MapRenderer(w);
+        var courses = r.DrawnRiverCourses!;
+        courses.Should().NotBeEmpty();
+        var rc = w.RiverCourses!;
+        courses.SelectMany(s => s.Chain.Cells.Zip(s.Chain.Cells.Skip(1))).Should().BeEquivalentTo(rc.From.Zip(rc.To));
+        var mouths = 0;
+        foreach (var s in courses.Where(s => s.Chain.End == RiverChainEnd.Water))
+        {
+            var land = tiles.Centre(s.Chain.Cells[^2]);
+            var water = tiles.Centre(s.Chain.Cells[^1]);
+            (s.Points[^1] - (land + water).Normalize()).Length.Should().BeLessThan(1e-9, "the mouth is the midpoint between the last land tile and the water tile");
+            mouths++;
+        }
+
+        mouths.Should().BeGreaterThan(0);
+    }
+
     // ---- smoothed rivers ----
 
     [Test]
@@ -891,7 +1245,7 @@ public class MapRendererTests
         var l = w.Globe;
         var markers = Enumerable.Range(0, l.Grid.CellCount).Where(c => !l.IsOcean(c)).Take(40)
             .Select(c => new MapMarker(c, -1, $"Town {c}")).ToList();
-        var all = new MapDrawOptions { Layer = GlobeLayer.Winds, Markers = markers, Graticule = true };
+        var all = new MapDrawOptions { Layer = GlobeLayer.Winds, Markers = markers, Graticule = true, Borders = true, HexGrid = true };
         var globe = w.ViewFromYawPitch(W, H, 0, 20);
         var region = w.View(regions.Geometry.Centre(LandRegion(regions, 200)), w.ScaleForRegionPx(40), W, H);
 
@@ -912,17 +1266,20 @@ public class MapRendererTests
         Diff(globe, all, all with { Labels = false }).Should().BeGreaterThan(0);
         Diff(globe, all, all with { Equator = false }).Should().BeGreaterThan(0);
         Diff(globe, all, all with { Graticule = false }).Should().BeGreaterThan(0);
+        Diff(globe, all, all with { HexGrid = false }).Should().BeGreaterThan(1000);
         Diff(globe, all with { Layer = GlobeLayer.Biome }, all with { Layer = GlobeLayer.Biome, Arrows = false }).Should().Be(0, "arrows only on Winds and Currents");
 
         Diff(region, all, all with { Borders = false }).Should().BeGreaterThan(1000);
         Diff(region, all, all with { Rivers = false }).Should().BeGreaterThan(0);
         Diff(region, all, all with { Graticule = false }).Should().BeGreaterThan(0);
+        Diff(region, all, all with { HexGrid = false }).Should().BeGreaterThan(1000);
         Diff(region, all, all with { Lakes = false }).Should().Be(0, "large lakes are a Globe View overlay");
 
         var detail = w.View(regions.Geometry.Centre(LandRegion(regions, 200)), w.ScaleForTilePx(30), W, H);
         await r.LoadVisibleAsync(detail);
         Diff(detail, all, all with { Rivers = false }).Should().BeGreaterThan(0);
         Diff(detail, all, all with { Graticule = false }).Should().BeGreaterThan(0);
+        Diff(detail, all, all with { HexGrid = false }).Should().BeGreaterThan(1000);
         Diff(detail, all, all with { Borders = false }).Should().BeGreaterThan(1000);
     }
 

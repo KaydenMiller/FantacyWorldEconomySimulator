@@ -26,7 +26,7 @@ internal static class GlobeCommands
 
     public static async Task<int> RunAsync(string[] args, Func<string, WorldDbContext> open, Func<string, int> missingArgs)
     {
-        const string statsUsage = "globe <dbPath> | globe cell <dbPath> <cellId> | globe tile <dbPath> <tileId>|--at <lat>,<lon> | globe areas <dbPath> [kind] | globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends] | globe find <dbPath> wasatch | globe defaults | globe settings <dbPath>";
+        const string statsUsage = "globe <dbPath> | globe cell <dbPath> <cellId> | globe tile <dbPath> <tileId>|--at <lat>,<lon> | globe areas <dbPath> [kind] | globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends] [--hex-grid] | globe find <dbPath> wasatch | globe defaults | globe settings <dbPath>";
         if (args.Length < 2)
             return missingArgs(statsUsage);
 
@@ -39,7 +39,7 @@ internal static class GlobeCommands
             case "areas":
                 return args.Length < 3 ? missingArgs("globe areas <dbPath> [kind]") : await Areas(open, args[2], args.Length > 3 ? args[3] : null);
             case "png":
-                return args.Length < 5 ? missingArgs("globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends]") : await Png(open, args);
+                return args.Length < 5 ? missingArgs("globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends] [--hex-grid]") : await Png(open, args);
             case "find":
                 return args.Length < 4 ? missingArgs("globe find <dbPath> wasatch") : await Find(open, args[2], args[3]);
             case "defaults":
@@ -319,13 +319,14 @@ internal static class GlobeCommands
         double yaw = 0, pitch = 0, zoom = 1;
         MapLevel? level = null;
         var size = 1024;
-        bool equator = true, graticule = false, riverArrows = false, riverEnds = false;
+        bool equator = true, graticule = false, riverArrows = false, riverEnds = false, hexGrid = false;
         for (var i = 5; i < args.Length; i++)
         {
             if (args[i] == "--graticule") { graticule = true; continue; }
             if (args[i] == "--no-equator") { equator = false; continue; }
             if (args[i] == "--river-arrows") { riverArrows = true; continue; }
             if (args[i] == "--river-ends") { riverEnds = true; continue; }
+            if (args[i] == "--hex-grid") { hexGrid = true; continue; }
             if (i + 1 >= args.Length)
                 throw new InvalidOperationException($"Option {args[i]} needs a value.");
             var v = args[i + 1];
@@ -346,13 +347,14 @@ internal static class GlobeCommands
         // MapRenderer at the view: --zoom multiplies the whole-globe scale; --level sets the scale where that level starts
         // (region cell 45 px, tile 24 px) times --zoom.
         var g = await GlobeWorldLoader.LoadAllAsync(dbPath);
-        var mapWorld = new MapWorld(g.Layers, g.Regions, g.Lakes, g.Settings.Grid.TileMultiplier, g.Tiles, g.Settings.Tiles.RiverMinFlow, g.Settings.Tiles.MajorRiverFlow, g.Settings.Hydrology);
+        var mapWorld = new MapWorld(g.Layers, g.Regions, g.Lakes, g.Settings.Grid.TileMultiplier, g.Tiles, g.Settings.Tiles.RiverMinFlow, g.Settings.Tiles.MajorRiverFlow, g.Settings.Hydrology)
+        { Imagery = g.Imagery, RiverCourses = g.RiverCourses };
         using var renderer = new MapRenderer(mapWorld);
         var view = mapWorld.ViewFromYawPitch(size, size, yaw, pitch, zoom);
         if (level is { } target && target != MapLevel.Globe)
             view = view.WithScale((target == MapLevel.Region ? mapWorld.ScaleForRegionPx(45) : mapWorld.ScaleForTilePx(24)) * zoom);
         var markers = g.Settlements.Select(s => new MapMarker(s.Cell, s.TileId ?? -1, s.Name)).ToList();
-        var png = GlobePngRenderer.RenderMap(renderer, view, new MapDrawOptions { Layer = layer, Markers = markers, Equator = equator, Graticule = graticule, RiverArrows = riverArrows, RiverEnds = riverEnds });
+        var png = GlobePngRenderer.RenderMap(renderer, view, new MapDrawOptions { Layer = layer, Markers = markers, Equator = equator, Graticule = graticule, RiverArrows = riverArrows, RiverEnds = riverEnds, HexGrid = hexGrid });
         await File.WriteAllBytesAsync(outPath, png);
         Console.WriteLine($"Wrote {layer} ({size}x{size}, yaw {yaw.ToString(Inv)}, pitch {pitch.ToString(Inv)}, {renderer.LastLevel} view, scale {view.ScalePxPerRad.ToString("F0", Inv)} px/rad, {markers.Count} markers) to {outPath} ({png.Length} bytes)");
         return 0;

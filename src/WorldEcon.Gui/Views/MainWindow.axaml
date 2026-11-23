@@ -63,7 +63,8 @@
           <TextBlock Text="Colour layer" Foreground="#8890A0" />
           <ComboBox Name="LayerPicker" HorizontalAlignment="Stretch" ItemsSource="{Binding Map.LayerNames}" SelectedIndex="{Binding Map.LayerIndex}" />
           <TextBlock Text="Overlays" Foreground="#8890A0" Margin="0,8,0,0" />
-          <CheckBox Name="BordersToggle" Content="Borders (gaps between cells and regions)" IsChecked="{Binding Map.Borders}" />
+          <CheckBox Name="HexGridToggle" Content="Hex grid (cells of the current view level)" IsChecked="{Binding Map.HexGrid}" />
+          <CheckBox Name="BordersToggle" Content="Gaps between regions" IsChecked="{Binding Map.Borders}" />
           <CheckBox Name="RiversToggle" Content="Rivers" IsChecked="{Binding Map.Rivers}" />
           <CheckBox Name="RiverArrowsToggle" Content="River arrows (flow direction, major rivers)" Margin="20,0,0,0" IsChecked="{Binding Map.RiverArrows}" IsEnabled="{Binding Map.Rivers}" />
           <CheckBox Name="RiverEndsToggle" Content="River ends (source and mouth dots)" Margin="20,0,0,0" IsChecked="{Binding Map.RiverEnds}" IsEnabled="{Binding Map.Rivers}" />

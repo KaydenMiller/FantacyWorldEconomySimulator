@@ -23,7 +23,7 @@ public sealed class MapViewModel : ObservableObject
     private readonly WorldSession _session;
     private MapViewState _view;
     private int _layerIndex = (int)GlobeLayer.Biome;
-    private bool _borders = true;
+    private bool _borders;
     private bool _rivers = true;
     private bool _lakes = true;
     private bool _mountainSymbols = true;
@@ -33,6 +33,7 @@ public sealed class MapViewModel : ObservableObject
     private bool _equator = true;
     private bool _graticule;
     private bool _riverArrows;
+    private bool _hexGrid;
     private bool _riverEnds;
     private MapPick? _selected;
     private MapPick? _hover;
@@ -82,6 +83,8 @@ public sealed class MapViewModel : ObservableObject
     public bool Rivers { get => _rivers; set => Toggle(ref _rivers, value); }
 
     public bool RiverArrows { get => _riverArrows; set => Toggle(ref _riverArrows, value); }
+
+    public bool HexGrid { get => _hexGrid; set => Toggle(ref _hexGrid, value); }
 
     public bool RiverEnds { get => _riverEnds; set => Toggle(ref _riverEnds, value); }
 
@@ -133,6 +136,7 @@ public sealed class MapViewModel : ObservableObject
         Borders = _borders,
         Rivers = _rivers,
         RiverArrows = _riverArrows,
+        HexGrid = _hexGrid,
         RiverEnds = _riverEnds,
         Lakes = _lakes,
         MountainSymbols = _mountainSymbols,

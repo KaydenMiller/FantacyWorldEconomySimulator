@@ -19,9 +19,11 @@ public enum RiverChainEnd
 /// <summary>
 /// One river from its source, downstream through region cells. <see cref="Flow"/>[i] is the flow of the edge leaving
 /// <see cref="Cells"/>[i]; the last entry repeats the last edge's flow, so both arrays have the same length.
-/// <see cref="StartsAtSource"/> is false for a chain walked from inside a drainage loop (its first cell has inflow).
+/// <see cref="StartsAtSource"/> is false for a chain walked from inside a drainage loop (its first cell has inflow) and
+/// for a lake outlet. <see cref="StartsInWater"/>: the first cell is water (a lake draining onto land); the line then
+/// starts at the shore, the midpoint toward the second cell.
 /// </summary>
-public sealed record RiverChain(int[] Cells, long[] Flow, RiverChainEnd End, bool StartsAtSource = true);
+public sealed record RiverChain(int[] Cells, long[] Flow, RiverChainEnd End, bool StartsAtSource = true, bool StartsInWater = false);
 
 /// <summary>
 /// A <see cref="RiverChain"/> after simplification and corner cutting: unit <see cref="Points"/> from the source centre
@@ -82,7 +84,8 @@ public static class RiverChains
 
             if (flows.Count == 0) return;
             flows.Add(flows[^1]);
-            chains.Add(new RiverChain([.. cells], [.. flows], end, !mainInflow.ContainsKey(start)));
+            var inWater = isWater(start);
+            chains.Add(new RiverChain([.. cells], [.. flows], end, !mainInflow.ContainsKey(start) && !inWater, inWater));
         }
 
         foreach (var source in from.Where(c => !mainInflow.ContainsKey(c)).Distinct().Order()) Walk(source);
@@ -127,6 +130,7 @@ public static class RiverChains
         }
 
         if (chain.End == RiverChainEnd.Water && n >= 2) pts[^1] = (pts[^2] + pts[^1]).Normalize();
+        if (chain.StartsInWater && n >= 2) pts[0] = (pts[0] + pts[1]).Normalize();
 
         // Douglas–Peucker between consecutive fixed points; the parameter s of a point is its index in the chain.
         var keep = new bool[n];

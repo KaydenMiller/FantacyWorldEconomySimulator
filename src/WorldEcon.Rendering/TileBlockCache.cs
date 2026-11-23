@@ -12,6 +12,10 @@ namespace WorldEcon.Rendering;
 public sealed class TileBlockGeometry
 {
     private readonly uint[]?[] _colours = new uint[]?[Enum.GetValues<GlobeLayer>().Length];
+    private readonly uint[]?[] _keys = new uint[]?[Enum.GetValues<GlobeLayer>().Length];
+
+    /// <summary>The renderer's smoothed river lines of this block (draw thread only); null until built.</summary>
+    internal object? RiverLines { get; set; }
 
     internal TileBlockGeometry(TileBlock block, TileGrid tiles, TileGrid globeTiles)
     {
@@ -138,6 +142,13 @@ public sealed class TileBlockGeometry
     }
 
     /// <summary>Tile colours for a layer, computed once per layer by <paramref name="build"/>. Call from the draw thread only.</summary>
+    /// <summary>Tile class keys for a layer (the kind that decides blended boundaries), computed once per layer. Draw thread only.</summary>
+    internal uint[] KeysFor(GlobeLayer layer, Func<TileBlockGeometry, GlobeLayer, uint[]> build)
+    {
+        var i = (int)layer;
+        return _keys[i] ??= build(this, layer);
+    }
+
     internal uint[] ColoursFor(GlobeLayer layer, Func<TileBlockGeometry, GlobeLayer, uint[]> build)
     {
         var i = (int)layer;

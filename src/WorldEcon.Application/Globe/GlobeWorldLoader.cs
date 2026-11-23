@@ -31,6 +31,12 @@ public sealed record LoadedGlobe(
     TileGrid TileGrid,
     ITileBlockSource Tiles)
 {
+    /// <summary>Stored map imagery; null for a world written before it existed.</summary>
+    public CellImagery? Imagery { get; init; }
+
+    /// <summary>Stored major river courses at tile resolution; null for a world written before they existed.</summary>
+    public RiverCourses? RiverCourses { get; init; }
+
     /// <summary>
     /// A loaded globe over an in-memory generation (tests, tools): tiles come from an <see cref="InMemoryTileBlockSource"/>.
     /// <paramref name="generated"/> must be the output of <see cref="WorldGenerator.Generate"/>.
@@ -41,7 +47,8 @@ public sealed record LoadedGlobe(
         var tiles = generated.Tiles ?? throw new ArgumentException("The generation has no tiles (GenerateGlobe output).", nameof(generated));
         var regions = generated.Regions ?? throw new ArgumentException("The generation has no region summary.", nameof(generated));
         return new LoadedGlobe(world, generated.Layers, settings, generated.GeneratorVersion, settlements, regions, generated.Lakes,
-            tiles.Grid, new InMemoryTileBlockSource(tiles));
+            tiles.Grid, new InMemoryTileBlockSource(tiles))
+        { Imagery = generated.Imagery, RiverCourses = generated.RiverCourses };
     }
 }
 
@@ -122,6 +129,7 @@ public static class GlobeWorldLoader
         var (world, stored) = await LoadStoredAsync(ctx, ct);
         var settlements = await LoadSettlementsAsync(ctx, world.Id, ct);
         return new LoadedGlobe(world, stored.Layers, stored.Settings, stored.GeneratorVersion, settlements,
-            stored.Regions, stored.Lakes, stored.TileGrid, new SqliteTileBlockSource(dbPath));
+            stored.Regions, stored.Lakes, stored.TileGrid, new SqliteTileBlockSource(dbPath))
+        { Imagery = stored.Imagery, RiverCourses = stored.RiverCourses };
     }
 }

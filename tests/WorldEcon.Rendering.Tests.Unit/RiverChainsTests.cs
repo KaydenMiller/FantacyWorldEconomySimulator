@@ -146,6 +146,22 @@ public class RiverChainsTests
     }
 
     [Test]
+    public void A_lake_outlet_starts_at_the_shore_and_is_not_a_source()
+    {
+        // Cell 4 is a lake draining into land cell 3, then 2 and the sea at 1 … here 3 → 2 → 1 → 0 (0 water).
+        int[] from = [4, 3, 2, 1];
+        int[] to = [3, 2, 1, 0];
+        long[] flow = [500, 510, 520, 530];
+        var chain = RiverChains.Build(from, to, flow, c => c is 4 or 0).Single();
+        chain.Cells.Should().Equal(4, 3, 2, 1, 0);
+        chain.StartsInWater.Should().BeTrue();
+        chain.StartsAtSource.Should().BeFalse("an outlet carries a lake's overflow; it is not a spring");
+        var s = RiverChains.Smooth(chain, c => YCentres[c], new HashSet<int>(), 0.5 * Rad);
+        (s.Points[0] - (YCentres[4] + YCentres[3]).Normalize()).Length.Should().BeLessThan(1e-9, "the line starts on the lake shore");
+        (s.Points[^1] - (YCentres[1] + YCentres[0]).Normalize()).Length.Should().BeLessThan(1e-9);
+    }
+
+    [Test]
     public void Arrow_placements_follow_the_path()
     {
         SkiaSharp.SKPoint[] path = [new(0, 0), new(150, 0), new(400, 0)];

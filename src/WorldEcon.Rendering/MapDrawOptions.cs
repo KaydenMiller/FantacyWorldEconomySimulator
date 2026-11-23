@@ -21,8 +21,11 @@ public sealed record MapDrawOptions
     /// <summary>Colour layer; applies at every level (layers without tile data use the parent globe cell's colour).</summary>
     public GlobeLayer Layer { get; init; } = GlobeLayer.Biome;
 
-    /// <summary>Gaps: 1 px between globe cells at Globe View; 4 px between globe-cell groups and 1 px between cells at Region and Detail View.</summary>
-    public bool Borders { get; init; } = true;
+    /// <summary>Gaps (off by default: the map is one continuous picture): 1 px between globe cells at Globe View; 4 px between globe-cell groups and 1 px between cells at Region and Detail View.</summary>
+    public bool Borders { get; init; }
+
+    /// <summary>Outlines of every visible hex of the drawn level (globe cells, region cells or tiles) over the imagery.</summary>
+    public bool HexGrid { get; init; }
 
     /// <summary>Major rivers at Globe and Region View, all rivers at Detail View.</summary>
     public bool Rivers { get; init; } = true;

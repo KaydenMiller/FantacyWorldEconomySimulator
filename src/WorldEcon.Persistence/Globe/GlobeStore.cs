@@ -175,6 +175,16 @@ public sealed class GlobeStore(WorldDbContext db) : ITileBlockSource
         cmd.ExecuteNonQuery();
     }
 
+    private static void WriteMapImagery(SqliteConnection conn, SqliteTransaction tx, int id, byte[] data)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "INSERT OR REPLACE INTO map_imagery (Id, Data) VALUES ($Id, $Data)";
+        cmd.Parameters.Add(new SqliteParameter("$Id", id));
+        cmd.Parameters.Add(new SqliteParameter("$Data", data));
+        cmd.ExecuteNonQuery();
+    }
+
     /// <summary>The stored region-level payload, or null when none was written.</summary>
     public async Task<byte[]?> LoadRegionLevelAsync(CancellationToken ct = default)
         => await db.RegionLevels.AsNoTracking().Where(r => r.Id == 0).Select(r => r.Data).SingleOrDefaultAsync(ct);
@@ -257,6 +267,9 @@ public sealed class GlobeStore(WorldDbContext db) : ITileBlockSource
             WriteLakes(conn, tx, generated.Lakes);
             progress?.Report(new GlobeWriteProgress(GlobeWriteStep.RegionLevel, 0));
             WriteRegionLevel(conn, tx, RegionSummaryCodec.Encode(regions));
+            // Map imagery rides with the region level step (derived view data).
+            if (generated.Imagery is { } imagery) WriteMapImagery(conn, tx, MapImageryRow.ImageryId, MapImageryCodec.EncodeImagery(imagery));
+            if (generated.RiverCourses is { } courses) WriteMapImagery(conn, tx, MapImageryRow.RiverCoursesId, MapImageryCodec.EncodeRiverCourses(courses));
             await scope.CommitAsync(ct);
         }
 
@@ -289,7 +302,17 @@ public sealed class GlobeStore(WorldDbContext db) : ITileBlockSource
             if (regions.LakeId[c] >= 0 && !lakeIds.Contains(regions.LakeId[c]))
                 throw new InvalidDataException($"Region level cell {c} names lake {regions.LakeId[c]}, which the lakes table does not hold.");
         var tileGrid = new TileGrid(regionGrid.Frequency * settings.Grid.TileMultiplier);
-        return new StoredGlobe(layers, regions, lakes, settings, version, tileGrid);
+        // A file written before the AddMapImagery migration has no map_imagery table (opening does not migrate): no imagery.
+        var hasImageryTable = await db.Database.SqlQueryRaw<int>(
+            "SELECT COUNT(*) AS \"Value\" FROM sqlite_master WHERE type = 'table' AND name = 'map_imagery'").SingleAsync(ct) > 0;
+        var imageryRows = hasImageryTable
+            ? await db.MapImagery.AsNoTracking().ToDictionaryAsync(r => r.Id, r => r.Data, ct)
+            : [];
+        var imagery = imageryRows.TryGetValue(MapImageryRow.ImageryId, out var i) ? MapImageryCodec.DecodeImagery(i, layers.Grid.CellCount) : null;
+        var courses = imageryRows.TryGetValue(MapImageryRow.RiverCoursesId, out var rc) ? MapImageryCodec.DecodeRiverCourses(rc, tileGrid.Count) : null;
+        if (courses is not null && (courses.From.Any(t => (uint)t >= (uint)tileGrid.Count) || courses.To.Any(t => (uint)t >= (uint)tileGrid.Count)))
+            throw new InvalidDataException("River courses name a tile outside the tile grid.");
+        return new StoredGlobe(layers, regions, lakes, settings, version, tileGrid) { Imagery = imagery, RiverCourses = courses };
     }
 
     /// <summary>
@@ -531,7 +554,14 @@ public sealed record StoredGlobe(
     IReadOnlyList<TileLake> Lakes,
     WorldGenSettings Settings,
     int GeneratorVersion,
-    TileGrid TileGrid);
+    TileGrid TileGrid)
+{
+    /// <summary>Stored map imagery; null for a world written before it existed.</summary>
+    public CellImagery? Imagery { get; init; }
+
+    /// <summary>Stored river courses; null for a world written before they existed.</summary>
+    public RiverCourses? RiverCourses { get; init; }
+}
 
 /// <summary>Step of <see cref="GlobeStore.WriteAsync"/>, in write order.</summary>
 public enum GlobeWriteStep

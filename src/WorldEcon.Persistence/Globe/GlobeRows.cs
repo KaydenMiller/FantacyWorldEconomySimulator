@@ -120,6 +120,19 @@ public sealed class LakeRow
     public int ExitTile { get; set; }
 }
 
+/// <summary>
+/// Map imagery payloads (table <c>map_imagery</c>): Id 0 = cell imagery, Id 1 = river courses (format owned by
+/// <c>MapImageryCodec</c>). Absent in worlds written before the map imagery existed.
+/// </summary>
+public sealed class MapImageryRow
+{
+    public const int ImageryId = 0;
+    public const int RiverCoursesId = 1;
+
+    public int Id { get; set; }
+    public byte[] Data { get; set; } = [];
+}
+
 /// <summary>The region-cell summary arrays as an opaque byte payload (table <c>region_level</c>, one row with Id 0; format owned by the writer).</summary>
 public sealed class RegionLevelRow
 {

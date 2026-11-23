@@ -36,7 +36,7 @@ namespace WorldEcon.Rendering;
 /// <see cref="TileBlockCache"/>, so they may run on any thread. <see cref="TilesLoaded"/> is raised on a thread-pool
 /// thread.</para>
 /// </remarks>
-public sealed class MapRenderer : IDisposable
+public sealed partial class MapRenderer : IDisposable
 {
     private const int ArrowTargetCount = 500;
     /// <summary>On-screen length between river arrows, pixels (<see cref="MapDrawOptions.RiverArrows"/>).</summary>
@@ -101,9 +101,7 @@ public sealed class MapRenderer : IDisposable
     private readonly int[] _rRing = [];
     private readonly TileCellIndex? _regionsOf;
     private readonly int[] _largeLakeRegions = [];
-    private readonly Vector3[][] _riverPoints = [];
-    private readonly int[][] _riverGlobe = [];
-    private readonly byte[][] _riverLevel = [];
+    private readonly RiverSet? _regionRivers;
     private readonly uint[]?[] _rColours;
 
     // Flow scales (log10).
@@ -241,14 +239,14 @@ public sealed class MapRenderer : IDisposable
             var confluences = RiverChains.Confluences(to);
             DrawnRivers = [.. RiverChains.Build(from, to, flow, c => rs.Kind[c] is (byte)Landform.Ocean or (byte)Landform.Lake)
                 .Select(c => RiverChains.Smooth(c, rs.Geometry.Centre, confluences, 0.5 * _w.RegionCellAngle))];
-            _riverPoints = [.. DrawnRivers.Select(d => d.Points.Select(ToF).ToArray())];
-            _riverGlobe = [.. DrawnRivers.Select(d => d.Points.Select(_w.GlobeTiles.Nearest).ToArray())];
-            _riverLevel = [.. DrawnRivers.Select(d => d.Flow.Select(fl => Level(fl, _logMajor, _logMax)).ToArray())];
+            _regionRivers = MakeRiverSet(DrawnRivers, 0.5 * _w.RegionCellAngle);
         }
 
         for (var b = 0; b < RiverWidthLevels; b++) _riverPaths[b] = new SKPath();
         if (SKTypeface.Default is { } typeface) _font = new SKFont(typeface, 12); // null when fontconfig has no fonts: labels skipped
 
+        InitImagery();
+        InitRiverCourses();
         if (world.TileSource is { } source && world.Tiles is { } tiles)
         {
             _cache = new TileBlockCache(source, tiles, world.GlobeTiles, cacheCapacity, maxConcurrentLoads);
@@ -335,15 +333,26 @@ public sealed class MapRenderer : IDisposable
     }
 
     /// <summary>
-    /// At Detail View, loads the tile blocks of every visible globe cell and completes when they are cached (for PNG
-    /// output and tests); completes at once at other levels.
+    /// Loads the tile blocks of every visible globe cell and completes when they are cached (for PNG output and tests): at
+    /// Detail View, and with imagery once globe cells are at least <see cref="BlockTextureMinPx"/> wide (then their
+    /// neighbours' blocks too, which block textures sample near the cell edge); completes at once otherwise.
     /// </summary>
     public Task LoadVisibleAsync(MapViewState view)
     {
-        if (_cache is null || EffectiveLevel(view) != MapLevel.Detail) return Task.CompletedTask;
+        if (_cache is null) return Task.CompletedTask;
+        var detail = EffectiveLevel(view) == MapLevel.Detail;
         var cells = new List<int>();
         VisibleGlobeCells(view, cells);
-        return Task.WhenAll(cells.Select(_cache.EnsureLoadedAsync));
+        var wanted = new HashSet<int>();
+        foreach (var c in cells)
+        {
+            if (detail) wanted.Add(c);
+            if (!HasImagery || ProjectedDiameter(view, c) < BlockTextureMinPx) continue;
+            wanted.Add(c);
+            foreach (var nb in _l.Grid.Neighbours(c)) wanted.Add(nb);
+        }
+
+        return wanted.Count == 0 ? Task.CompletedTask : Task.WhenAll(wanted.Select(_cache.EnsureLoadedAsync));
     }
 
     /// <summary>
@@ -458,17 +467,25 @@ public sealed class MapRenderer : IDisposable
             _cells.Reset();
             _overlay.Reset();
             _glyphs.Clear();
+            _textured.Reset();
+            _blend.Reset();
+            _blockBuilds = 0;
+            _blockPending = false;
 
-            var pixels = UseVertexFill || !IsPixelAligned(canvas.TotalMatrix) ? null : FrameBitmap((int)Math.Ceiling(view.Width), (int)Math.Ceiling(view.Height));
+            // Imagery needs the frame bitmap (textured spans); on a scaled canvas the bitmap is drawn scaled.
+            var pixels = !HasImagery && (UseVertexFill || !IsPixelAligned(canvas.TotalMatrix)) ? null : FrameBitmap((int)Math.Ceiling(view.Width), (int)Math.Ceiling(view.Height));
             DrawBackground(pixels is null ? canvas : _frameCanvas!, view);
             var frame = new Frame(view, options, level);
             if (level == MapLevel.Globe) EmitGlobeCells(ref frame);
             else EmitGroups(ref frame);
             LastBuildMs = sw.Elapsed.TotalMilliseconds;
             _cells.Flush(canvas, _fill, pixels);
+            if (_textured.Count > 0) _textured.Fill(pixels!);
+            if (_blend.Count > 0) _blend.Fill(pixels!);
             LastCellsMs = sw.Elapsed.TotalMilliseconds;
 
-            if (level == MapLevel.Globe && options.Lakes) EmitLargeLakes(ref frame);
+            // With imagery the lakes are in the textures; the large-lake overlay is for flat cell colours.
+            if (level == MapLevel.Globe && options.Lakes && !HasImagery) EmitLargeLakes(ref frame);
             if (options.MountainSymbols && level != MapLevel.Detail) EmitGlyphs();
             _overlay.Flush(canvas, _fill, pixels);
             if (pixels is not null) canvas.DrawBitmap(pixels, 0, 0);
@@ -481,11 +498,15 @@ public sealed class MapRenderer : IDisposable
 
             if (options.Graticule || options.Equator) DrawLatLonLines(canvas, ref frame);
             if (level == MapLevel.Globe && options.Arrows && options.Layer is GlobeLayer.Currents or GlobeLayer.Winds) DrawArrows(canvas, view, options.Layer);
+            if (options.HexGrid) DrawHexGrid(canvas, ref frame);
             _labelRects.Clear();
             if (options.Settlements && options.Markers is { Count: > 0 } markers) DrawMarkers(canvas, ref frame, markers, options.Labels);
-            if (options.Hover is { } hover && hover != options.Selected) StrokePick(canvas, ref frame, hover, new SKColor(255, 255, 255, 170), 1.5f);
+            if (options.Hover is { } hover) DrawHoverRings(canvas, ref frame, hover, skipCentre: hover == options.Selected);
             if (options.Selected is { } selected) StrokePick(canvas, ref frame, selected, SKColors.Yellow, 2.5f);
             LastDrawMs = sw.Elapsed.TotalMilliseconds;
+            LastFramePending = _blockPending;
+            LastFrameBlockBuilds = _blockBuilds;
+            if (_blockPending) ThreadPool.QueueUserWorkItem(_ => TilesLoaded?.Invoke(this, -1)); // more textures to build: draw again
         }
     }
 
@@ -500,6 +521,8 @@ public sealed class MapRenderer : IDisposable
             _arrowPath.Dispose();
             _outline.Dispose();
             _graticulePath.Dispose();
+            _gridPath.Dispose();
+            foreach (var p in _ringPaths) p.Dispose();
             _riverArrowPath.Dispose();
             _riverArrow.Dispose();
             _riverDot.Dispose();
@@ -629,13 +652,21 @@ public sealed class MapRenderer : IDisposable
             var centre = new SKPoint(sx, sy);
             var radius = Dist(pts[0], centre);
             var s = f.Options.Borders ? InsetScale(radius, GlobeGapPx) : 1f;
+            if (HasImagery)
+            {
+                EmitTexturedCell(ref f, c, (sx, sy, 1f), GlobeGapPx, f.Highlighted?.Contains(c) == true);
+                if (_gMountain[c] && radius >= MountainSymbolMinPx) _glyphs.Add(new Vector3(sx, sy, radius * s));
+                drawn++;
+                continue;
+            }
+
             var col = Shade(ref f, _gCentres[c], colours[c], f.Highlighted?.Contains(c) == true);
             EmitFan(_cells, centre, pts[..n], s, col);
             if (_gMountain[c] && radius >= MountainSymbolMinPx) _glyphs.Add(new Vector3(sx, sy, radius * s));
             drawn++;
         }
 
-        LastDrawnCells = drawn;
+        if (!HasImagery) LastDrawnCells = drawn;
     }
 
     private void EmitGroups(ref Frame f)
@@ -647,18 +678,28 @@ public sealed class MapRenderer : IDisposable
         {
             var cluster = ClusterCached(ref f, g);
             var tint = f.Highlighted?.Contains(g) == true;
-            if (f.Level == MapLevel.Detail)
+            var tilePolygons = f.Level == MapLevel.Detail || (HasImagery && _w.TileAngle * f.View.ScalePxPerRad >= TilePolygonMinPx);
+            if (tilePolygons && _cache is not null)
             {
                 var geometry = _cache!.TryGet(g, out var state);
                 if (geometry is not null)
                 {
-                    EmitTiles(ref f, geometry, cluster, tint);
+                    // With imagery: tile-centre triangles (no hex edges); flat worlds keep their tile hexes.
+                    if (HasImagery) EmitTileTriangles(ref f, geometry, cluster, tint);
+                    else EmitTiles(ref f, geometry, cluster, tint);
                     LastTileBlocksDrawn++;
                     continue;
                 }
 
                 // NotLoaded: start; Loading: refresh the request frame; Failed: load again once the backoff has passed.
                 if (state is TileBlockState.NotLoaded or TileBlockState.Loading or TileBlockState.Failed) _cache.Request(g);
+            }
+
+            if (HasImagery)
+            {
+                EmitTexturedCell(ref f, g, cluster, CellGapPx, tint);
+                EmitRegionGlyphs(ref f, g, cluster);
+                continue;
             }
 
             EmitRegionGroup(ref f, g, cluster, regionColours, tint);
@@ -790,17 +831,42 @@ public sealed class MapRenderer : IDisposable
 
     private void DrawRegionRivers(SKCanvas canvas, ref Frame f)
     {
-        if (_riverPoints.Length == 0) return;
         var view = f.View;
+        DrawMinorRegionRivers(canvas, ref f);
+        if (RiverSetFor(view) is not { } set) return;
         foreach (var p in _riverPaths) p.Rewind();
+        _riverArrowPath.Rewind();
+        _riverDots.Clear();
         var group = f.Level != MapLevel.Globe && f.Options.Borders;
-        for (var k = 0; k < _riverPoints.Length; k++)
+        var unit = (float)(_w.RegionCellAngle * view.ScalePxPerRad);
+        AddRiverPaths(ref f, set, group);
+        var marks = f.Options.RiverArrows || f.Options.RiverEnds;
+        if (marks) AddRiverMarks(ref f, set, group, unit, 0.07f, 0.18f, 10f, detail: false);
+        StrokeRivers(canvas, unit, 0.07f, 0.18f, 10f);
+        if (marks) DrawRiverMarks(canvas);
+    }
+
+    /// <summary>
+    /// Adds every visible piece of <paramref name="set"/> whose downstream-end flow is at least <paramref name="minFlow"/>
+    /// and whose upstream-end flow is below <paramref name="maxFlow"/> to the width-level paths (width from the downstream
+    /// end: flow only grows downstream); returns the pieces added.
+    /// </summary>
+    private int AddRiverPaths(ref Frame f, RiverSet set, bool group, double minFlow = 0, double maxFlow = double.MaxValue)
+    {
+        var view = f.View;
+        var added = 0;
+        for (var k = 0; k < set.Points.Length; k++)
         {
-            var pts = _riverPoints[k];
-            var globe = _riverGlobe[k];
-            var level = _riverLevel[k];
+            if (!set.Visible(k, view.ScalePxPerRad)) continue;
+            var pts = set.Points[k];
+            var globe = set.Globe[k];
+            var level = set.Level[k];
+            var flow = set.Rivers[k].Flow;
             for (var i = 0; i + 1 < pts.Length; i++)
             {
+                // Shown once the downstream end reaches minFlow; left to the major lines once the upstream end reaches maxFlow
+                // (so a tributary's last piece into a major river's confluence tile is still drawn and meets it).
+                if (flow[i + 1] < minFlow || flow[i] >= maxFlow) continue;
                 if (!view.ProjectFast(pts[i], out var ax, out var ay) || !view.ProjectFast(pts[i + 1], out var bx, out var by)) continue;
                 if (Math.Max(ax, bx) < 0 || Math.Min(ax, bx) > f.W || Math.Max(ay, by) < 0 || Math.Min(ay, by) > f.H) continue;
                 if (group)
@@ -809,33 +875,36 @@ public sealed class MapRenderer : IDisposable
                     (bx, by) = Apply(ClusterCached(ref f, globe[i + 1]), bx, by);
                 }
 
-                // The downstream end's width: flow only grows downstream, so pieces widen monotonically.
                 var path = _riverPaths[level[i + 1]];
                 path.MoveTo(ax, ay);
                 path.LineTo(bx, by);
+                added++;
             }
         }
 
-        var unit = (float)(_w.RegionCellAngle * view.ScalePxPerRad);
-        StrokeRivers(canvas, unit, 0.07f, 0.18f, 10f);
-        if (f.Options.RiverArrows || f.Options.RiverEnds) DrawRegionRiverMarks(canvas, ref f, group, unit);
+        return added;
     }
 
     /// <summary>
-    /// Arrows along each drawn river (every <see cref="RiverArrowSpacingPx"/> of visible length, restarting after a
-    /// hidden point) and dots at its source and, for <see cref="RiverChainEnd.Water"/>, its mouth. Every drawn region
-    /// river has flow ≥ <see cref="MapWorld.MajorRiverFlow"/>.
+    /// Arrows along each river of <paramref name="set"/> (every <see cref="RiverArrowSpacingPx"/> of visible length,
+    /// restarting after a hidden point) and dots at its source and, for <see cref="RiverChainEnd.Water"/>, its mouth. At
+    /// Detail View (<paramref name="detail"/>) only rivers reaching <see cref="MapWorld.MajorRiverFlow"/> get marks, and a
+    /// source dot needs <see cref="IsTileRiverSource"/> (a chain can start at a block border); every Globe and Region View
+    /// river is major.
     /// </summary>
-    private void DrawRegionRiverMarks(SKCanvas canvas, ref Frame f, bool group, float unit)
+    private void AddRiverMarks(ref Frame f, RiverSet set, bool group, float unit, float minFrac, float addFrac, float maxPx, bool detail)
     {
         var view = f.View;
-        _riverArrowPath.Rewind();
-        _riverDots.Clear();
-        for (var k = 0; k < _riverPoints.Length; k++)
+        for (var k = 0; k < set.Points.Length; k++)
         {
-            var pts = _riverPoints[k];
-            var globe = _riverGlobe[k];
-            var level = _riverLevel[k];
+            if (!set.Visible(k, view.ScalePxPerRad)) continue;
+            var chain = set.Rivers[k].Chain;
+            if (detail && chain.Flow[^1] < _w.MajorRiverFlow) continue;
+            var pts = set.Points[k];
+            var globe = set.Globe[k];
+            var level = set.Level[k];
+            var sourceDot = f.Options.RiverEnds && chain.StartsAtSource && (!detail || IsTileRiverSource(chain.Cells[0]) == true);
+            var mouthDot = f.Options.RiverEnds && chain.End == RiverChainEnd.Water;
             _screenRun.Clear();
             var runStart = 0;
             for (var i = 0; i <= pts.Length; i++)
@@ -851,18 +920,15 @@ public sealed class MapRenderer : IDisposable
                 {
                     if (_screenRun.Count == 0) runStart = i;
                     _screenRun.Add(q);
-                    if (f.Options.RiverEnds && i == 0 && DrawnRivers[k].Chain.StartsAtSource) _riverDots.Add((q.X, q.Y, false, RiverWidth(level[0], unit, 0.07f, 0.18f, 10f), level[0]));
-                    if (f.Options.RiverEnds && i == pts.Length - 1 && DrawnRivers[k].Chain.End == RiverChainEnd.Water)
-                        _riverDots.Add((q.X, q.Y, true, RiverWidth(level[i], unit, 0.07f, 0.18f, 10f), level[i]));
+                    if (sourceDot && i == 0) _riverDots.Add((q.X, q.Y, false, RiverWidth(level[0], unit, minFrac, addFrac, maxPx), level[0]));
+                    if (mouthDot && i == pts.Length - 1) _riverDots.Add((q.X, q.Y, true, RiverWidth(level[i], unit, minFrac, addFrac, maxPx), level[i]));
                     continue;
                 }
 
-                if (f.Options.RiverArrows && _screenRun.Count >= 2) AddArrows(CollectionsMarshal.AsSpan(_screenRun), level, runStart, unit, 0.07f, 0.18f, 10f);
+                if (f.Options.RiverArrows && _screenRun.Count >= 2) AddArrows(CollectionsMarshal.AsSpan(_screenRun), level, runStart, unit, minFrac, addFrac, maxPx);
                 _screenRun.Clear();
             }
         }
-
-        DrawRiverMarks(canvas);
     }
 
     private void AddArrows(ReadOnlySpan<SKPoint> run, byte[] level, int firstIndex, float unit, float minFrac, float addFrac, float maxPx)
@@ -930,6 +996,10 @@ public sealed class MapRenderer : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Detail View rivers: each visible block's rivers (flow ≥ <see cref="MapWorld.RiverMinFlow"/>) joined into chains and
+    /// smoothed through the tile centres (<see cref="BlockRiverLines"/>), so they read as rivers rather than hex zigzags.
+    /// </summary>
     private void DrawTileRivers(SKCanvas canvas, ref Frame f)
     {
         var view = f.View;
@@ -937,54 +1007,15 @@ public sealed class MapRenderer : IDisposable
         _riverArrowPath.Rewind();
         _riverDots.Clear();
         var marks = f.Options.RiverArrows || f.Options.RiverEnds;
-        var unitTile = (float)(_w.TileAngle * view.ScalePxPerRad);
-        // Arrow step in tiles: one tile step is 0.87–1 tile width, so about RiverArrowSpacingPx apart.
-        var arrowStep = Math.Max(1, (int)Math.Round(RiverArrowSpacingPx / Math.Max(1e-3f, unitTile)));
+        var unit = (float)(_w.TileAngle * view.ScalePxPerRad);
         foreach (var g in _visible)
         {
-            var e = _cache!.TryGet(g, out _);
-            if (e is null) continue;
-            var cluster = ClusterCached(ref f, g);
-            var block = e.Block;
-            for (var r = 0; r < e.RiverTiles.Length; r++)
-            {
-                var i = e.RiverTiles[r];
-                if (block.Flow[i] < _w.RiverMinFlow) continue;
-                var water = block.Water[i];
-                if (water is (byte)TileWaterKind.Lake or (byte)TileWaterKind.Ocean) continue;
-                if (!view.ProjectFast(e.Centres[i], out var ax, out var ay) || !view.ProjectFast(e.RiverTo[r], out var bx, out var by)) continue;
-                if (Math.Max(ax, bx) < 0 || Math.Min(ax, bx) > f.W || Math.Max(ay, by) < 0 || Math.Min(ay, by) > f.H) continue;
-                (ax, ay) = Apply(cluster, ax, ay);
-                (bx, by) = Apply(ClusterCached(ref f, e.RiverToGlobe[r]), bx, by);
-                float coastX = (ax + bx) / 2, coastY = (ay + by) / 2; // midpoint toward the downstream tile (the shore when it is water)
-                // Into an ocean tile of this block, or of the neighbouring block when that one is loaded: stop at the coast.
-                if (e.RiverToOcean[r] || (e.RiverToGlobe[r] != g && _cache.TryGet(e.RiverToGlobe[r], out _) is { } next && next.IsOcean(e.RiverToTile[r])))
-                {
-                    bx = (ax + bx) / 2;
-                    by = (ay + by) / 2;
-                }
-
-                var level = Bucket(block.Flow[i], _logTileMin);
-                var path = _riverPaths[level];
-                path.MoveTo(ax, ay);
-                path.LineTo(bx, by);
-                if (!marks || block.Flow[i] < _w.MajorRiverFlow) continue;
-                var width = RiverWidth(level, unitTile, 0.08f, 0.25f, 14f);
-                if (f.Options.RiverArrows && e.StepsToExit[r] % arrowStep == 0)
-                {
-                    float dx = bx - ax, dy = by - ay, len = MathF.Sqrt((dx * dx) + (dy * dy));
-                    if (len > 0) AddChevron((ax + bx) / 2, (ay + by) / 2, dx / len, dy / len, width);
-                }
-
-                if (!f.Options.RiverEnds) continue;
-                if (IsTileRiverSource(block.TileIds[i]) == true) _riverDots.Add((ax, ay, false, width, level));
-                var intoWater = e.RiverToOcean[r] || e.RiverToLake[r]
-                    || (e.RiverToGlobe[r] != g && _cache.TryGet(e.RiverToGlobe[r], out _) is { } nb && (nb.IsOcean(e.RiverToTile[r]) || nb.IsLake(e.RiverToTile[r])));
-                if (intoWater) _riverDots.Add((coastX, coastY, true, width, level));
-            }
+            if (_cache!.TryGet(g, out _) is not { } e || BlockRiverSet(e) is not { } set) continue;
+            AddRiverPaths(ref f, set, f.Options.Borders);
+            if (marks) AddRiverMarks(ref f, set, f.Options.Borders, unit, 0.08f, 0.25f, 14f, detail: true);
         }
 
-        StrokeRivers(canvas, unitTile, 0.08f, 0.25f, 14f);
+        StrokeRivers(canvas, unit, 0.08f, 0.25f, 14f);
         if (marks) DrawRiverMarks(canvas);
     }
 
@@ -1215,15 +1246,24 @@ public sealed class MapRenderer : IDisposable
 
     private void StrokePick(SKCanvas canvas, ref Frame f, MapPick pick, SKColor colour, float width)
     {
-        var view = f.View;
         _outline.Rewind();
+        if (!AddOutline(_outline, ref f, pick)) return;
+        _stroke.Color = colour;
+        _stroke.StrokeWidth = width;
+        canvas.DrawPath(_outline, _stroke);
+    }
+
+    /// <summary>Adds the drawn polygon of <paramref name="pick"/> to <paramref name="path"/>; false when it is not drawn at this level or is hidden.</summary>
+    private bool AddOutline(SKPath path, ref Frame f, MapPick pick)
+    {
+        var view = f.View;
         Span<SKPoint> pts = stackalloc SKPoint[6];
         int n;
         switch (pick.Level)
         {
             case MapLevel.Globe when f.Level == MapLevel.Globe && (uint)pick.Id < (uint)_gCentres.Length:
             {
-                if (!view.ProjectFast(_gCentres[pick.Id], out _, out _)) return;
+                if (!view.ProjectFast(_gCentres[pick.Id], out _, out _)) return false;
                 int start = _gRingStart[pick.Id];
                 n = _gRingStart[pick.Id + 1] - start;
                 for (var k = 0; k < n; k++)
@@ -1237,7 +1277,7 @@ public sealed class MapRenderer : IDisposable
 
             case MapLevel.Region when f.Level != MapLevel.Globe && _r is not null && (uint)pick.Id < (uint)_rCentres.Length:
             {
-                if (!view.ProjectFast(_rCentres[pick.Id], out _, out _)) return;
+                if (!view.ProjectFast(_rCentres[pick.Id], out _, out _)) return false;
                 var c = ClusterCached(ref f, _r.GlobeParent[pick.Id]);
                 int start = _rRingStart[pick.Id];
                 n = _rRingStart[pick.Id + 1] - start;
@@ -1253,7 +1293,7 @@ public sealed class MapRenderer : IDisposable
 
             case MapLevel.Detail when f.Level == MapLevel.Detail && _w.Tiles is { } tiles && (uint)pick.Id < (uint)tiles.Count && (uint)pick.GlobeCell < (uint)_gCentres.Length:
             {
-                if (!view.ProjectFast(ToF(tiles.Centre(pick.Id)), out _, out _)) return;
+                if (!view.ProjectFast(ToF(tiles.Centre(pick.Id)), out _, out _)) return false;
                 var c = ClusterCached(ref f, pick.GlobeCell);
                 Span<Vector3d> corners = stackalloc Vector3d[6];
                 n = tiles.Corners(pick.Id, corners);
@@ -1268,15 +1308,13 @@ public sealed class MapRenderer : IDisposable
             }
 
             default:
-                return;
+                return false;
         }
 
-        _outline.MoveTo(pts[0]);
-        for (var k = 1; k < n; k++) _outline.LineTo(pts[k]);
-        _outline.Close();
-        _stroke.Color = colour;
-        _stroke.StrokeWidth = width;
-        canvas.DrawPath(_outline, _stroke);
+        path.MoveTo(pts[0]);
+        for (var k = 1; k < n; k++) path.LineTo(pts[k]);
+        path.Close();
+        return true;
     }
 
     // ---- colours ----

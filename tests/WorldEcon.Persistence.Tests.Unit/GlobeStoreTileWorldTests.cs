@@ -87,6 +87,14 @@ public class GlobeStoreTileWorldTests
             stored.Regions.Count.Should().Be(10_242);
             TileSummaryStage.RegionHash(stored.Regions).Should().Be(TileSummaryStage.RegionHash(generated.Regions!));
             stored.Lakes.Should().Equal(generated.Lakes, "every TileLake field, including Inflow, Evaporation and ExitTile, round-trips");
+            stored.Imagery.Should().NotBeNull("worlds written by this build carry the map imagery");
+            stored.Imagery!.Biome.Should().Equal(generated.Imagery!.Biome);
+            stored.Imagery.Water.Should().Equal(generated.Imagery.Water);
+            stored.Imagery.ElevationM.Should().Equal(generated.Imagery.ElevationM);
+            stored.RiverCourses.Should().NotBeNull();
+            stored.RiverCourses!.From.Should().Equal(generated.RiverCourses!.From);
+            stored.RiverCourses.To.Should().Equal(generated.RiverCourses.To);
+            stored.RiverCourses.ToWater.Should().Equal(generated.RiverCourses.ToWater);
 
             (await ctx.TileBlocks.CountAsync()).Should().Be(2_562);
             (await ctx.TileBlocks.SumAsync(r => r.TileCount)).Should().Be(tiles.Count);
@@ -215,6 +223,39 @@ public class GlobeStoreTileWorldTests
             await ctx.Database.ExecuteSqlRawAsync("DELETE FROM region_level");
             var load = () => new GlobeStore(ctx).LoadAsync(world.Id);
             (await load.Should().ThrowAsync<InvalidOperationException>()).WithMessage("*no region level*regenerate the world*");
+        }
+        finally { Cleanup(path); }
+    }
+
+    [Test]
+    public async Task Load_WithoutMapImageryRows_LoadsWithNoImagery()
+    {
+        var path = TempDb();
+        try
+        {
+            var world = await WrittenWorldAsync(path);
+            await using var ctx = NewContext(path);
+            await ctx.Database.ExecuteSqlRawAsync("DELETE FROM map_imagery");
+            var stored = await new GlobeStore(ctx).LoadAsync(world.Id);
+            stored.Imagery.Should().BeNull("a world written before the map imagery existed draws with flat cell colours");
+            stored.RiverCourses.Should().BeNull();
+        }
+        finally { Cleanup(path); }
+    }
+
+    [Test]
+    public async Task Load_OfAFileWithoutTheMapImageryTable_LoadsWithNoImagery()
+    {
+        var path = TempDb();
+        try
+        {
+            var world = await WrittenWorldAsync(path);
+            await using var ctx = NewContext(path);
+            // A file written before the AddMapImagery migration (opening does not migrate).
+            await ctx.Database.ExecuteSqlRawAsync("DROP TABLE map_imagery");
+            var stored = await new GlobeStore(ctx).LoadAsync(world.Id);
+            stored.Imagery.Should().BeNull();
+            stored.RiverCourses.Should().BeNull();
         }
         finally { Cleanup(path); }
     }

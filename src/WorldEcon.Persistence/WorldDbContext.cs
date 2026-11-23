@@ -47,6 +47,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<TileBlockRow> TileBlocks => Set<TileBlockRow>();
     public DbSet<LakeRow> Lakes => Set<LakeRow>();
     public DbSet<RegionLevelRow> RegionLevels => Set<RegionLevelRow>();
+    public DbSet<MapImageryRow> MapImagery => Set<MapImageryRow>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {

@@ -21,7 +21,7 @@ public class PaletteAndLabelTests
 
     private static readonly MapDrawOptions Plain = new()
     {
-        Layer = GlobeLayer.Temperature, Rivers = false, Lakes = false, MountainSymbols = false, Settlements = false, Arrows = false, Equator = false,
+        Layer = GlobeLayer.Temperature, Rivers = false, Lakes = false, MountainSymbols = false, Settlements = false, Arrows = false, Equator = false, Borders = true,
     };
 
     // Sum of absolute RGB channel differences, 0–765.
@@ -58,7 +58,7 @@ public class PaletteAndLabelTests
     [Arguments(MapLevel.Detail)]
     public async Task Labels_of_neighbouring_settlements_do_not_overlap_at_each_level(MapLevel level)
     {
-        var w = MapWorld.FromGenerated(Gen8.Value, Settings8);
+        var w = MapWorld.FromGenerated(Gen8.Value, Settings8, withImagery: false);
         using var r = new MapRenderer(w);
         var c = 300;
         var nb = World8.Grid.Neighbours(c).ToArray();
@@ -161,7 +161,7 @@ public class PaletteAndLabelTests
     [Arguments(GlobeLayer.Winds)]
     public void Png_has_the_requested_size_background_corners_and_renders_every_layer_with_markers(GlobeLayer layer)
     {
-        var w = MapWorld.FromGenerated(Gen8.Value, Settings8);
+        var w = MapWorld.FromGenerated(Gen8.Value, Settings8, withImagery: false);
         var markers = new List<MapMarker> { new(0, -1, "North"), new(5, -1, "Five") };
 
         using var bmp = SKBitmap.Decode(GlobePngRenderer.RenderMap(w, 300, 200, 10, 20, 1, new MapDrawOptions { Layer = layer, Markers = markers }));
@@ -175,7 +175,7 @@ public class PaletteAndLabelTests
     [Test]
     public void Nearest_cell_to_the_view_direction_is_drawn_at_the_image_centre()
     {
-        var w = MapWorld.FromGenerated(Gen8.Value, Settings8);
+        var w = MapWorld.FromGenerated(Gen8.Value, Settings8, withImagery: false);
         using var r = new MapRenderer(w);
         var view = w.ViewFromYawPitch(400, 400, 25, 15);
         var expected = GlobePngRenderer.NearestCell(World8, 25, 15);
@@ -201,7 +201,7 @@ public class PaletteAndLabelTests
     [Arguments(MapLevel.Detail)]
     public async Task A_translated_canvas_shows_the_same_pixels_and_a_2x_canvas_shows_the_same_cells(MapLevel level)
     {
-        var w = MapWorld.FromGenerated(Gen8.Value, Settings8);
+        var w = MapWorld.FromGenerated(Gen8.Value, Settings8, withImagery: false);
         using var r = new MapRenderer(w);
         var centre = World8.Geometry.Centre(300);
         var scale = level switch

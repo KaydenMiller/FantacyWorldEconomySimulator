@@ -13,7 +13,7 @@ namespace WorldEcon.WorldGen.Tests.Unit;
 /// </summary>
 public class GoldenSeedTests
 {
-    private const int ExpectedGeneratorVersion = 4;
+    private const int ExpectedGeneratorVersion = 5;
 
     private static readonly (WorldGenStage Stage, ulong Hash)[] Golden =
     [
@@ -27,10 +27,10 @@ public class GoldenSeedTests
         (WorldGenStage.TileElevation, 6748854441168672647UL),
         (WorldGenStage.TileSeaLevel, 2897217092163579793UL),
         (WorldGenStage.TileClimate, 17207401778292905099UL),
-        (WorldGenStage.TileHydrology, 14245593791870290830UL),
-        (WorldGenStage.TileLandform, 12331751271830316279UL),
-        (WorldGenStage.Summary, 12542976872513865377UL),
-        (WorldGenStage.Areas, 17370117328058191987UL),
+        (WorldGenStage.TileHydrology, 7473861701537284876UL),
+        (WorldGenStage.TileLandform, 9246537001816030756UL),
+        (WorldGenStage.Summary, 16761013873505122623UL),
+        (WorldGenStage.Areas, 13051592550779283734UL),
     ];
 
     private static readonly (WorldGenStage Stage, ulong Hash)[] GoldenGlobe =

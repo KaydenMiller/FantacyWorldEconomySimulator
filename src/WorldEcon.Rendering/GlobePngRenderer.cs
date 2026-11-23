@@ -37,6 +37,8 @@ public static class GlobePngRenderer
 
         using var surface = SKSurface.Create(new SKImageInfo((int)view.Width, (int)view.Height));
         renderer.Draw(surface.Canvas, view, options);
+        // Block textures are built a few per frame; draw again until every visible one is built (bounded).
+        for (var i = 0; i < 500 && renderer.LastFramePending; i++) renderer.Draw(surface.Canvas, view, options);
         using var image = surface.Snapshot();
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
         return data.ToArray();

@@ -23,6 +23,12 @@ public sealed record GeneratedWorld(WorldLayers Layers, IReadOnlyList<StageResul
 
     /// <summary>Tile lakes and dry lake beds (<see cref="TileLayers.Lakes"/>); empty for <see cref="WorldGenerator.GenerateGlobe"/>.</summary>
     public IReadOnlyList<TileLake> Lakes { get; init; } = [];
+
+    /// <summary>Per-globe-cell texel samples of the tiles (the map's stored imagery); null for <see cref="WorldGenerator.GenerateGlobe"/>.</summary>
+    public CellImagery? Imagery { get; init; }
+
+    /// <summary>Major river edges at tile resolution (the map's Globe and Region View rivers); null for <see cref="WorldGenerator.GenerateGlobe"/>.</summary>
+    public RiverCourses? RiverCourses { get; init; }
 }
 
 /// <summary>
@@ -43,9 +49,11 @@ public static class WorldGenerator
     /// forested hills (Stage 7), minimum basin depth, base evaporation, depth-scaled floor share and short-system
     /// removal (Stages 7–8), and recalibrated defaults. 4 (tile detail): tile stages after Climate; globe elevation, sea
     /// level, biome, composition and hydrology layers are summaries of the tiles; the globe Biomes and Hydrology stages
-    /// and their settings are removed.
+    /// and their settings are removed. 5 (flat drainage): within one filled level the tile floods order tiles by hop
+    /// distance from where the flood entered that level, so flats drain by shortest routes instead of in tile-id order
+    /// (straight parallel channels).
     /// </summary>
-    public const int GeneratorVersion = 4;
+    public const int GeneratorVersion = 5;
 
     private sealed record StageEntry(
         WorldGenStage Stage,
@@ -120,8 +128,15 @@ public static class WorldGenerator
             () => TileSummaryStage.Hash(layers, regions!));
 
         RunEntry(Areas, worldSeed, settings, layers, results, progress);
+
+        // Derived map data (not a stage: no hash, no effect on generated values).
+        var imagery = CellImagery.Build(tiles, layers.Grid, layers.Geometry, parallel);
+        var courses = RiverCourses.Build(tiles, settings.Tiles.MajorRiverFlow);
         progress.End();
-        return new GeneratedWorld(layers, results, GeneratorVersion) { Tiles = tiles, Regions = regions, Lakes = tiles.Lakes };
+        return new GeneratedWorld(layers, results, GeneratorVersion)
+        {
+            Tiles = tiles, Regions = regions, Lakes = tiles.Lakes, Imagery = imagery, RiverCourses = courses,
+        };
 
         void TimeAndHash(WorldGenStage stage, Action run, Func<ulong> hash)
         {

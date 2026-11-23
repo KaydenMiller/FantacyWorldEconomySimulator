@@ -229,6 +229,67 @@ public class TileHydrologyStageTests
 
     private static int Pole(TileLayers t) => t.Grid.Nearest(new Vector3d(0, 1, 0));
 
+    /// <summary>A flat round island: land at 50 m within θ &lt; 0.8 of the north pole, sea below 0 beyond.</summary>
+    private static TileLayers FlatIsland()
+    {
+        var settings = BowlSettings with { Grid = BowlSettings.Grid with { TileMultiplier = 6 } };
+        var t = TileStages.CreateLayers(BowlGlobe.Value, settings);
+        var e = new short[t.Count];
+        var ocean = new bool[t.Count];
+        for (int id = 0; id < t.Count; id++)
+        {
+            if (Theta(t, id) > 0.8) { e[id] = -100; ocean[id] = true; }
+            else e[id] = 50;
+        }
+
+        t.ElevationM = e;
+        t.Ocean = ocean;
+        t.SeaLevelM = 0;
+        t.TemperatureDeciC = new short[t.Count];
+        t.PrecipitationMm = Enumerable.Repeat((ushort)600, t.Count).ToArray();
+        TileHydrologyStage.Run(t, settings);
+        return t;
+    }
+
+    [Test]
+    public void A_flat_island_drains_by_shortest_routes_to_its_coast_not_along_lattice_rows()
+    {
+        var t = FlatIsland();
+        // Hop distance from every land tile to the sea (breadth-first from the sea).
+        var dist = new int[t.Count];
+        Array.Fill(dist, -1);
+        var queue = new Queue<int>();
+        for (int id = 0; id < t.Count; id++)
+            if (t.Ocean[id]) { dist[id] = 0; queue.Enqueue(id); }
+        Span<int> nb = stackalloc int[6];
+        while (queue.Count > 0)
+        {
+            int c = queue.Dequeue();
+            int k = t.Grid.Neighbours(c, nb);
+            for (int x = 0; x < k; x++)
+                if (dist[nb[x]] < 0) { dist[nb[x]] = dist[c] + 1; queue.Enqueue(nb[x]); }
+        }
+
+        double ratioSum = 0, cosSum = 0;
+        var land = 0;
+        for (int id = 0; id < t.Count; id++)
+        {
+            if (t.Ocean[id]) continue;
+            land++;
+            var hops = 0;
+            for (int c = id; !t.Ocean[c]; c = t.DownstreamOf(c)) hops++;
+            ratioSum += (double)hops / dist[id];
+            // Direction of the first step against "away from the pole" (the nearest coast is straight outward).
+            var p = t.Grid.Centre(id);
+            var d = t.Grid.Centre(t.DownstreamOf(id)) - p;
+            var outward = (p * p.Y) - new Vector3d(0, 1, 0);
+            if (outward.Length > 1e-9 && d.Length > 1e-12) cosSum += Vector3d.Dot(d.Normalize(), outward.Normalize());
+        }
+
+        (ratioSum / land).Should().BeLessThan(1.02, "every tile takes a shortest route to the sea");
+        (cosSum / land).Should().BeGreaterThan(0.75, "on a round island the shortest routes point outward");
+    }
+
     [Test]
     public void A_bowl_with_inflow_above_evaporation_fills_to_the_spill_level_and_drains_through_its_outlet()
     {
