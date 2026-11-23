@@ -20,66 +20,26 @@ public class GeographyV2RoundTripTests
             var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
             var grimovar = Continent.Create(world.Id, "Grimovar").Value;
             var iergoald = Continent.Create(world.Id, "Iergoald").Value;
-            var ocean = Region.Create(world.Id, "Ocean of Lost Souls", RegionKind.Ocean).Value;
-            var link1 = RegionContinent.Create(world.Id, ocean.Id, grimovar.Id).Value;
-            var link2 = RegionContinent.Create(world.Id, ocean.Id, iergoald.Id).Value;
+            var ocean = PoliticalRegion.Create(world.Id, "Ocean of Lost Souls").Value;
+            var link1 = PoliticalRegionContinent.Create(world.Id, ocean.Id, grimovar.Id).Value;
+            var link2 = PoliticalRegionContinent.Create(world.Id, ocean.Id, iergoald.Id).Value;
 
             await using (var ctx = NewContextOnFile(path))
             {
                 await ctx.Database.MigrateAsync();
                 ctx.Worlds.Add(world);
                 ctx.Continents.AddRange(grimovar, iergoald);
-                ctx.Regions.Add(ocean);
-                ctx.RegionContinents.AddRange(link1, link2);
+                ctx.PoliticalRegions.Add(ocean);
+                ctx.PoliticalRegionContinents.AddRange(link1, link2);
                 await ctx.SaveChangesAsync();
             }
 
             await using (var ctx = NewContextOnFile(path))
             {
-                var r = await ctx.Regions.SingleAsync();
+                var r = await ctx.PoliticalRegions.SingleAsync();
                 r.CountryId.Should().BeNull();
-                r.Kind.Should().Be(RegionKind.Ocean);
-                var continents = await ctx.RegionContinents.Where(x => x.RegionId == ocean.Id).ToListAsync();
+                        var continents = await ctx.PoliticalRegionContinents.Where(x => x.PoliticalRegionId == ocean.Id).ToListAsync();
                 continents.Should().HaveCount(2);
-            }
-        }
-        finally { File.Delete(path); }
-    }
-
-    [Test]
-    public async Task NestedRegions_ParentSpansChildren_ChildSharedByTwoParents()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"we_{Guid.NewGuid():N}.db");
-        try
-        {
-            var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
-            var yellowstone = Region.Create(world.Id, "Yellowstone", RegionKind.Forest).Value;
-            var stateA = Region.Create(world.Id, "State A", RegionKind.Land).Value;
-            var stateB = Region.Create(world.Id, "State B", RegionKind.Land).Value;
-            // Yellowstone spans State A and State B; State A is also (independently) part of a wider region.
-            var wider = Region.Create(world.Id, "The Frontier", RegionKind.Land).Value;
-            var c1 = RegionContainment.Create(world.Id, yellowstone.Id, stateA.Id).Value;
-            var c2 = RegionContainment.Create(world.Id, yellowstone.Id, stateB.Id).Value;
-            var c3 = RegionContainment.Create(world.Id, wider.Id, stateA.Id).Value;
-
-            await using (var ctx = NewContextOnFile(path))
-            {
-                await ctx.Database.MigrateAsync();
-                ctx.Worlds.Add(world);
-                ctx.Regions.AddRange(yellowstone, stateA, stateB, wider);
-                ctx.RegionContainments.AddRange(c1, c2, c3);
-                await ctx.SaveChangesAsync();
-            }
-
-            await using (var ctx = NewContextOnFile(path))
-            {
-                var yellowstoneChildren = await ctx.RegionContainments
-                    .Where(x => x.ParentRegionId == yellowstone.Id).ToListAsync();
-                yellowstoneChildren.Should().HaveCount(2);
-
-                var stateAParents = await ctx.RegionContainments
-                    .Where(x => x.ChildRegionId == stateA.Id).ToListAsync();
-                stateAParents.Should().HaveCount(2); // Yellowstone + The Frontier
             }
         }
         finally { File.Delete(path); }
@@ -95,7 +55,7 @@ public class GeographyV2RoundTripTests
             var continent = Continent.Create(world.Id, "Praxus").Value;
             var thaloria = Country.Create(world.Id, continent.Id, "Thaloria").Value;
             var kelFabrel = Country.Create(world.Id, continent.Id, "Kel Fabrel").Value;
-            var region = Region.Create(world.Id, "The Darkwood Deep", RegionKind.Forest).Value;
+            var region = PoliticalRegion.Create(world.Id, "The Darkwood Deep").Value;
             var xia = Settlement.Create(world.Id, region.Id, "Xia", SettlementType.City, 0, 0, 12000).Value;
             var zeigelith = Settlement.Create(world.Id, region.Id, "Zeigelith", SettlementType.City, 1, 1, 0).Value;
             zeigelith.SetState(SettlementState.Ruined);
@@ -109,7 +69,7 @@ public class GeographyV2RoundTripTests
                 ctx.Worlds.Add(world);
                 ctx.Continents.Add(continent);
                 ctx.Countries.AddRange(thaloria, kelFabrel);
-                ctx.Regions.Add(region);
+                ctx.PoliticalRegions.Add(region);
                 ctx.Settlements.AddRange(xia, zeigelith);
                 ctx.TerritorialClaims.AddRange(controls, disputes);
                 await ctx.SaveChangesAsync();

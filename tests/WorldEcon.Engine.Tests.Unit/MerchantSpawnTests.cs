@@ -27,7 +27,7 @@ public class MerchantSpawnTests
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "Cont").Value;
         var country = Country.Create(world.Id, continent.Id, "Country").Value;
-        var region = Region.Create(world.Id, country.Id, "Region").Value;
+        var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var big = Settlement.Create(world.Id, region.Id, "Big", SettlementType.City, 1, 1, 50_000).Value;
         var small = Settlement.Create(world.Id, region.Id, "Small", SettlementType.Village, 2, 2, 800).Value;
 
@@ -36,7 +36,7 @@ public class MerchantSpawnTests
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
         ctx.Countries.Add(country);
-        ctx.Regions.Add(region);
+        ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(big);
         ctx.Settlements.Add(small);
         await ctx.SaveChangesAsync();

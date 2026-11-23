@@ -15,7 +15,7 @@ internal static class FormRefs
             .OrderBy(x => x.Name).Select(x => (x.Name, x.Id.Value)).ToList();
 
     public static async Task<List<(string Name, Guid Id)>> RegionsAsync(TuiContext ctx)
-        => (await ctx.Db.Regions.Where(x => x.WorldId == ctx.World.Id).ToListAsync())
+        => (await ctx.Db.PoliticalRegions.Where(x => x.WorldId == ctx.World.Id).ToListAsync())
             .OrderBy(x => x.Name).Select(x => (x.Name, x.Id.Value)).ToList();
 
     public static async Task<List<(string Name, Guid Id)>> SettlementsAsync(TuiContext ctx)

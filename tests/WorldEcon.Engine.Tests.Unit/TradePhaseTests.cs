@@ -38,7 +38,7 @@ public class TradePhaseTests
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "Cont").Value;
         var country = Country.Create(world.Id, continent.Id, "Country").Value;
-        var region = Region.Create(world.Id, country.Id, "Region").Value;
+        var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var a = Settlement.Create(world.Id, region.Id, "A", SettlementType.Village, 1, 1, 100).Value;
         var b = Settlement.Create(world.Id, region.Id, "B", SettlementType.Village, 2, 2, 100).Value;
         var routeAb = Route.Create(world.Id, a.Id, b.Id, 120, Terrain.Plains, 0, RouteCategory.Land).Value;
@@ -61,7 +61,7 @@ public class TradePhaseTests
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
         ctx.Countries.Add(country);
-        ctx.Regions.Add(region);
+        ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(a);
         ctx.Settlements.Add(b);
         ctx.Routes.Add(routeAb);

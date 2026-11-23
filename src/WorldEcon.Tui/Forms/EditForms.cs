@@ -42,7 +42,7 @@ public sealed class SettlementEditForm : IRowEditForm
     }
 }
 
-/// <summary>Edit a region's kind and primary country.</summary>
+/// <summary>Edit a region's primary country.</summary>
 public sealed class RegionEditForm : IRowEditForm
 {
     public NavKind Kind => NavKind.Region;
@@ -50,12 +50,9 @@ public sealed class RegionEditForm : IRowEditForm
 
     public async Task<FormOutcome> RunAsync(Guid id, TuiContext ctx, IUserInteraction ui)
     {
-        var r = await ctx.Db.Regions.FirstOrDefaultAsync(x => x.Id == new RegionId(id));
+        var r = await ctx.Db.PoliticalRegions.FirstOrDefaultAsync(x => x.Id == new PoliticalRegionId(id));
         if (r is null) return FormOutcome.Fail("Region not found.");
         var t = $"Edit {r.Name}";
-
-        var kind = await FormPrompts.EnumAsync<RegionKind>(ui, t, $"Kind (now {r.Kind}):");
-        if (kind is null) return FormOutcome.Cancelled;
 
         var countries = await FormRefs.CountriesAsync(ctx);
         var options = new List<(string Name, Guid Id)> { ("(none)", Guid.Empty) };
@@ -63,7 +60,6 @@ public sealed class RegionEditForm : IRowEditForm
         var chosen = await FormPrompts.RefAsync(ui, t, "Primary country:", options);
         if (chosen is null) return FormOutcome.Cancelled;
 
-        r.SetKind(kind.Value);
         r.SetPrimaryCountry(chosen.Value == Guid.Empty ? null : new CountryId(chosen.Value));
         await ctx.Db.SaveChangesAsync();
         return FormOutcome.Ok($"Updated region '{r.Name}'.");

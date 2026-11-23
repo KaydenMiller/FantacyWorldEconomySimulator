@@ -43,7 +43,7 @@ public class HierarchyTests
     {
         var wid = WorldId.New();
         var coid = CountryId.New();
-        var r = Region.Create(wid, coid, "The Reach").Value;
+        var r = PoliticalRegion.Create(wid, "The Reach", coid).Value;
         r.WorldId.Should().Be(wid);
         r.CountryId.Should().Be(coid);
     }

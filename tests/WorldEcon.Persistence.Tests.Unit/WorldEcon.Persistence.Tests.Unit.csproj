@@ -9,6 +9,9 @@
     <PackageReference Include="FluentAssertions" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\WorldEcon.WorldGen.Tests.Unit\Tiles\SyntheticTileBlocks.cs" Link="SyntheticTileBlocks.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
   </ItemGroup>
   <ItemGroup>

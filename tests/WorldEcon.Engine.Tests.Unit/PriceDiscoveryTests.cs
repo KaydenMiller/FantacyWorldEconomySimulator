@@ -22,7 +22,7 @@ public class PriceDiscoveryTests
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "Cont").Value;
         var country = Country.Create(world.Id, continent.Id, "Country").Value;
-        var region = Region.Create(world.Id, country.Id, "Region").Value;
+        var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var settlement = Settlement.Create(world.Id, region.Id, "Town", SettlementType.Village, 1, 1, 1000).Value;
 
         await using var ctx = NewContextOnFile(path);
@@ -30,7 +30,7 @@ public class PriceDiscoveryTests
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
         ctx.Countries.Add(country);
-        ctx.Regions.Add(region);
+        ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(settlement);
         populate(ctx, world.Id, settlement.Id);
         await ctx.SaveChangesAsync();

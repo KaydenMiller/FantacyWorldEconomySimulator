@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>WorldEcon.Gui</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Persistence transitively pulls SQLite, which carries this advisory.
+         Suppress to stay warning-clean (mirrors WorldEcon.Persistence.csproj). -->
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WorldEcon.Gui.Tests.Unit" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Skia" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\WorldEcon.Application\WorldEcon.Application.csproj" />
+    <ProjectReference Include="..\WorldEcon.Rendering\WorldEcon.Rendering.csproj" />
+    <ProjectReference Include="..\WorldEcon.Seeding\WorldEcon.Seeding.csproj" />
+    <ProjectReference Include="..\WorldEcon.WorldGen\WorldEcon.WorldGen.csproj" />
+  </ItemGroup>
+</Project>

@@ -4,20 +4,27 @@
     <Project Path="src/WorldEcon.Cli/WorldEcon.Cli.csproj" />
     <Project Path="src/WorldEcon.Domain/WorldEcon.Domain.csproj" />
     <Project Path="src/WorldEcon.Engine/WorldEcon.Engine.csproj" />
+    <Project Path="src/WorldEcon.Gui/WorldEcon.Gui.csproj" />
     <Project Path="src/WorldEcon.Persistence/WorldEcon.Persistence.csproj" />
+    <Project Path="src/WorldEcon.Rendering/WorldEcon.Rendering.csproj" />
     <Project Path="src/WorldEcon.Seeding/WorldEcon.Seeding.csproj" />
     <Project Path="src/WorldEcon.SharedKernel/WorldEcon.SharedKernel.csproj" />
     <Project Path="src/WorldEcon.Simulation/WorldEcon.Simulation.csproj" />
     <Project Path="src/WorldEcon.Tui/WorldEcon.Tui.csproj" />
+    <Project Path="src/WorldEcon.WorldGen/WorldEcon.WorldGen.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WorldEcon.Application.Tests.Unit/WorldEcon.Application.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.Cli.Tests.Unit/WorldEcon.Cli.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Domain.Tests.Unit/WorldEcon.Domain.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Engine.Tests.Unit/WorldEcon.Engine.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.Gui.Tests.Unit/WorldEcon.Gui.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Persistence.Tests.Unit/WorldEcon.Persistence.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.Rendering.Tests.Unit/WorldEcon.Rendering.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Seeding.Tests.Unit/WorldEcon.Seeding.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.SharedKernel.Tests.Unit/WorldEcon.SharedKernel.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Simulation.Tests.Unit/WorldEcon.Simulation.Tests.Unit.csproj" />
     <Project Path="tests/WorldEcon.Tui.Tests.Unit/WorldEcon.Tui.Tests.Unit.csproj" />
+    <Project Path="tests/WorldEcon.WorldGen.Tests.Unit/WorldEcon.WorldGen.Tests.Unit.csproj" />
   </Folder>
 </Solution>

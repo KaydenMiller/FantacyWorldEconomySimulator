@@ -32,6 +32,6 @@ public sealed class StructuralCompareService : ICompareService
 
     private static bool SameContent(Settlement a, Settlement b)
         => a.Name == b.Name && a.Type == b.Type && a.X == b.X && a.Y == b.Y
-           && a.Population == b.Population && a.RegionId.Equals(b.RegionId)
+           && a.Population == b.Population && a.PoliticalRegionId.Equals(b.PoliticalRegionId)
            && a.Provenance == b.Provenance;
 }

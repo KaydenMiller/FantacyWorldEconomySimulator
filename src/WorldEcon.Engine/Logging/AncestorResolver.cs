@@ -29,7 +29,7 @@ public sealed class AncestorResolver
         var settlement = await _db.Settlements.FirstOrDefaultAsync(x => x.Id == settlementId);
         if (settlement is not null)
         {
-            var region = await _db.Regions.FirstOrDefaultAsync(r => r.Id == settlement.RegionId);
+            var region = await _db.PoliticalRegions.FirstOrDefaultAsync(r => r.Id == settlement.PoliticalRegionId);
             if (region is not null)
             {
                 chain.Add((LogScopeKind.Region, region.Id.Value));
@@ -37,8 +37,8 @@ public sealed class AncestorResolver
                     chain.Add((LogScopeKind.Country, cid.Value));
 
                 // A region may span several continents (geography v2 m2m).
-                var continentIds = (await _db.RegionContinents
-                        .Where(rc => rc.WorldId == _worldId && rc.RegionId == region.Id)
+                var continentIds = (await _db.PoliticalRegionContinents
+                        .Where(rc => rc.WorldId == _worldId && rc.PoliticalRegionId == region.Id)
                         .ToListAsync())
                     .Select(rc => rc.ContinentId.Value)
                     .OrderBy(g => g);

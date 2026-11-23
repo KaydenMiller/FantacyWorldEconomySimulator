@@ -99,7 +99,7 @@ public sealed class Navigator : INavigator
             case NavKind.Country:
                 return await CountryRegionsView(ctx, new CountryId(Guid.Parse(row.Key)));
             case NavKind.Region:
-                return await RegionContentsView(ctx, new RegionId(Guid.Parse(row.Key)));
+                return await RegionContentsView(ctx, new PoliticalRegionId(Guid.Parse(row.Key)));
             case NavKind.City:
                 return await CityChooserView(ctx, new SettlementId(Guid.Parse(row.Key)));
             case NavKind.CityCategory:
@@ -132,7 +132,7 @@ public sealed class Navigator : INavigator
         switch (row.Kind)
         {
             case NavKind.City: return await CityDetails(ctx, new SettlementId(Guid.Parse(row.Key)));
-            case NavKind.Region: return await RegionDetails(ctx, new RegionId(Guid.Parse(row.Key)));
+            case NavKind.Region: return await RegionDetails(ctx, new PoliticalRegionId(Guid.Parse(row.Key)));
             case NavKind.Continent: return await ContinentDetails(ctx, new ContinentId(Guid.Parse(row.Key)));
             case NavKind.Country: return await CountryDetails(ctx, new CountryId(Guid.Parse(row.Key)));
             case NavKind.Merchant: return await MerchantDetails(ctx, new MerchantId(Guid.Parse(row.Key)));
@@ -151,8 +151,8 @@ public sealed class Navigator : INavigator
         => (await ctx.Db.Continents.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Id.Value).ToList();
     private async Task<List<Country>> AllCountries(TuiContext ctx)
         => (await ctx.Db.Countries.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Id.Value).ToList();
-    private async Task<List<Region>> AllRegions(TuiContext ctx)
-        => (await ctx.Db.Regions.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Id.Value).ToList();
+    private async Task<List<PoliticalRegion>> AllRegions(TuiContext ctx)
+        => (await ctx.Db.PoliticalRegions.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Id.Value).ToList();
     private async Task<List<Settlement>> AllSettlements(TuiContext ctx)
         => (await ctx.Db.Settlements.Where(x => x.WorldId == ctx.World.Id).ToListAsync()).OrderBy(x => x.Name, StringComparer.Ordinal).ThenBy(x => x.Id.Value).ToList();
     private async Task<List<Shop>> AllShops(TuiContext ctx)
@@ -190,13 +190,13 @@ public sealed class Navigator : INavigator
         return new NavView(title, ["Name", "Continent"], rows);
     }
 
-    private async Task<NavView> RegionsView(TuiContext ctx, List<Region> regions, string title)
+    private async Task<NavView> RegionsView(TuiContext ctx, List<PoliticalRegion> regions, string title)
     {
         var countryNames = (await AllCountries(ctx)).ToDictionary(c => c.Id.Value, c => c.Name);
         var rows = regions
             .Select(r => new NavRow(r.Id.Value.ToString(), NavKind.Region,
-                [r.Name, r.Kind.ToString(), r.CountryId is { } c ? countryNames.Resolve(c.Value) : "—"])).ToList();
-        return new NavView(title, ["Name", "Kind", "Country"], rows);
+                [r.Name, r.CountryId is { } c ? countryNames.Resolve(c.Value) : "—"])).ToList();
+        return new NavView(title, ["Name", "Country"], rows);
     }
 
     private async Task<NavView> CountryRegionsView(TuiContext ctx, CountryId countryId)
@@ -206,7 +206,7 @@ public sealed class Navigator : INavigator
         var byId = allRegions.ToDictionary(r => r.Id.Value);
 
         var claims = (await ctx.Db.TerritorialClaims
-            .Where(c => c.WorldId == ctx.World.Id && c.CountryId == countryId && c.TargetKind == ClaimTargetKind.Region)
+            .Where(c => c.WorldId == ctx.World.Id && c.CountryId == countryId && c.TargetKind == ClaimTargetKind.PoliticalRegion)
             .ToListAsync());
         var claimByRegion = claims.GroupBy(c => c.TargetId).ToDictionary(g => g.Key, g => g.First().ClaimType);
 
@@ -222,11 +222,11 @@ public sealed class Navigator : INavigator
             {
                 var claim = r.CountryId == countryId ? "primary"
                     : claimByRegion.TryGetValue(r.Id.Value, out var ct) ? ct.ToString().ToLowerInvariant() : "";
-                return new NavRow(r.Id.Value.ToString(), NavKind.Region, [r.Name, r.Kind.ToString(), claim]);
+                return new NavRow(r.Id.Value.ToString(), NavKind.Region, [r.Name, claim]);
             }).ToList();
 
         var title = countryNames.TryGetValue(countryId.Value, out var n) ? $"{n} / Regions" : "Regions";
-        return new NavView(title, ["Name", "Kind", "Claim"], rows);
+        return new NavView(title, ["Name", "Claim"], rows);
     }
 
     private async Task<NavView> CitiesView(TuiContext ctx, List<Settlement> settlements, string title)
@@ -234,23 +234,17 @@ public sealed class Navigator : INavigator
         var regionNames = (await AllRegions(ctx)).ToDictionary(r => r.Id.Value, r => r.Name);
         var rows = settlements
             .Select(s => new NavRow(s.Id.Value.ToString(), NavKind.City,
-                [s.Name, s.Type.ToString(), s.State.ToString(), s.Population.ToString(), regionNames.Resolve(s.RegionId.Value)])).ToList();
+                [s.Name, s.Type.ToString(), s.State.ToString(), s.Population.ToString(), regionNames.Resolve(s.PoliticalRegionId.Value)])).ToList();
         return new NavView(title, ["Name", "Type", "State", "Population", "Region"], rows);
     }
 
-    private async Task<NavView> RegionContentsView(TuiContext ctx, RegionId regionId)
+    private async Task<NavView> RegionContentsView(TuiContext ctx, PoliticalRegionId regionId)
     {
         var regions = await AllRegions(ctx);
         var byId = regions.ToDictionary(r => r.Id.Value);
-        var childIds = (await ctx.Db.RegionContainments
-            .Where(rc => rc.WorldId == ctx.World.Id && rc.ParentRegionId == regionId).ToListAsync())
-            .Select(rc => rc.ChildRegionId.Value).ToList();
-        var children = childIds.Where(byId.ContainsKey).Select(id => byId[id])
-            .OrderBy(r => r.Name, StringComparer.Ordinal).ToList();
-        var settlements = (await AllSettlements(ctx)).Where(s => s.RegionId == regionId).ToList();
+        var settlements = (await AllSettlements(ctx)).Where(s => s.PoliticalRegionId == regionId).ToList();
 
         var rows = new List<NavRow>();
-        rows.AddRange(children.Select(r => new NavRow(r.Id.Value.ToString(), NavKind.Region, ["Region", r.Name, r.Kind.ToString()])));
         rows.AddRange(settlements.Select(s => new NavRow(s.Id.Value.ToString(), NavKind.City, ["City", s.Name, s.State.ToString()])));
 
         var title = byId.TryGetValue(regionId.Value, out var reg) ? reg.Name : "Region";
@@ -501,7 +495,7 @@ public sealed class Navigator : INavigator
     {
         var s = await ctx.Db.Settlements.FirstOrDefaultAsync(x => x.Id == id);
         if (s is null) return [$"Settlement {id.Value} not found."];
-        var region = await ctx.Db.Regions.FirstOrDefaultAsync(r => r.Id == s.RegionId);
+        var region = await ctx.Db.PoliticalRegions.FirstOrDefaultAsync(r => r.Id == s.PoliticalRegionId);
         var country = region?.CountryId is { } cid ? await ctx.Db.Countries.FirstOrDefaultAsync(c => c.Id == cid) : null;
         var shopCount = await ctx.Db.Shops.CountAsync(x => x.SettlementId == id);
         var nodeCount = await ctx.Db.ProductionNodes.CountAsync(x => x.SettlementId == id);
@@ -522,25 +516,22 @@ public sealed class Navigator : INavigator
         return lines;
     }
 
-    private async Task<IReadOnlyList<string>> RegionDetails(TuiContext ctx, RegionId id)
+    private async Task<IReadOnlyList<string>> RegionDetails(TuiContext ctx, PoliticalRegionId id)
     {
-        var r = await ctx.Db.Regions.FirstOrDefaultAsync(x => x.Id == id);
+        var r = await ctx.Db.PoliticalRegions.FirstOrDefaultAsync(x => x.Id == id);
         if (r is null) return [$"Region {id.Value} not found."];
         var countryNames = (await AllCountries(ctx)).ToDictionary(c => c.Id.Value, c => c.Name);
         var continentNames = (await AllContinents(ctx)).ToDictionary(c => c.Id.Value, c => c.Name);
-        var explicitContinents = (await ctx.Db.RegionContinents.Where(rc => rc.WorldId == ctx.World.Id && rc.RegionId == id).ToListAsync())
+        var explicitContinents = (await ctx.Db.PoliticalRegionContinents.Where(rc => rc.WorldId == ctx.World.Id && rc.PoliticalRegionId == id).ToListAsync())
             .Select(rc => continentNames.Resolve(rc.ContinentId.Value)).ToList();
-        var parents = await ctx.Db.RegionContainments.CountAsync(rc => rc.WorldId == ctx.World.Id && rc.ChildRegionId == id);
-        var children = await ctx.Db.RegionContainments.CountAsync(rc => rc.WorldId == ctx.World.Id && rc.ParentRegionId == id);
         var claims = await ctx.Db.TerritorialClaims
-            .Where(c => c.WorldId == ctx.World.Id && c.TargetKind == ClaimTargetKind.Region && c.TargetId == id.Value).ToListAsync();
+            .Where(c => c.WorldId == ctx.World.Id && c.TargetKind == ClaimTargetKind.PoliticalRegion && c.TargetId == id.Value).ToListAsync();
 
         var lines = new List<string>
         {
-            $"Name: {r.Name}", $"Kind: {r.Kind}",
+            $"Name: {r.Name}",
             $"Primary country: {(r.CountryId is { } c ? countryNames.Resolve(c.Value) : "—")}",
             $"Continents (explicit): {(explicitContinents.Count == 0 ? "—" : string.Join(", ", explicitContinents))}",
-            $"Parent regions: {parents}", $"Sub-regions: {children}",
             claims.Count == 0 ? "Claims: none" : $"Claims: {string.Join(", ", claims.Select(c => $"{countryNames.Resolve(c.CountryId.Value)} ({c.ClaimType})"))}",
             $"Id: {r.Id.Value}",
         };
@@ -560,7 +551,7 @@ public sealed class Navigator : INavigator
         var c = await ctx.Db.Countries.FirstOrDefaultAsync(x => x.Id == id);
         if (c is null) return [$"Country {id.Value} not found."];
         var continent = await ctx.Db.Continents.FirstOrDefaultAsync(x => x.Id == c.ContinentId);
-        var regions = await ctx.Db.Regions.CountAsync(r => r.CountryId == id);
+        var regions = await ctx.Db.PoliticalRegions.CountAsync(r => r.CountryId == id);
         var claims = await ctx.Db.TerritorialClaims.CountAsync(t => t.WorldId == ctx.World.Id && t.CountryId == id);
         return [$"Name: {c.Name}", $"Continent: {continent?.Name ?? "—"}", $"Primary regions: {regions}", $"Claims made: {claims}", $"Id: {c.Id.Value}"];
     }

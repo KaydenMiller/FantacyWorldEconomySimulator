@@ -10,7 +10,7 @@ namespace WorldEcon.Engine.Tests.Unit;
 public static class LogTestWorld
 {
     public sealed record Seeded(string Path, WorldDbContext Db, World World,
-        Continent Continent, Country Country, Region Region, Settlement Settlement);
+        Continent Continent, Country Country, PoliticalRegion Region, Settlement Settlement);
 
     public static async Task<Seeded> CreateAsync()
     {
@@ -24,13 +24,13 @@ public static class LogTestWorld
 
         var continent = Continent.Create(world.Id, "Praxus").Value;
         var country = Country.Create(world.Id, continent.Id, "Thaloria").Value;
-        var region = Region.Create(world.Id, country.Id, "The Reach").Value;
+        var region = PoliticalRegion.Create(world.Id, "The Reach", country.Id).Value;
         var settlement = Settlement.Create(world.Id, region.Id, "Hammerfell", SettlementType.City, 0, 0, 50_000).Value;
         db.Continents.Add(continent);
         db.Countries.Add(country);
-        db.Regions.Add(region);
+        db.PoliticalRegions.Add(region);
         db.Settlements.Add(settlement);
-        db.RegionContinents.Add(RegionContinent.Create(world.Id, region.Id, continent.Id).Value);
+        db.PoliticalRegionContinents.Add(PoliticalRegionContinent.Create(world.Id, region.Id, continent.Id).Value);
         await db.SaveChangesAsync();
 
         return new Seeded(path, db, world, continent, country, region, settlement);

@@ -26,7 +26,7 @@ public class RoundTripTests
             var world = World.Create("Aerth", 4242UL, CalendarDefinition.Default, "1.0.0").Value;
             var continent = Continent.Create(world.Id, "Mundus").Value;
             var country = Country.Create(world.Id, continent.Id, "Highmark").Value;
-            var region = Region.Create(world.Id, country.Id, "The Reach").Value;
+            var region = PoliticalRegion.Create(world.Id, "The Reach", country.Id).Value;
             var hammerfell = Settlement.Create(world.Id, region.Id, "Hammerfell", SettlementType.City, 10, 20, 50_000).Value;
             var riverwood = Settlement.Create(world.Id, region.Id, "Riverwood", SettlementType.Village, 12, 25, 800).Value;
             var route = Route.Create(world.Id, hammerfell.Id, riverwood.Id, 120, Terrain.Plains, 3, RouteCategory.Land).Value;
@@ -37,7 +37,7 @@ public class RoundTripTests
                 ctx.Worlds.Add(world);
                 ctx.Continents.Add(continent);
                 ctx.Countries.Add(country);
-                ctx.Regions.Add(region);
+                ctx.PoliticalRegions.Add(region);
                 ctx.Settlements.AddRange(hammerfell, riverwood);
                 ctx.Routes.Add(route);
                 await ctx.SaveChangesAsync();

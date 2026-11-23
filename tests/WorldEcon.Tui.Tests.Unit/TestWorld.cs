@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Persistence;
 using WorldEcon.Seeding;
+using WorldEcon.WorldGen.Pipeline;
 
 namespace WorldEcon.Tui.Tests.Unit;
 
@@ -29,6 +30,8 @@ internal static class TestWorld
     {
         var path = Path.Combine(Path.GetTempPath(), $"tui_test_{Guid.NewGuid():N}.db");
         var seed = await new JsonSeedSource(SampleSeedPath()).LoadAsync();
+        // Grid frequency 16 (2,562 cells) keeps the per-test globe generation fast; the sample itself uses defaults.
+        seed = seed with { Generation = new WorldGenSettings { Grid = new() { Frequency = 16 } } };
 
         await using var ctx = NewContext(path);
         await ctx.Database.MigrateAsync();

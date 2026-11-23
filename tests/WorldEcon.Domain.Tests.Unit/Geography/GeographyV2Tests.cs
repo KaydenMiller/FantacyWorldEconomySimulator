@@ -6,53 +6,35 @@ namespace WorldEcon.Domain.Tests.Unit.Geography;
 public class GeographyV2Tests
 {
     [Test]
-    public void Region_BackCompatCreate_IsLandWithCountry()
+    public void Region_Create_WithCountry()
     {
         var country = CountryId.New();
-        var r = Region.Create(WorldId.New(), country, "The Reach").Value;
+        var r = PoliticalRegion.Create(WorldId.New(), "The Reach", country).Value;
         r.CountryId.Should().Be(country);
-        r.Kind.Should().Be(RegionKind.Land);
     }
 
     [Test]
     public void Region_OceanCreate_HasNoCountry()
     {
-        var r = Region.Create(WorldId.New(), "Ocean of Lost Souls", RegionKind.Ocean).Value;
+        var r = PoliticalRegion.Create(WorldId.New(), "Ocean of Lost Souls").Value;
         r.CountryId.Should().BeNull();
-        r.Kind.Should().Be(RegionKind.Ocean);
     }
 
     [Test]
-    public void Region_SetKindAndCountry_Mutate()
+    public void Region_SetPrimaryCountry_Mutate()
     {
-        var r = Region.Create(WorldId.New(), "X", RegionKind.Land).Value;
-        r.SetKind(RegionKind.Mountain);
+        var r = PoliticalRegion.Create(WorldId.New(), "X").Value;
         var c = CountryId.New();
         r.SetPrimaryCountry(c);
-        r.Kind.Should().Be(RegionKind.Mountain);
         r.CountryId.Should().Be(c);
         r.SetPrimaryCountry(null);
         r.CountryId.Should().BeNull();
     }
 
     [Test]
-    public void RegionContainment_RejectsSelf()
-    {
-        var rid = RegionId.New();
-        RegionContainment.Create(WorldId.New(), rid, rid).IsError.Should().BeTrue();
-    }
-
-    [Test]
-    public void RegionContainment_Create_LinksParentChild()
-    {
-        var rc = RegionContainment.Create(WorldId.New(), RegionId.New(), RegionId.New()).Value;
-        rc.ParentRegionId.Should().NotBe(rc.ChildRegionId);
-    }
-
-    [Test]
     public void Settlement_SetState_Ruined()
     {
-        var s = Settlement.Create(WorldId.New(), RegionId.New(), "Zeigelith", SettlementType.City, 0, 0, 0).Value;
+        var s = Settlement.Create(WorldId.New(), PoliticalRegionId.New(), "Zeigelith", SettlementType.City, 0, 0, 0).Value;
         s.State.Should().Be(SettlementState.Active);
         s.SetState(SettlementState.Ruined);
         s.State.Should().Be(SettlementState.Ruined);
@@ -66,8 +48,8 @@ public class GeographyV2Tests
         controls.TargetKind.Should().Be(ClaimTargetKind.Settlement);
         controls.ClaimType.Should().Be(ClaimType.Controls);
 
-        var disputes = TerritorialClaim.CreateForRegion(w, CountryId.New(), RegionId.New(), ClaimType.Disputes).Value;
-        disputes.TargetKind.Should().Be(ClaimTargetKind.Region);
+        var disputes = TerritorialClaim.CreateForRegion(w, CountryId.New(), PoliticalRegionId.New(), ClaimType.Disputes).Value;
+        disputes.TargetKind.Should().Be(ClaimTargetKind.PoliticalRegion);
         disputes.ClaimType.Should().Be(ClaimType.Disputes);
     }
 

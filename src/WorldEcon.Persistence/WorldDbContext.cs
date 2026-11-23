@@ -3,6 +3,8 @@ using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Domain.Logging;
 using WorldEcon.Persistence.Conversions;
+using WorldEcon.Persistence.Globe;
+using WorldEcon.SharedKernel.Globe;
 
 namespace WorldEcon.Persistence;
 
@@ -11,11 +13,10 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<World> Worlds => Set<World>();
     public DbSet<Continent> Continents => Set<Continent>();
     public DbSet<Country> Countries => Set<Country>();
-    public DbSet<Region> Regions => Set<Region>();
+    public DbSet<PoliticalRegion> PoliticalRegions => Set<PoliticalRegion>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<Route> Routes => Set<Route>();
-    public DbSet<RegionContinent> RegionContinents => Set<RegionContinent>();
-    public DbSet<RegionContainment> RegionContainments => Set<RegionContainment>();
+    public DbSet<PoliticalRegionContinent> PoliticalRegionContinents => Set<PoliticalRegionContinent>();
     public DbSet<TerritorialClaim> TerritorialClaims => Set<TerritorialClaim>();
     public DbSet<Good> Goods => Set<Good>();
     public DbSet<Stockpile> Stockpiles => Set<Stockpile>();
@@ -32,17 +33,30 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
     public DbSet<MoneyLedgerSnapshot> MoneyLedgerSnapshots => Set<MoneyLedgerSnapshot>();
     public DbSet<MoneyLedgerLine> MoneyLedgerLines => Set<MoneyLedgerLine>();
     public DbSet<ShopPriceBelief> ShopPriceBeliefs => Set<ShopPriceBelief>();
+    public DbSet<GeographicRegion> GeographicRegions => Set<GeographicRegion>();
+    public DbSet<GeographicRegionCell> GeographicRegionCells => Set<GeographicRegionCell>();
+    public DbSet<GeographicRegionContainment> GeographicRegionContainments => Set<GeographicRegionContainment>();
+
+    // Generated globe tables; written in bulk by GlobeStore, exposed here for typed read queries.
+    public DbSet<GlobeCellRow> GlobeCells => Set<GlobeCellRow>();
+    public DbSet<GlobeCellNeighbourRow> GlobeCellNeighbours => Set<GlobeCellNeighbourRow>();
+    public DbSet<PlateRow> Plates => Set<PlateRow>();
+    public DbSet<GlobeCellCompositionRow> GlobeCellCompositions => Set<GlobeCellCompositionRow>();
+    public DbSet<RiverEdgeRow> RiverEdges => Set<RiverEdgeRow>();
+    public DbSet<WorldGenRunRow> WorldGenRuns => Set<WorldGenRunRow>();
+    public DbSet<TileBlockRow> TileBlocks => Set<TileBlockRow>();
+    public DbSet<LakeRow> Lakes => Set<LakeRow>();
+    public DbSet<RegionLevelRow> RegionLevels => Set<RegionLevelRow>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder b)
     {
         b.Properties<WorldId>().HaveConversion<WorldIdConverter>();
         b.Properties<ContinentId>().HaveConversion<ContinentIdConverter>();
         b.Properties<CountryId>().HaveConversion<CountryIdConverter>();
-        b.Properties<RegionId>().HaveConversion<RegionIdConverter>();
+        b.Properties<PoliticalRegionId>().HaveConversion<PoliticalRegionIdConverter>();
         b.Properties<SettlementId>().HaveConversion<SettlementIdConverter>();
         b.Properties<RouteId>().HaveConversion<RouteIdConverter>();
-        b.Properties<RegionContinentId>().HaveConversion<RegionContinentIdConverter>();
-        b.Properties<RegionContainmentId>().HaveConversion<RegionContainmentIdConverter>();
+        b.Properties<PoliticalRegionContinentId>().HaveConversion<PoliticalRegionContinentIdConverter>();
         b.Properties<TerritorialClaimId>().HaveConversion<TerritorialClaimIdConverter>();
         b.Properties<GoodId>().HaveConversion<GoodIdConverter>();
         b.Properties<StockpileId>().HaveConversion<StockpileIdConverter>();
@@ -59,6 +73,9 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options) : D
         b.Properties<MoneyLedgerSnapshotId>().HaveConversion<MoneyLedgerSnapshotIdConverter>();
         b.Properties<MoneyLedgerLineId>().HaveConversion<MoneyLedgerLineIdConverter>();
         b.Properties<ShopPriceBeliefId>().HaveConversion<ShopPriceBeliefIdConverter>();
+        b.Properties<GeographicRegionId>().HaveConversion<GeographicRegionIdConverter>();
+        b.Properties<GeographicRegionContainmentId>().HaveConversion<GeographicRegionContainmentIdConverter>();
+        b.Properties<GlobeCellId>().HaveConversion<GlobeCellIdConverter>();
     }
 
     protected override void OnModelCreating(ModelBuilder b)

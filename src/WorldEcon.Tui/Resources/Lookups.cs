@@ -18,7 +18,7 @@ internal static class Lookups
             .ToDictionary(s => s.Id.Value, s => s.Name);
 
     public static async Task<Dictionary<Guid, string>> RegionNamesAsync(TuiContext ctx)
-        => (await ctx.Db.Regions.Where(r => r.WorldId == ctx.World.Id).ToListAsync())
+        => (await ctx.Db.PoliticalRegions.Where(r => r.WorldId == ctx.World.Id).ToListAsync())
             .ToDictionary(r => r.Id.Value, r => r.Name);
 
     public static async Task<Dictionary<Guid, string>> RecipeNamesAsync(TuiContext ctx)

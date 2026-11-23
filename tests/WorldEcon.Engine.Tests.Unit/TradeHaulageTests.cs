@@ -21,7 +21,7 @@ public class TradeHaulageTests
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "Cont").Value;
         var country = Country.Create(world.Id, continent.Id, "Country").Value;
-        var region = Region.Create(world.Id, country.Id, "Region").Value;
+        var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var seat = Settlement.Create(world.Id, region.Id, "Seat", SettlementType.Town, 0, 0, 5000).Value;
         var dest = Settlement.Create(world.Id, region.Id, "Dest", SettlementType.Town, 1, 0, 5000).Value;
 
@@ -44,7 +44,7 @@ public class TradeHaulageTests
         await using (var ctx = NewContextOnFile(path))
         {
             await ctx.Database.MigrateAsync();
-            ctx.Worlds.Add(world); ctx.Continents.Add(continent); ctx.Countries.Add(country); ctx.Regions.Add(region);
+            ctx.Worlds.Add(world); ctx.Continents.Add(continent); ctx.Countries.Add(country); ctx.PoliticalRegions.Add(region);
             ctx.Settlements.AddRange(seat, dest);
             ctx.Goods.Add(good);
             ctx.Shops.AddRange(seatShop, destShop);

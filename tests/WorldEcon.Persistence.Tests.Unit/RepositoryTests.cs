@@ -21,7 +21,7 @@ public class RepositoryTests
             var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
             var continent = Continent.Create(world.Id, "C").Value;
             var country = Country.Create(world.Id, continent.Id, "Co").Value;
-            var region = Region.Create(world.Id, country.Id, "R").Value;
+            var region = PoliticalRegion.Create(world.Id, "R", country.Id).Value;
             var s1 = Settlement.Create(world.Id, region.Id, "A", SettlementType.Town, 0, 0, 100).Value;
             var s2 = Settlement.Create(world.Id, region.Id, "B", SettlementType.Town, 1, 1, 200).Value;
 
@@ -31,7 +31,7 @@ public class RepositoryTests
                 ctx.Worlds.Add(world);
                 ctx.Continents.Add(continent);
                 ctx.Countries.Add(country);
-                ctx.Regions.Add(region);
+                ctx.PoliticalRegions.Add(region);
                 ctx.Settlements.AddRange(s1, s2);
                 await ctx.SaveChangesAsync();
             }

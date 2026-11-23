@@ -150,8 +150,8 @@ public class NavigatorTests
             await using (var seed = TestWorld.NewContext(path))
             {
                 var world = await TuiContextWorld(seed);
-                var ocean = Region.Create(world, "Ocean of Lost Souls", RegionKind.Ocean).Value;
-                seed.Regions.Add(ocean);
+                var ocean = PoliticalRegion.Create(world, "Ocean of Lost Souls").Value;
+                seed.PoliticalRegions.Add(ocean);
                 await seed.SaveChangesAsync();
             }
 
@@ -159,7 +159,6 @@ public class NavigatorTests
             var tctx = await TuiContext.LoadAsync(ctx, path);
             var view = await new Navigator().RootAsync("regions", tctx);
             var oceanRow = ByName(view, "Ocean of Lost Souls");
-            oceanRow.Cells.Should().Contain("Ocean");
             oceanRow.Cells.Should().Contain("—");
         }
         finally { File.Delete(path); }

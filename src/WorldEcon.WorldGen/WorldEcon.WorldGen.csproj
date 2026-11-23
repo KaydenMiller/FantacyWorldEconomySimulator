@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WorldEcon.WorldGen</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WorldEcon.WorldGen.Tests.Unit" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ErrorOr" />
+    <ProjectReference Include="..\WorldEcon.SharedKernel\WorldEcon.SharedKernel.csproj" />
+    <ProjectReference Include="..\WorldEcon.Simulation\WorldEcon.Simulation.csproj" />
+  </ItemGroup>
+</Project>

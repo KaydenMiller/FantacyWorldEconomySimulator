@@ -26,7 +26,7 @@ public class PricingPhaseTests
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "Cont").Value;
         var country = Country.Create(world.Id, continent.Id, "Country").Value;
-        var region = Region.Create(world.Id, country.Id, "Region").Value;
+        var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var settlement = Settlement.Create(world.Id, region.Id, "Town", SettlementType.Village, 1, 1, population).Value;
         var good = Good.Create(world.Id, "Bread", GoodCategory.Food, new Money(baseValue), "loaf",
             SizeClass.Small, shelfLifeTicks: 0, divisible: true, consumptionPerCapitaBp: consumptionPerCapitaBp).Value;
@@ -38,7 +38,7 @@ public class PricingPhaseTests
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
         ctx.Countries.Add(country);
-        ctx.Regions.Add(region);
+        ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(settlement);
         ctx.Goods.Add(good);
         ctx.Shops.Add(shop);
@@ -97,7 +97,7 @@ public class PricingPhaseTests
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "Cont").Value;
         var country = Country.Create(world.Id, continent.Id, "Country").Value;
-        var region = Region.Create(world.Id, country.Id, "Region").Value;
+        var region = PoliticalRegion.Create(world.Id, "Region", country.Id).Value;
         var settlement = Settlement.Create(world.Id, region.Id, "Town", SettlementType.Village, 1, 1, 1000).Value;
 
         // Input good has zero per-capita consumption: its sole demand is industrial.
@@ -121,7 +121,7 @@ public class PricingPhaseTests
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
         ctx.Countries.Add(country);
-        ctx.Regions.Add(region);
+        ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(settlement);
         ctx.Goods.Add(input);
         ctx.Goods.Add(output);

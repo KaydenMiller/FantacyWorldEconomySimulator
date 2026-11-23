@@ -4,11 +4,15 @@ using WorldEcon.Domain.Economy;
 using WorldEcon.Engine;
 using WorldEcon.Persistence;
 using WorldEcon.Seeding;
+using WorldEcon.WorldGen.Pipeline;
 
 namespace WorldEcon.Seeding.Tests.Unit;
 
 public class SeedImporterTests
 {
+    // Grid frequency 16 (2,562 cells) keeps the per-import globe generation fast.
+    private static readonly WorldGenSettings SmallGlobe = new() { Grid = new() { Frequency = 16 } };
+
     private static WorldDbContext NewContextOnFile(string path)
         => new(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={path}").Options);
 
@@ -58,7 +62,8 @@ public class SeedImporterTests
         [
             new SeedRoute("Hammerfell", "Riverwood", 120, "Plains", 3, "Land"),
             new SeedRoute("Riverwood", "Hammerfell", 120, "Plains", 3, "Land"),
-        ]);
+        ],
+        Generation: SmallGlobe);
 
     [Test]
     public async Task ImportAsync_Persists_FullWorld_AndReloads()
@@ -71,7 +76,7 @@ public class SeedImporterTests
             await using (var ctx = NewContextOnFile(path))
             {
                 await ctx.Database.MigrateAsync();
-                var worldId = await new SeedImporter(ctx).ImportAsync(seed);
+                var (worldId, _) = await new SeedImporter(ctx).ImportAsync(seed);
                 worldId.Value.Should().NotBe(Guid.Empty);
             }
 
@@ -163,7 +168,8 @@ public class SeedImporterTests
                         ]),
                     ]),
                 ],
-                Routes: []);
+                Routes: [],
+                Generation: SmallGlobe);
 
             await using var ctx = NewContextOnFile(path);
             await ctx.Database.MigrateAsync();
@@ -171,6 +177,8 @@ public class SeedImporterTests
             var act = async () => await new SeedImporter(ctx).ImportAsync(seed);
             await act.Should().ThrowAsync<InvalidOperationException>()
                 .WithMessage("*600kgs*");
+            await using var fresh = NewContextOnFile(path);
+            (await fresh.Worlds.CountAsync()).Should().Be(0);
         }
         finally
         {
@@ -203,7 +211,8 @@ public class SeedImporterTests
                         ]),
                     ]),
                 ],
-                Routes: []);
+                Routes: [],
+                Generation: SmallGlobe);
 
             await using (var ctx = NewContextOnFile(path))
             {

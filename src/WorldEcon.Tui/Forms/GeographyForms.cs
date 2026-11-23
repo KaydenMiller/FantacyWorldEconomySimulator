@@ -52,7 +52,7 @@ public sealed class CountryForm : IEntityForm
     }
 }
 
-/// <summary>Create a <see cref="Region"/> (kind + optional primary country).</summary>
+/// <summary>Create a <see cref="PoliticalRegion"/> (optional primary country).</summary>
 public sealed class RegionForm : IEntityForm
 {
     public string Label => "Region";
@@ -64,9 +64,6 @@ public sealed class RegionForm : IEntityForm
 
         var name = await FormPrompts.RequiredTextAsync(ui, t, "Name:");
         if (name is null) return FormOutcome.Cancelled;
-
-        var kind = await FormPrompts.EnumAsync<RegionKind>(ui, t, "Kind:");
-        if (kind is null) return FormOutcome.Cancelled;
 
         // Country is optional (oceans/wilderness have none): offer "(none)" plus existing countries.
         CountryId? countryId = null;
@@ -80,10 +77,10 @@ public sealed class RegionForm : IEntityForm
             if (chosen.Value != Guid.Empty) countryId = new CountryId(chosen.Value);
         }
 
-        var result = Region.Create(ctx.World.Id, name, kind.Value, countryId);
+        var result = PoliticalRegion.Create(ctx.World.Id, name, countryId);
         if (result.IsError) return FormOutcome.Fail(result.Errors[0].Description);
 
-        ctx.Db.Regions.Add(result.Value);
+        ctx.Db.PoliticalRegions.Add(result.Value);
         await ctx.Db.SaveChangesAsync();
         return FormOutcome.Ok($"Created region '{name}'.");
     }
@@ -121,7 +118,7 @@ public sealed class SettlementForm : IEntityForm
         var y = await FormPrompts.NumberAsync(ui, t, "Map Y coordinate:", 0);
         if (y is null) return FormOutcome.Cancelled;
 
-        var result = Settlement.Create(ctx.World.Id, new RegionId(regionId.Value), name, type.Value,
+        var result = Settlement.Create(ctx.World.Id, new PoliticalRegionId(regionId.Value), name, type.Value,
             (int)x.Value, (int)y.Value, population.Value);
         if (result.IsError) return FormOutcome.Fail(result.Errors[0].Description);
 

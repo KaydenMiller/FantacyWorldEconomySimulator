@@ -9,7 +9,7 @@ public class SettlementAndRouteTests
     [Test]
     public void Settlement_Create_SetsFields_DefaultProvenanceAuthored()
     {
-        var s = Settlement.Create(WorldId.New(), RegionId.New(), "Hammerfell",
+        var s = Settlement.Create(WorldId.New(), PoliticalRegionId.New(), "Hammerfell",
             SettlementType.City, x: 10, y: 20, population: 50_000).Value;
         s.Name.Should().Be("Hammerfell");
         s.Type.Should().Be(SettlementType.City);
@@ -21,7 +21,7 @@ public class SettlementAndRouteTests
 
     [Test]
     public void Settlement_Create_RejectsNegativePopulation()
-        => Settlement.Create(WorldId.New(), RegionId.New(), "X", SettlementType.Town, 0, 0, -1)
+        => Settlement.Create(WorldId.New(), PoliticalRegionId.New(), "X", SettlementType.Town, 0, 0, -1)
             .IsError.Should().BeTrue();
 
     [Test]

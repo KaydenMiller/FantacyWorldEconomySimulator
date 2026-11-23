@@ -12,12 +12,12 @@ public class SnapshotTests
     private static WorldDbContext NewContextOnFile(string path)
         => new(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={path}").Options);
 
-    private static async Task<(WorldId world, RegionId region)> SeedAsync(string path)
+    private static async Task<(WorldId world, PoliticalRegionId region)> SeedAsync(string path)
     {
         var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
         var continent = Continent.Create(world.Id, "C").Value;
         var country = Country.Create(world.Id, continent.Id, "Co").Value;
-        var region = Region.Create(world.Id, country.Id, "R").Value;
+        var region = PoliticalRegion.Create(world.Id, "R", country.Id).Value;
         var s = Settlement.Create(world.Id, region.Id, "Hammerfell", SettlementType.City, 0, 0, 50_000).Value;
 
         await using var ctx = NewContextOnFile(path);
@@ -25,7 +25,7 @@ public class SnapshotTests
         ctx.Worlds.Add(world);
         ctx.Continents.Add(continent);
         ctx.Countries.Add(country);
-        ctx.Regions.Add(region);
+        ctx.PoliticalRegions.Add(region);
         ctx.Settlements.Add(s);
         await ctx.SaveChangesAsync();
         return (world.Id, region.Id);

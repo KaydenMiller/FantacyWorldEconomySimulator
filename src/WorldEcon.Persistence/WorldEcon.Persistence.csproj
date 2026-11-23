@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\WorldEcon.Domain\WorldEcon.Domain.csproj" />
+    <ProjectReference Include="..\WorldEcon.WorldGen\WorldEcon.WorldGen.csproj" />
   </ItemGroup>
 </Project>

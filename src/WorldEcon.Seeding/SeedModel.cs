@@ -1,12 +1,26 @@
+using WorldEcon.WorldGen.Pipeline;
+
 namespace WorldEcon.Seeding;
 
 // JSON-friendly seed DTOs (System.Text.Json). Enums are authored as strings and parsed
 // case-insensitively at import time. Collections may be omitted/null in JSON; the importer
 // treats null as an empty list (see SeedImporter), so authors only spell out what they need.
 
+// Generation is the optional "generation" block: WorldGenSettings in its nested section form (WorldGenSettingsJson);
+// null → all defaults, omitted sections and properties → their defaults, an unknown name fails the load. NaturalAreas
+// are authored names for generated natural areas (see SeedNaturalArea).
 public sealed record SeedWorld(string Name, ulong Seed, string RulesetVersion,
     IReadOnlyList<SeedGood> Goods, IReadOnlyList<SeedRecipe> Recipes,
-    IReadOnlyList<SeedContinent> Continents, IReadOnlyList<SeedRoute> Routes);
+    IReadOnlyList<SeedContinent> Continents, IReadOnlyList<SeedRoute> Routes,
+    WorldGenSettings? Generation = null, IReadOnlyList<SeedNaturalArea>? NaturalAreas = null);
+
+/// <summary>
+/// An authored name for a generated natural area: the generated area of <paramref name="Kind"/>
+/// (a <see cref="WorldEcon.SharedKernel.Globe.GeographicRegionKind"/> name, case-insensitive) containing the
+/// cell nearest to (<paramref name="Lat"/>, <paramref name="Lon"/>) in degrees takes <paramref name="Name"/>.
+/// No area of that kind at that point fails the import.
+/// </summary>
+public sealed record SeedNaturalArea(string Name, string Kind, double Lat, double Lon);
 
 // NeedTier is optional; omitted goods default to Essential. JSON authors can specify e.g.
 // "NeedTier": "Standard" or "NeedTier": "Comfort" to opt into higher tiers.
@@ -27,10 +41,15 @@ public sealed record SeedCountry(string Name, IReadOnlyList<SeedRegion> Regions)
 
 public sealed record SeedRegion(string Name, IReadOnlyList<SeedSettlement> Settlements);
 
+// Globe pin (optional): Cell (a globe cell id) wins over Lat/Lon (degrees; both required, nearest cell
+// centre). With neither, the settlement is auto-placed on a suitable land cell near the first settlement of
+// its political region. A pin on an ocean or lake cell fails the import. Pins are only valid for the world
+// seed, generation settings and generator version they were written against.
 public sealed record SeedSettlement(string Name, string Type, int X, int Y, long Population,
     IReadOnlyList<SeedShop> Shops, IReadOnlyList<SeedStock> Market, IReadOnlyList<SeedEndowment> Endowments,
     IReadOnlyList<SeedProductionNode> Production, IReadOnlyList<SeedMerchant> Merchants,
-    IReadOnlyList<SeedConsumer>? Consumers = null);
+    IReadOnlyList<SeedConsumer>? Consumers = null,
+    int? Cell = null, double? Lat = null, double? Lon = null);
 
 public sealed record SeedShop(string Name, int MarkupBp, long Till, IReadOnlyList<SeedStock> Stock);
 

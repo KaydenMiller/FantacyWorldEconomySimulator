@@ -1,0 +1,122 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:WorldEcon.Gui.ViewModels"
+        xmlns:v="using:WorldEcon.Gui.Views"
+        x:Class="WorldEcon.Gui.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="WorldEcon — Map"
+        Width="1280" Height="800"
+        Background="#0E1018">
+  <DockPanel>
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Name="OpenMenu" Header="_Open…" Click="OnOpen" IsEnabled="{Binding CanUseFileActions}" />
+        <MenuItem Name="NewWorldMenu" Header="_New world" IsEnabled="{Binding CanUseFileActions}">
+          <MenuItem Name="NewEarth5Menu" Header="earth-5km (6,371 km radius, 5 km tiles, 23.6 M tiles)…" Tag="earth-5km" Click="OnNewWorld" />
+          <MenuItem Name="NewEarth10Menu" Header="earth-10km (6,371 km radius, 10 km tiles, 5.9 M tiles)…" Tag="earth-10km" Click="OnNewWorld" />
+          <MenuItem Name="NewSmallMenu" Header="small-5km (3,000 km radius, 5 km tiles, 5.9 M tiles)…" Tag="small-5km" Click="OnNewWorld" />
+        </MenuItem>
+        <Separator />
+        <MenuItem Header="E_xit" Click="OnExit" />
+      </MenuItem>
+    </Menu>
+
+    <Border DockPanel.Dock="Bottom" Padding="8,4" Background="#1A1E2A">
+      <Grid ColumnDefinitions="*,Auto">
+        <TextBlock Name="StatusBar" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
+          <TextBlock Name="BusyText" Text="{Binding BusyText}" VerticalAlignment="Center" />
+          <ProgressBar Name="BusyProgress" IsIndeterminate="{Binding BusyPercentUnknown}" Minimum="0" Maximum="100" Value="{Binding BusyPercent}" Width="140" VerticalAlignment="Center" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Border DockPanel.Dock="Top" Padding="8,4" Background="#151925">
+      <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasWorld}">
+        <TextBlock Name="ViewName" Text="{Binding LevelName, StringFormat='{}{0} View'}" VerticalAlignment="Center" FontWeight="SemiBold" MinWidth="96" />
+        <Button Name="ZoomToRegionButton" Content="Zoom to region (Enter)" Command="{Binding ZoomToRegionCommand}" />
+        <Button Name="BackButton" Content="← Back to globe (Esc)" Command="{Binding BackCommand}" />
+        <TextBlock Text="Drag to pan · wheel to zoom · click to select · double-click to zoom to the region" VerticalAlignment="Center" Foreground="#8890A0" />
+      </StackPanel>
+    </Border>
+
+    <TabControl Name="SideTabs" DockPanel.Dock="Right" Width="380" Background="#12151F">
+      <TabItem Name="DetailsTab" Header="Details">
+        <ScrollViewer>
+          <StackPanel Margin="8" Spacing="6">
+            <TextBlock Name="DetailsTitle" Text="{Binding DetailsTitle}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <ItemsControl Name="DetailRows" ItemsSource="{Binding DetailRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DetailRow">
+                  <Grid ColumnDefinitions="118,*" Margin="0,2">
+                    <TextBlock Text="{Binding Label}" Foreground="#8890A0" />
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+      <TabItem Name="LayersTab" Header="Layers">
+        <StackPanel Margin="8" Spacing="8">
+          <TextBlock Text="Colour layer" Foreground="#8890A0" />
+          <ComboBox Name="LayerPicker" HorizontalAlignment="Stretch" ItemsSource="{Binding Map.LayerNames}" SelectedIndex="{Binding Map.LayerIndex}" />
+          <TextBlock Text="Overlays" Foreground="#8890A0" Margin="0,8,0,0" />
+          <CheckBox Name="BordersToggle" Content="Borders (gaps between cells and regions)" IsChecked="{Binding Map.Borders}" />
+          <CheckBox Name="RiversToggle" Content="Rivers" IsChecked="{Binding Map.Rivers}" />
+          <CheckBox Name="RiverArrowsToggle" Content="River arrows (flow direction, major rivers)" Margin="20,0,0,0" IsChecked="{Binding Map.RiverArrows}" IsEnabled="{Binding Map.Rivers}" />
+          <CheckBox Name="RiverEndsToggle" Content="River ends (source and mouth dots)" Margin="20,0,0,0" IsChecked="{Binding Map.RiverEnds}" IsEnabled="{Binding Map.Rivers}" />
+          <CheckBox Name="LakesToggle" Content="Lakes (large lakes at Globe View)" IsChecked="{Binding Map.Lakes}" />
+          <CheckBox Name="MountainsToggle" Content="Mountain symbols" IsChecked="{Binding Map.MountainSymbols}" />
+          <CheckBox Name="SettlementsToggle" Content="Settlements" IsChecked="{Binding Map.Settlements}" />
+          <CheckBox Name="LabelsToggle" Content="Labels" IsChecked="{Binding Map.Labels}" />
+          <CheckBox Name="ArrowsToggle" Content="Arrows (Winds and Currents layers, Globe View)" IsChecked="{Binding Map.Arrows}" />
+          <CheckBox Name="EquatorToggle" Content="Equator" IsChecked="{Binding Map.Equator}" />
+          <CheckBox Name="GraticuleToggle" Content="Latitude and longitude lines" IsChecked="{Binding Map.Graticule}" />
+        </StackPanel>
+      </TabItem>
+      <TabItem Name="AreasTab" Header="Areas">
+        <DockPanel Margin="8">
+          <ComboBox Name="AreaKindPicker" DockPanel.Dock="Top" HorizontalAlignment="Stretch"
+                    ItemsSource="{Binding Areas.KindNames}" SelectedIndex="{Binding Areas.KindIndex}" />
+          <TextBox Name="AreaSearch" DockPanel.Dock="Top" Margin="0,6" PlaceholderText="Search area names" Text="{Binding Areas.SearchText}" />
+          <Border Name="AreaDetailsPane" DockPanel.Dock="Bottom" Margin="0,8,0,0" Padding="0,6,0,0" BorderBrush="#2A3040" BorderThickness="0,1,0,0" MaxHeight="260">
+            <ScrollViewer>
+              <StackPanel Spacing="4">
+                <TextBlock Name="AreaDetailsTitle" Text="{Binding AreaDetailsTitle}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <ItemsControl Name="AreaDetailRows" ItemsSource="{Binding AreaDetailRows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DetailRow">
+                      <Grid ColumnDefinitions="118,*" Margin="0,2">
+                        <TextBlock Text="{Binding Label}" Foreground="#8890A0" />
+                        <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+          </Border>
+          <ListBox Name="AreaList" ItemsSource="{Binding Areas.Filtered}" SelectedItem="{Binding Areas.SelectedArea}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:AreaItem">
+                <TextBlock Text="{Binding Display}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+    </TabControl>
+
+    <Panel>
+      <v:MapView Name="Map" IsVisible="{Binding HasWorld}" />
+      <TextBlock IsVisible="{Binding !HasWorld}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8890A0"
+                 Text="No world open. File → Open… or File → New world…" />
+      <Border Name="ErrorPanel" IsVisible="{Binding HasError}" VerticalAlignment="Top" Margin="24" Padding="12,8"
+              Background="#E0301018" BorderBrush="#C05060" BorderThickness="1" CornerRadius="4">
+        <TextBlock Name="ErrorText" Text="{Binding ErrorText}" TextWrapping="Wrap" Foreground="#FFD8DC" />
+      </Border>
+    </Panel>
+  </DockPanel>
+</Window>

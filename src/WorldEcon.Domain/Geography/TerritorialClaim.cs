@@ -39,6 +39,6 @@ public sealed class TerritorialClaim : AggregateRoot<TerritorialClaimId>
     public static ErrorOr<TerritorialClaim> CreateForSettlement(WorldId worldId, CountryId countryId, SettlementId settlement, ClaimType claimType)
         => Create(worldId, countryId, claimType, ClaimTargetKind.Settlement, settlement.Value);
 
-    public static ErrorOr<TerritorialClaim> CreateForRegion(WorldId worldId, CountryId countryId, RegionId region, ClaimType claimType)
-        => Create(worldId, countryId, claimType, ClaimTargetKind.Region, region.Value);
+    public static ErrorOr<TerritorialClaim> CreateForRegion(WorldId worldId, CountryId countryId, PoliticalRegionId region, ClaimType claimType)
+        => Create(worldId, countryId, claimType, ClaimTargetKind.PoliticalRegion, region.Value);
 }

@@ -45,6 +45,17 @@ public sealed class World : AggregateRoot<WorldId>
     private const long DefaultVolumetricDivisor = 5_000;  // real-world air-freight number
     private const long DefaultTransportRate = 1;
 
+    // Globe (world generation). WorldGenVersion 0 = not generated yet.
+    public int GridFrequency { get; private set; }
+    public int PlanetRadiusKm { get; private set; }
+    public int WorldGenVersion { get; private set; }
+
+    /// <summary>Cells with elevation strictly below this value (metres) are ocean. Set by generation; 0 until then.</summary>
+    public int SeaLevelM { get; private set; }
+
+    private const int DefaultGridFrequency = 64;
+    private const int DefaultPlanetRadiusKm = 6_371;
+
     // Parameterless ctor for EF Core materialization (sets private/get-only props via backing fields).
     private World() : base(default)
     {
@@ -72,6 +83,9 @@ public sealed class World : AggregateRoot<WorldId>
         VolumetricDivisor = DefaultVolumetricDivisor;
         TransportRate = DefaultTransportRate;
         DisplayUnitSystem = UnitSystem.Metric;
+        GridFrequency = DefaultGridFrequency;
+        PlanetRadiusKm = DefaultPlanetRadiusKm;
+        WorldGenVersion = 0;
     }
 
     public static ErrorOr<World> Create(string name, ulong seed, CalendarDefinition calendar, string rulesetVersion)
@@ -141,4 +155,28 @@ public sealed class World : AggregateRoot<WorldId>
 
     /// <summary>Which unit family the UI presents mass/volume in (display-only).</summary>
     public void SetDisplayUnitSystem(UnitSystem system) => DisplayUnitSystem = system;
+
+    /// <summary>
+    /// Records the globe parameters used by generation. Frequency and radius must be positive; version must not be negative.
+    /// Once a globe is recorded (<see cref="WorldGenVersion"/> &gt; 0) a further call is a <c>world.globe.generated</c> error:
+    /// regeneration is out of scope.
+    /// </summary>
+    public ErrorOr<Success> SetGlobe(int gridFrequency, int planetRadiusKm, int worldGenVersion)
+    {
+        if (gridFrequency < 1)
+            return Error.Validation("world.globe.frequency", "Grid frequency must be at least 1.");
+        if (planetRadiusKm < 1)
+            return Error.Validation("world.globe.radius", "Planet radius must be positive.");
+        if (worldGenVersion < 0)
+            return Error.Validation("world.globe.version", "World generation version must not be negative.");
+        if (WorldGenVersion > 0)
+            return Error.Validation("world.globe.generated", $"World already has a generated globe (generator version {WorldGenVersion}); regeneration is not supported.");
+        GridFrequency = gridFrequency;
+        PlanetRadiusKm = planetRadiusKm;
+        WorldGenVersion = worldGenVersion;
+        return Result.Success;
+    }
+
+    /// <summary>Records the sea level chosen by generation, in metres. Any value is valid (it may be negative).</summary>
+    public void SetSeaLevel(int seaLevelM) => SeaLevelM = seaLevelM;
 }

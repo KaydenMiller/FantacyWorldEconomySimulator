@@ -1,32 +1,76 @@
 using ErrorOr;
+using Microsoft.EntityFrameworkCore;
 using WorldEcon.Domain.Economy;
 using WorldEcon.Domain.Geography;
 using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 using WorldEcon.SharedKernel.Calendar;
+using WorldEcon.SharedKernel.Globe;
 using WorldEcon.SharedKernel.Measure;
+using WorldEcon.WorldGen.Pipeline;
+using WorldEcon.WorldGen.Stages;
 
 namespace WorldEcon.Seeding;
 
 /// <summary>
 /// Imports an authored <see cref="SeedWorld"/> into a <see cref="WorldDbContext"/> as a single
 /// world. Seed files are authored input: any validation failure (bad enum, blank name, duplicate
-/// name, failed domain invariant) throws — failing loud is correct here.
+/// name, failed domain invariant, generation settings out of range, settlement pinned on ocean, blank authored
+/// area name, authored area name with no area) throws — failing loud is correct here. Route/terrain contradictions
+/// are returned as warnings instead. The whole import runs in one transaction, so a failure leaves nothing in the
+/// database.
 /// </summary>
 public sealed class SeedImporter(WorldDbContext db)
 {
-    public async Task<WorldId> ImportAsync(SeedWorld seed, CancellationToken ct = default)
+    /// <summary>
+    /// Imports <paramref name="seed"/>, generates its globe (settings from <see cref="SeedWorld.Generation"/>, defaults
+    /// when absent), pins every settlement and applies <see cref="SeedWorld.NaturalAreas"/>. Returns the new world's id
+    /// and the route warnings from <see cref="GlobeSeeding.RunAsync"/>.
+    /// </summary>
+    public async Task<(WorldId WorldId, IReadOnlyList<string> Warnings)> ImportAsync(SeedWorld seed, CancellationToken ct = default)
     {
+        var (worldId, report) = await ImportWithReportAsync(seed, ct);
+        return (worldId, report.Warnings);
+    }
+
+    /// <summary>
+    /// As <see cref="ImportAsync"/>, also returning the globe seeding report (generation and persistence timing);
+    /// <paramref name="progress"/> receives the generation and write steps.
+    /// </summary>
+    public async Task<(WorldId WorldId, GlobeSeedingReport Report)> ImportWithReportAsync(SeedWorld seed, CancellationToken ct = default) =>
+        await ImportWithReportAsync(seed, null, ct);
+
+    /// <inheritdoc cref="ImportWithReportAsync(SeedWorld, CancellationToken)"/>
+    public async Task<(WorldId WorldId, GlobeSeedingReport Report)> ImportWithReportAsync(SeedWorld seed, IProgress<SeedingProgress>? progress, CancellationToken ct = default)
+    {
+        var settings = seed.Generation ?? new WorldGenSettings();
+        var valid = settings.Validate();
+        if (valid.IsError)
+            throw new InvalidOperationException($"Seed invalid: generation: {string.Join(" ", valid.Errors.Select(e => e.Description))}");
+        foreach (var a in NonNull(seed.NaturalAreas))
+        {
+            if (string.IsNullOrWhiteSpace(a.Name))
+                throw new InvalidOperationException($"Seed invalid: naturalArea name blank (kind '{a.Kind}' at {a.Lat}, {a.Lon}).");
+        }
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
         var world = Unwrap(World.Create(seed.Name, seed.Seed, CalendarDefinition.Default, seed.RulesetVersion));
         db.Worlds.Add(world);
 
         var goodsByName = ImportGoods(world.Id, seed.Goods);
         var recipesByName = ImportRecipes(world.Id, seed.Recipes, goodsByName);
-        ImportGeography(world.Id, seed.Continents, goodsByName, recipesByName, out var settlementsByName);
+        var pins = new List<(Settlement Settlement, PinRequest Request)>();
+        ImportGeography(world.Id, seed.Continents, goodsByName, recipesByName, pins, out var settlementsByName);
         ImportRoutes(world.Id, seed.Routes, settlementsByName);
+        var names = NonNull(seed.NaturalAreas)
+            .Select(a => new AreaNameRequest(a.Name, ParseEnum<GeographicRegionKind>(a.Kind, "naturalArea.kind"), a.Lat, a.Lon))
+            .ToList();
+
+        var report = await GlobeSeeding.RunAsync(db, world, settings, pins, names, progress, ct);
 
         await db.SaveChangesAsync(ct);
-        return world.Id;
+        await tx.CommitAsync(ct);
+        return (world.Id, report);
     }
 
     private Dictionary<string, GoodId> ImportGoods(WorldId worldId, IReadOnlyList<SeedGood>? goods)
@@ -83,6 +127,7 @@ public sealed class SeedImporter(WorldDbContext db)
         WorldId worldId, IReadOnlyList<SeedContinent>? continents,
         Dictionary<string, GoodId> goodsByName,
         Dictionary<string, (RecipeId Id, FacilityType Facility)> recipesByName,
+        List<(Settlement Settlement, PinRequest Request)> pins,
         out Dictionary<string, SettlementId> settlementsByName)
     {
         settlementsByName = new Dictionary<string, SettlementId>(StringComparer.OrdinalIgnoreCase);
@@ -99,8 +144,8 @@ public sealed class SeedImporter(WorldDbContext db)
 
                 foreach (var rg in NonNull(co.Regions))
                 {
-                    var region = Unwrap(Region.Create(worldId, country.Id, rg.Name));
-                    db.Regions.Add(region);
+                    var region = Unwrap(PoliticalRegion.Create(worldId, rg.Name, country.Id));
+                    db.PoliticalRegions.Add(region);
 
                     foreach (var s in NonNull(rg.Settlements))
                     {
@@ -112,6 +157,10 @@ public sealed class SeedImporter(WorldDbContext db)
                         if (!settlementsByName.TryAdd(settlement.Name, settlement.Id))
                             throw new InvalidOperationException($"Seed invalid: duplicate settlement name '{settlement.Name}'.");
                         db.Settlements.Add(settlement);
+                        if (s.Lat.HasValue != s.Lon.HasValue)
+                            throw new InvalidOperationException($"Seed invalid: settlement '{settlement.Name}' gives only one of lat/lon; give both or neither.");
+                        // Political group = the political region name: auto-placed members of one region are placed near each other.
+                        pins.Add((settlement, new PinRequest(settlement.Name, region.Name, s.Cell, s.Lat, s.Lon)));
 
                         ImportSettlementEconomy(worldId, settlement.Id, s, goodsByName, recipesByName);
                     }

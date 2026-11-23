@@ -23,7 +23,7 @@ public class EconomyRepositoryTests
             var world = World.Create("Aerth", 1UL, CalendarDefinition.Default, "1.0.0").Value;
             var continent = Continent.Create(world.Id, "C").Value;
             var country = Country.Create(world.Id, continent.Id, "Co").Value;
-            var region = Region.Create(world.Id, country.Id, "R").Value;
+            var region = PoliticalRegion.Create(world.Id, "R", country.Id).Value;
             var settlement = Settlement.Create(world.Id, region.Id, "Hammerfell", SettlementType.City, 0, 0, 50_000).Value;
             var good = Good.Create(world.Id, "Health Potion", GoodCategory.Potion, new Money(5000), "vial", SizeClass.Small, 0, false).Value;
             var shop = Shop.Create(world.Id, settlement.Id, "The Sundries", 2000, new Money(10_000)).Value;
@@ -35,7 +35,7 @@ public class EconomyRepositoryTests
                 ctx.Worlds.Add(world);
                 ctx.Continents.Add(continent);
                 ctx.Countries.Add(country);
-                ctx.Regions.Add(region);
+                ctx.PoliticalRegions.Add(region);
                 ctx.Settlements.Add(settlement);
                 ctx.Goods.Add(good);
                 ctx.Shops.Add(shop);

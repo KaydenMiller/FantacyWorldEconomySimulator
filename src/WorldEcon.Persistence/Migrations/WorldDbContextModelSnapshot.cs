@@ -529,12 +529,9 @@ namespace WorldEcon.Persistence.Migrations
                     b.ToTable("countries", (string)null);
                 });
 
-            modelBuilder.Entity("WorldEcon.Domain.Geography.Region", b =>
+            modelBuilder.Entity("WorldEcon.Domain.Geography.GeographicRegion", b =>
                 {
                     b.Property<Guid>("Id")
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid?>("CountryId")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Kind")
@@ -545,19 +542,42 @@ namespace WorldEcon.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("NameAuthored")
+                        .HasColumnType("INTEGER");
+
                     b.Property<Guid>("WorldId")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CountryId");
-
                     b.HasIndex("WorldId");
 
-                    b.ToTable("regions", (string)null);
+                    b.ToTable("geographic_regions", (string)null);
                 });
 
-            modelBuilder.Entity("WorldEcon.Domain.Geography.RegionContainment", b =>
+            modelBuilder.Entity("WorldEcon.Domain.Geography.GeographicRegionCell", b =>
+                {
+                    b.Property<Guid>("GeographicRegionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Cell")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("CellId");
+
+                    b.Property<short>("CoverageBp")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("GeographicRegionId", "Cell");
+
+                    b.HasIndex("Cell");
+
+                    b.ToTable("geographic_region_cells", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_geographic_region_cells_CoverageBp", "\"CoverageBp\" BETWEEN 1 AND 10000");
+                        });
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.GeographicRegionContainment", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
@@ -579,10 +599,34 @@ namespace WorldEcon.Persistence.Migrations
 
                     b.HasIndex("WorldId");
 
-                    b.ToTable("region_containments", (string)null);
+                    b.ToTable("geographic_region_containments", (string)null);
                 });
 
-            modelBuilder.Entity("WorldEcon.Domain.Geography.RegionContinent", b =>
+            modelBuilder.Entity("WorldEcon.Domain.Geography.PoliticalRegion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("CountryId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CountryId");
+
+                    b.HasIndex("WorldId");
+
+                    b.ToTable("political_regions", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Domain.Geography.PoliticalRegionContinent", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
@@ -590,7 +634,7 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<Guid>("ContinentId")
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("RegionId")
+                    b.Property<Guid>("PoliticalRegionId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("WorldId")
@@ -600,11 +644,11 @@ namespace WorldEcon.Persistence.Migrations
 
                     b.HasIndex("ContinentId");
 
-                    b.HasIndex("RegionId");
+                    b.HasIndex("PoliticalRegionId");
 
                     b.HasIndex("WorldId");
 
-                    b.ToTable("region_continents", (string)null);
+                    b.ToTable("political_region_continents", (string)null);
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Geography.Route", b =>
@@ -651,8 +695,14 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("CellId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("PoliticalRegionId")
                         .HasColumnType("TEXT");
 
                     b.Property<long>("Population")
@@ -662,12 +712,12 @@ namespace WorldEcon.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("RegionId")
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("State")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("TileId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -684,7 +734,7 @@ namespace WorldEcon.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RegionId");
+                    b.HasIndex("PoliticalRegionId");
 
                     b.HasIndex("WorldId");
 
@@ -756,6 +806,9 @@ namespace WorldEcon.Persistence.Migrations
                     b.Property<int>("ElasticityExponent")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("GridFrequency")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("MaxPriceMultBp")
                         .HasColumnType("INTEGER");
 
@@ -766,9 +819,15 @@ namespace WorldEcon.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("PlanetRadiusKm")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("RulesetVersion")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("SeaLevelM")
+                        .HasColumnType("INTEGER");
 
                     b.Property<long>("Seed")
                         .HasColumnType("INTEGER");
@@ -777,6 +836,9 @@ namespace WorldEcon.Persistence.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<long>("VolumetricDivisor")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("WorldGenVersion")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -864,6 +926,244 @@ namespace WorldEcon.Persistence.Migrations
                     b.HasIndex("ScopeKind", "ScopeId", "Sequence");
 
                     b.ToTable("log_event_scopes", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.GlobeCellCompositionRow", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CellId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("Landform")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<short>("ShareBp")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("WorldId", "CellId", "Slot");
+
+                    b.ToTable("globe_cell_composition", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.GlobeCellNeighbourRow", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CellId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("Slot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("NeighbourCellId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("WorldId", "CellId", "Slot");
+
+                    b.ToTable("globe_cell_neighbours", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.GlobeCellRow", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CellId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("Biome")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("BoundaryKind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<short>("CurrentAnomalyDeciC")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<sbyte>("CurrentDir")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DownstreamOf")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ElevationM")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("FlowAccum")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlateId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PrecipitationMm")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<short>("TemperatureDeciC")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("WaterBodyKind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<sbyte>("WindDir")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("WindStrength")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("WorldId", "CellId");
+
+                    b.ToTable("globe_cells", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.LakeRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("AreaKm2")
+                        .HasColumnType("REAL");
+
+                    b.Property<long>("Evaporation")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ExitTile")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Inflow")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("LowestTile")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("OutletTile")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TileCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("WaterLevelM")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("lakes", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.PlateRow", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PlateId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("AngularSpeed")
+                        .HasColumnType("REAL");
+
+                    b.Property<bool>("Continental")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("RotationAxisX")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("RotationAxisY")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("RotationAxisZ")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("SeedCell")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("WorldId", "PlateId");
+
+                    b.ToTable("plates", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.RegionLevelRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("region_level", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_region_level_Id", "\"Id\" = 0");
+                        });
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.RiverEdgeRow", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LowCellId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HighCellId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Flow")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("FlowsLowToHigh")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("WorldId", "LowCellId", "HighCellId");
+
+                    b.ToTable("river_edges", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.TileBlockRow", b =>
+                {
+                    b.Property<int>("CellId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.Property<int>("TileCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("CellId");
+
+                    b.ToTable("tile_blocks", (string)null);
+                });
+
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.WorldGenRunRow", b =>
+                {
+                    b.Property<Guid>("WorldId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GeneratorVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SettingsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StagesJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("WorldId");
+
+                    b.ToTable("worldgen_runs", (string)null);
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Economy.MoneyLedgerLine", b =>

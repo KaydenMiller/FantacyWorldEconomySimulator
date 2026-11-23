@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using WorldEcon.Application.Logging;
 using WorldEcon.Application.Queries;
@@ -14,6 +16,8 @@ using WorldEcon.Seeding;
 using WorldEcon.SharedKernel.Currency;
 using WorldEcon.SharedKernel.Measure;
 using WorldEcon.Simulation.Time;
+using WorldEcon.WorldGen.Pipeline;
+using WorldEcon.WorldGen.Tiles;
 
 namespace WorldEcon.Cli;
 
@@ -49,6 +53,7 @@ internal static class CommandRunner
                 "actions" => await CmdActions(args),
                 "log" => await CmdLog(args),
                 "summary" => await CmdSummary(args),
+                "globe" => await GlobeCommands.RunAsync(args, OpenContext, MissingArgs),
                 _ => Unknown(args[0]),
             };
         }
@@ -62,27 +67,95 @@ internal static class CommandRunner
     private static WorldDbContext OpenContext(string path)
         => new(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={path}").Options);
 
-    // ---- new <dbPath> ----
+    // ---- new <dbPath> [--preset <name>] [--generation <file.json>] ----
     private static async Task<int> CmdNew(string[] args)
     {
+        var usage = $"new <dbPath> [--preset {string.Join("|", WorldGenPresets.Names)}] [--generation <file.json>]";
         if (args.Length < 2)
-            return MissingArgs("new <dbPath>");
+            return MissingArgs(usage);
 
         var path = args[1];
-        await using var ctx = OpenContext(path);
-        ctx.Database.Migrate();
+        string preset = WorldGenPresets.Earth5Km;
+        string? generationFile = null;
+        for (var i = 2; i < args.Length; i += 2)
+        {
+            if (i + 1 >= args.Length || (args[i] != "--preset" && args[i] != "--generation"))
+            {
+                Console.Error.WriteLine($"Error: unexpected arguments. Usage: {usage}");
+                return 1;
+            }
 
-        var world = DemoSeeder.Seed(ctx);
+            if (args[i] == "--preset") preset = args[i + 1];
+            else generationFile = args[i + 1];
+        }
 
-        var settlements = await ctx.Settlements.CountAsync();
-        var goods = await ctx.Goods.CountAsync();
-        var shops = await ctx.Shops.CountAsync();
+        // Checked before generation (about 25 s at the default preset): seeding into an existing world database fails
+        // only when the tile blocks are inserted.
+        if (File.Exists(path))
+        {
+            Console.Error.WriteLine($"Error: {path} already exists; delete it or choose a new file name.");
+            return 1;
+        }
 
+        // The file overrides the preset: properties it does not name keep the preset's values.
+        var baseSettings = WorldGenPresets.Get(preset);
+        var settings = generationFile is null ? baseSettings : GenerationSettingsFile.Read(generationFile, baseSettings);
+        var g = settings.Grid;
+        Console.WriteLine($"Generating world at {path}: preset {preset}{(generationFile is null ? "" : $" + {generationFile}")}, " +
+            $"radius {g.PlanetRadiusKm:N0} km, frequency {g.Frequency} x {g.RegionMultiplier} x {g.TileMultiplier}");
+
+        var total = Stopwatch.StartNew();
+        World world;
+        GlobeSeedingReport globe;
+        int settlements, goods, shops;
+        await using (var ctx = OpenContext(path))
+        {
+            ctx.Database.Migrate();
+            var progress = new StepPrinter();
+            (world, globe) = await DemoSeeder.SeedAsync(ctx, settings, progress);
+            progress.Finish();
+            settlements = await ctx.Settlements.CountAsync();
+            goods = await ctx.Goods.CountAsync();
+            shops = await ctx.Shops.CountAsync();
+        }
+
+        total.Stop();
+        SqliteConnection.ClearAllPools();
         Console.WriteLine($"Created world '{world.Name}' (ruleset {world.RulesetVersion}, seed {world.Seed}) at {path}");
         Console.WriteLine($"  Settlements: {settlements}");
         Console.WriteLine($"  Goods:       {goods}");
         Console.WriteLine($"  Shops:       {shops}");
+        PrintGlobe(globe, settings);
+        Console.WriteLine($"  Total time:  {total.Elapsed.TotalSeconds:F2} s");
+        Console.WriteLine($"  Database:    {new FileInfo(path).Length / 1_048_576.0:F1} MiB");
+        Console.WriteLine($"  Peak memory: {Process.GetCurrentProcess().PeakWorkingSet64 / 1_048_576.0:F0} MiB (process peak working set)");
         return 0;
+    }
+
+    /// <summary>Prints one line per seeding step when the next step starts: the step name, the run fraction at its start and its duration.</summary>
+    private sealed class StepPrinter : IProgress<SeedingProgress>
+    {
+        private readonly Stopwatch _sw = Stopwatch.StartNew();
+        private string? _step;
+        private double _fraction;
+
+        public void Report(SeedingProgress value)
+        {
+            if (value.Step == _step) return;
+            Flush();
+            _step = value.Step;
+            _fraction = value.Fraction;
+            _sw.Restart();
+        }
+
+        public void Finish() => Flush();
+
+        private void Flush()
+        {
+            if (_step is not null)
+                Console.WriteLine($"  [{_fraction * 100,3:F0} %] {_step,-22} {_sw.Elapsed.TotalSeconds,8:F2} s");
+            _step = null;
+        }
     }
 
     // ---- import <jsonPath> <dbPath> ----
@@ -98,7 +171,9 @@ internal static class CommandRunner
         ctx.Database.Migrate();
 
         var seed = await new JsonSeedSource(jsonPath).LoadAsync();
-        var worldId = await new SeedImporter(ctx).ImportAsync(seed);
+        var progress = new StepPrinter();
+        var (worldId, globe) = await new SeedImporter(ctx).ImportWithReportAsync(seed, progress);
+        progress.Finish();
 
         var world = await ctx.Worlds.FirstAsync(w => w.Id == worldId);
         var settlements = await ctx.Settlements.CountAsync();
@@ -109,7 +184,40 @@ internal static class CommandRunner
         Console.WriteLine($"  Settlements: {settlements}");
         Console.WriteLine($"  Goods:       {goods}");
         Console.WriteLine($"  Merchants:   {merchants}");
+        PrintGlobe(globe, seed.Generation ?? new WorldGenSettings());
         return 0;
+    }
+
+    // Persisted time = every write in GlobeSeeding.RunAsync (world row with the tracked economy, globe tables, tile blocks,
+    // lakes, region level, areas, pins); "store" = GlobeStore.WriteAsync (globe tables, tile blocks, lakes, region level).
+    private static void PrintGlobe(GlobeSeedingReport globe, WorldGenSettings settings)
+    {
+        var gen = globe.Generated;
+        var cells = gen.Layers.Grid.CellCount;
+        var generateSeconds = gen.Stages.Sum(s => s.Duration.TotalSeconds);
+        Console.WriteLine($"  Globe cells: {cells:N0} (generated in {generateSeconds:F2} s, persisted in {globe.PersistDuration.TotalSeconds:F2} s, of which store {globe.GlobeTablesDuration.TotalSeconds:F2} s)");
+        if (gen.Tiles is { } tiles && gen.Regions is { } regions)
+        {
+            var sizeKm = TileMetrics.SizeKm(settings.Grid.PlanetRadiusKm, tiles.Count);
+            Console.WriteLine($"  Region cells: {regions.Count:N0}");
+            Console.WriteLine($"  Tiles:       {tiles.Count:N0}, tile size {sizeKm:F2} km (mean area {TileMetrics.MeanAreaKm2(settings.Grid.PlanetRadiusKm, tiles.Count):F1} km2)");
+            var lakes = gen.Lakes.Where(l => l.Kind == TileWaterKind.Lake).ToList();
+            var dry = gen.Lakes.Count - lakes.Count;
+            var largest = lakes.OrderByDescending(l => l.AreaKm2).ThenBy(l => l.Id).FirstOrDefault();
+            Console.WriteLine($"  Lakes:       {lakes.Count:N0} lakes, {dry:N0} dry lake beds" + (largest is null ? "" :
+                $"; largest lake {largest.Id}: {largest.AreaKm2:N0} km2, {largest.TileCount:N0} tiles, water level {largest.WaterLevelM} m"));
+        }
+
+        Console.WriteLine("  Stages:");
+        foreach (var st in gen.Stages)
+            Console.WriteLine($"    {st.Stage,-14} {st.Duration.TotalSeconds,8:F2} s");
+        PrintWarnings(globe.Warnings);
+    }
+
+    private static void PrintWarnings(IReadOnlyList<string> warnings)
+    {
+        foreach (var w in warnings)
+            Console.WriteLine($"warning: {w}");
     }
 
     // ---- list <dbPath> ----
@@ -738,7 +846,7 @@ internal static class CommandRunner
                     true);
             case "region":
                 return (LogScopeKind.Region,
-                    (await ctx.Regions.Where(x => x.WorldId == worldId).ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value,
+                    (await ctx.PoliticalRegions.Where(x => x.WorldId == worldId).ToListAsync()).FirstOrDefault(x => Eq(x.Name, name))?.Id.Value,
                     true);
             case "city":
             case "settlement":
@@ -770,7 +878,10 @@ internal static class CommandRunner
         Console.WriteLine("WorldEcon.Cli - headless world-economy harness");
         Console.WriteLine();
         Console.WriteLine("Usage:");
-        Console.WriteLine("  new      <dbPath>                          Create + migrate DB and seed the demo world.");
+        Console.WriteLine("  new      <dbPath> [--preset <name>] [--generation <file>]");
+        Console.WriteLine("                                             Create + migrate DB and seed the demo world. <name>: earth-5km (default),");
+        Console.WriteLine("                                             earth-10km, small-5km. <file> is a JSON generation block (see globe defaults)");
+        Console.WriteLine("                                             whose values override the preset. Prints per-stage times and world statistics.");
         Console.WriteLine("  import   <jsonPath> <dbPath>               Create + migrate DB and import a JSON world seed.");
         Console.WriteLine("  list     <dbPath>                          List settlements, goods, and shops.");
         Console.WriteLine("  price    <dbPath> <settlement> <good>      Show shop prices/margins for a good in a settlement.");
@@ -791,5 +902,15 @@ internal static class CommandRunner
         Console.WriteLine("           [--regex <p>] [--limit <n>]       Optional regex filter and page limit (default 50).");
         Console.WriteLine("  summary  <dbPath> <kind> <name>            Show event counts by type for a scope.");
         Console.WriteLine("           [--from <tick>] [--to <tick>]     Optional tick window (default: full history).");
+        Console.WriteLine("  globe    <dbPath>                          Globe statistics: terrain, biomes, water, areas, settlements, stage hashes.");
+        Console.WriteLine("  globe cell <dbPath> <cellId>               Every layer value, neighbours, composition and area memberships of a cell.");
+        Console.WriteLine("  globe tile <dbPath> <tileId>               Every value of a tile: position, elevation, landform, biome, water, lake, flow,");
+        Console.WriteLine("  globe tile <dbPath> --at <lat>,<lon>       climate, globe and region cell, settlements (--at: the tile nearest the point).");
+        Console.WriteLine("  globe areas <dbPath> [kind]                List natural areas (optionally one kind).");
+        Console.WriteLine("  globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail]");
+        Console.WriteLine("                                             Render a layer to a PNG at Globe, Region or Detail View (settlements as markers).");
+        Console.WriteLine("  globe find <dbPath> wasatch                Mountain rim cells (not basin floor) with a basin, dry lake bed or lake share of 2,000 bp or more.");
+        Console.WriteLine("  globe defaults                             Print the default generation settings as JSON (a template for --generation).");
+        Console.WriteLine("  globe settings <dbPath>                    Print the generation settings the world's globe was generated with.");
     }
 }

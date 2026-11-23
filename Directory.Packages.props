@@ -12,5 +12,13 @@
     <!-- Terminal.Gui v2: spec requested 2.0.0-beta.11, but no 2.0.0-beta.* or 2.0.0-develop.*
          resolves anymore (yanked). Pinned to the latest stable v2 release. -->
     <PackageVersion Include="Terminal.Gui" Version="2.4.7" />
+    <PackageVersion Include="SkiaSharp" Version="3.119.4" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+    <!-- Desktop app (Project 4): same Avalonia version as the 2026-11-21 Skia globe spike. -->
+    <PackageVersion Include="Avalonia" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Skia" Version="12.1.6" />
+    <PackageVersion Include="Avalonia.Headless" Version="12.1.6" />
   </ItemGroup>
 </Project>

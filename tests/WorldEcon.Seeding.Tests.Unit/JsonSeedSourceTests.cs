@@ -1,5 +1,6 @@
 using FluentAssertions;
 using WorldEcon.Seeding;
+using WorldEcon.WorldGen.Pipeline;
 
 namespace WorldEcon.Seeding.Tests.Unit;
 
@@ -67,5 +68,47 @@ public class JsonSeedSourceTests
 
         var act = async () => await source.LoadAsync();
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not found*");
+    }
+    // SampleJson with a "generation" block inserted before "routes".
+    private static string WithGeneration(string generation) =>
+        SampleJson.Replace("\"routes\": []", $"\"generation\": {generation},\n  \"routes\": []");
+
+    private static async Task<SeedWorld> LoadAsync(string json)
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"seed_{Guid.NewGuid():N}.json");
+        await File.WriteAllTextAsync(path, json);
+        try
+        {
+            return await new JsonSeedSource(path).LoadAsync();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task LoadAsync_WithoutGenerationBlock_LeavesGenerationNull()
+    {
+        var seed = await LoadAsync(SampleJson);
+        seed.Generation.Should().BeNull();
+    }
+
+    [Test]
+    public async Task LoadAsync_PartialGenerationBlock_KeepsDefaultsForOmittedSettings()
+    {
+        var seed = await LoadAsync(WithGeneration("""{ "grid": { "frequency": 16 }, "Climate": { "MoistureIterations": 32 } }"""));
+
+        seed.Generation.Should().Be(new WorldGenSettings { Grid = new() { Frequency = 16 }, Climate = new() { MoistureIterations = 32 } });
+    }
+
+    [Test]
+    [Arguments("""{ "Grid": { "Frequncy": 16 } }""", "Seed invalid: generation: unknown setting 'Grid.Frequncy'")]
+    [Arguments("""{ "GridFrequency": 16 }""", "Seed invalid: generation: unknown setting 'GridFrequency'")]
+    [Arguments("""{ "Grid": { "Frequency": "16" } }""", "Seed invalid: generation: setting 'Grid.Frequency' must be an integer*")]
+    public async Task LoadAsync_BadGenerationBlock_FailsLoudly(string generation, string message)
+    {
+        var act = async () => await LoadAsync(WithGeneration(generation));
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage(message);
     }
 }

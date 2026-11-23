@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>WorldEcon.Rendering</RootNamespace>
+    <!-- MapRenderer writes cell spans straight into a raster canvas's pixels (TriangleSpans). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
+    <ProjectReference Include="..\WorldEcon.WorldGen\WorldEcon.WorldGen.csproj" />
+  </ItemGroup>
+</Project>
