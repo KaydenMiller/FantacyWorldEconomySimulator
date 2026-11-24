@@ -26,7 +26,7 @@ internal static class GlobeCommands
 
     public static async Task<int> RunAsync(string[] args, Func<string, WorldDbContext> open, Func<string, int> missingArgs)
     {
-        const string statsUsage = "globe <dbPath> | globe cell <dbPath> <cellId> | globe tile <dbPath> <tileId>|--at <lat>,<lon> | globe areas <dbPath> [kind] | globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends] [--hex-grid] | globe find <dbPath> wasatch | globe defaults | globe settings <dbPath>";
+        const string statsUsage = "globe <dbPath> | globe cell <dbPath> <cellId> | globe tile <dbPath> <tileId>|--at <lat>,<lon> | globe areas <dbPath> [kind] | globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends] [--hex-grid] | globe find <dbPath> wasatch | globe defaults | globe settings <dbPath> | " + GlobeGenCommand.Usage;
         if (args.Length < 2)
             return missingArgs(statsUsage);
 
@@ -42,6 +42,8 @@ internal static class GlobeCommands
                 return args.Length < 5 ? missingArgs("globe png <dbPath> <layer> <path> [--yaw D] [--pitch D] [--size N] [--zoom Z] [--level globe|region|detail] [--graticule] [--no-equator] [--river-arrows] [--river-ends] [--hex-grid]") : await Png(open, args);
             case "find":
                 return args.Length < 4 ? missingArgs("globe find <dbPath> wasatch") : await Find(open, args[2], args[3]);
+            case "gen":
+                return GlobeGenCommand.Run(args);
             case "defaults":
                 Console.WriteLine(WorldGenSettingsJson.Serialize(new WorldGenSettings(), indented: true));
                 return 0;
@@ -264,6 +266,8 @@ internal static class GlobeCommands
         var d = GlobeCellDetails.Build(l, c, await GlobeWorldLoader.LoadSettlementsAsync(ctx, world.Id));
         Console.WriteLine($"Cell {c}{(d.Pentagon ? " (pentagon)" : "")} at {Coord(l, c)}");
         Console.WriteLine($"  Plate:        {d.PlateId} ({(d.PlateContinental ? "continental" : "oceanic")}), boundary {d.Boundary}");
+        if (d.Geology is { } geology)
+            foreach (var (label, value) in geology.Describe()) Console.WriteLine($"  {label + ":",-22}{value}");
         Console.WriteLine($"  Elevation:    {d.ElevationM} m ({(d.Ocean ? "ocean" : "land")}, sea level {d.SeaLevelM} m)");
         Console.WriteLine($"  Current:      slot {d.CurrentSlot}, anomaly {d.CurrentAnomalyDeciC / 10.0:F1} C");
         Console.WriteLine($"  Wind:         slot {d.WindSlot}, strength {d.WindStrength}");

@@ -44,17 +44,51 @@ public static class LayerPalette
     /// <summary>log10 of the smallest and largest flow over the world's river cells and river edges (0, 0 when there are none).</summary>
     private sealed record RiverRange(double LogMin, double LogMax);
 
+    /// <summary>Colour of a cell whose layer has no data yet (a world part-way through generation, in the stage viewer).</summary>
+    public const uint NoData = NoArea;
+
+    /// <summary>
+    /// Colour of <paramref name="cell"/> on <paramref name="layer"/>. A layer whose data a partly generated world does not
+    /// have yet is <see cref="NoData"/>; the Currents and Winds base map falls back from biomes to elevation, then to
+    /// <see cref="NoData"/>.
+    /// </summary>
     public static uint ColorOf(WorldLayers l, GlobeLayer layer, int cell) => layer switch
     {
-        GlobeLayer.Plates => HashedHue((ulong)l.PlateOf[cell]),
-        GlobeLayer.Elevation => Elevation(l, cell),
-        GlobeLayer.Temperature => TemperatureColor(l.TemperatureDeciC[cell]),
-        GlobeLayer.Precipitation => PrecipitationColor(l.PrecipitationMm[cell]),
-        GlobeLayer.Hydrology => Hydrology(l, cell),
+        GlobeLayer.Plates => l.PlateOf.Length == 0 ? NoData : HashedHue((ulong)l.PlateOf[cell]),
+        GlobeLayer.Elevation => l.ElevationM.Length == 0 ? NoData : Elevation(l, cell),
+        GlobeLayer.Temperature => l.TemperatureDeciC.Length == 0 ? NoData : TemperatureColor(l.TemperatureDeciC[cell]),
+        GlobeLayer.Precipitation => l.PrecipitationMm.Length == 0 ? NoData : PrecipitationColor(l.PrecipitationMm[cell]),
+        GlobeLayer.Hydrology => l.WaterBodyKind.Length == 0 || l.BiomeOf.Length == 0 ? NoData : Hydrology(l, cell),
         GlobeLayer.Areas => Areas(l, cell),
-        GlobeLayer.Landform => LandformColor(l.IsOcean(cell) ? Landform.Ocean : MainLandform(l, cell)),
-        _ => BiomeColor(l, cell), // Biome, Settlements, and the Currents/Winds base map
+        GlobeLayer.Landform => l.ElevationM.Length == 0 ? NoData : LandformColor(l.IsOcean(cell) ? Landform.Ocean : MainLandform(l, cell)),
+        GlobeLayer.CrustAge => l.Crust is { } ca && cell < ca.Count ? CrustAgeColor(ca.Kind[cell], ca.FormedAgeMy[cell]) : NoData,
+        GlobeLayer.Orogeny => l.Crust is { } og && cell < og.Count ? OrogenyColor(og.Orogeny[cell], og.LastOrogenyAgeMy[cell]) : NoData,
+        GlobeLayer.Sediment => l.Crust is { } sd && cell < sd.Count ? Lerp(0xFF20242C, 0xFFE8C468, Math.Clamp(sd.SedimentDam[cell] / 500.0, 0, 1)) : NoData,
+        GlobeLayer.Currents or GlobeLayer.Winds when l.BiomeOf.Length == 0 => l.ElevationM.Length == 0 ? NoData : Elevation(l, cell),
+        _ => l.BiomeOf.Length == 0 ? NoData : BiomeColor(l, cell), // Biome, Settlements, and the Currents/Winds base map
     };
+
+    /// <summary>Orogeny layer colour of a cell without mountain building.</summary>
+    public const uint NoOrogeny = 0xFF2E3440;
+
+    /// <summary>Oceanic crust red (new, at a ridge) → deep blue (200 My); continental and arc crust sand (young) → dark brown (3,000 My).</summary>
+    public static uint CrustAgeColor(WorldEcon.WorldGen.Tectonics.CrustKind kind, ushort ageMy) =>
+        kind == WorldEcon.WorldGen.Tectonics.CrustKind.Oceanic
+            ? Lerp(0xFFE04030, 0xFF102A70, Math.Clamp(ageMy / 200.0, 0, 1))
+            : Lerp(0xFFE8D8A0, 0xFF4A3018, Math.Clamp(ageMy / 3000.0, 0, 1));
+
+    /// <summary>Himalayan magenta, Andean orange, arc cyan, fading toward grey over 300 My; none <see cref="NoOrogeny"/>.</summary>
+    public static uint OrogenyColor(WorldEcon.WorldGen.Tectonics.OrogenyKind kind, ushort ageMy)
+    {
+        if (kind == WorldEcon.WorldGen.Tectonics.OrogenyKind.None || ageMy == WorldEcon.WorldGen.Tectonics.CrustRecord.Never) return NoOrogeny;
+        var c = kind switch
+        {
+            WorldEcon.WorldGen.Tectonics.OrogenyKind.Himalayan => 0xFFE040C0u,
+            WorldEcon.WorldGen.Tectonics.OrogenyKind.Andean => 0xFFF09030u,
+            _ => 0xFF40D0E0u,
+        };
+        return Lerp(c, 0xFF606670, Math.Clamp(ageMy / 300.0, 0, 1));
+    }
 
     /// <summary>Landform with the largest composition share of a globe cell (ties: first entry); Plain when the cell has no composition.</summary>
     public static Landform MainLandform(WorldLayers l, int cell)

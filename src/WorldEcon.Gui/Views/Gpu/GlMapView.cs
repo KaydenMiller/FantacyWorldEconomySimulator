@@ -78,6 +78,15 @@ public sealed class GlMapView : OpenGlControlBase
         if (map is null) return;
         map.Invalidated += OnInvalidated;
         if (_failed) return;
+        if (!map.GpuAllowed)
+        {
+            // Stage previews have no imagery: the CPU map control draws them (GpuActive stays false).
+            _pending = null;
+            map.GpuActive = false;
+            RequestNextFrameRendering();
+            return;
+        }
+
         var renderer = map.Renderer;
         // Building the scene takes about 0.5 s at 40,962 cells: off the UI thread; uploaded on the next GL frame.
         _ = Task.Run(() =>

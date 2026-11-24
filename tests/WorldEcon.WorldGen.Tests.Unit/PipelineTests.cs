@@ -28,7 +28,7 @@ public class PipelineTests
         world.Layers.Grid.CellCount.Should().Be(162);
         world.Layers.Geometry.Should().NotBeNull();
         world.GeneratorVersion.Should().Be(WorldGenerator.GeneratorVersion);
-        world.Stages.Select(r => r.Stage).Should().Equal(WorldGenStage.Plates, WorldGenStage.Elevation, WorldGenStage.SeaLevel, WorldGenStage.Currents, WorldGenStage.Winds, WorldGenStage.Climate,
+        world.Stages.Select(r => r.Stage).Should().Equal(WorldGenStage.Tectonics, WorldGenStage.SeaLevel, WorldGenStage.Currents, WorldGenStage.Winds, WorldGenStage.Climate,
             WorldGenStage.TileGrid, WorldGenStage.TileElevation, WorldGenStage.TileSeaLevel, WorldGenStage.TileClimate, WorldGenStage.TileHydrology, WorldGenStage.TileLandform,
             WorldGenStage.Summary, WorldGenStage.Areas);
         world.Tiles.Should().NotBeNull();
@@ -37,7 +37,7 @@ public class PipelineTests
         world.Layers.SeaLevelM.Should().Be(world.Tiles.SeaLevelM);
 
         var globe = WorldGenerator.GenerateGlobe(42, new WorldGenSettings { Grid = new() { Frequency = 4 } });
-        globe.Stages.Select(r => r.Stage).Should().Equal(WorldGenStage.Plates, WorldGenStage.Elevation, WorldGenStage.SeaLevel, WorldGenStage.Currents, WorldGenStage.Winds, WorldGenStage.Climate);
+        globe.Stages.Select(r => r.Stage).Should().Equal(WorldGenStage.Tectonics, WorldGenStage.SeaLevel, WorldGenStage.Currents, WorldGenStage.Winds, WorldGenStage.Climate);
         globe.GeneratorVersion.Should().Be(0);
         globe.Tiles.Should().BeNull();
     }
@@ -47,7 +47,9 @@ public class PipelineTests
     {
         var reports = new List<(WorldGenStage Stage, double Fraction)>();
         var world = WorldGenerator.Generate(42, new WorldGenSettings { Grid = new() { Frequency = 4 } }, new WorldGenOptions(Progress: new SyncProgress(reports.Add)));
-        reports.Take(world.Stages.Count).Select(r => r.Stage).Should().Equal(world.Stages.Select(s => s.Stage));
+        // Stages report in order; a long stage (Tectonics) also reports progress within itself, so collapse repeats.
+        var order = reports.Select(r => r.Stage).Where((s, i) => i == 0 || reports[i - 1].Stage != s).ToList();
+        order.Take(world.Stages.Count).Should().Equal(world.Stages.Select(s => s.Stage));
         reports.Select(r => r.Fraction).Should().BeInAscendingOrder();
         reports[0].Fraction.Should().Be(0);
         reports[^1].Should().Be((WorldGenStage.Areas, 1.0));
@@ -74,8 +76,8 @@ public class PipelineTests
         yield return () => (new WorldGenSettings { Grid = new() { Frequency = 1 }, Plates = new() { Count = 13 } }, "Plates.Count");
         yield return () => (new WorldGenSettings { Plates = new() { ContinentalFractionBp = 10_001 } }, "Plates.ContinentalFractionBp");
         yield return () => (new WorldGenSettings { SeaLevel = new() { LandFractionBp = -1 } }, "SeaLevel.LandFractionBp");
-        yield return () => (new WorldGenSettings { Elevation = new() { FalloffCells = 0 } }, "Elevation.FalloffCells");
-        yield return () => (new WorldGenSettings { Elevation = new() { NoiseAmplitudeM = -1 } }, "Elevation.NoiseAmplitudeM");
+        yield return () => (new WorldGenSettings { Tectonics = new() { StepMy = 0 } }, "Tectonics.StepMy");
+        yield return () => (new WorldGenSettings { Tectonics = new() { TopographyNoiseM = -1 } }, "Tectonics.TopographyNoiseM");
         yield return () => (new WorldGenSettings { Climate = new() { MoistureIterations = 0 } }, "Climate.MoistureIterations");
         yield return () => (new WorldGenSettings { Climate = new() { MoistureBaseLossBp = 10_001 } }, "Climate.MoistureBaseLossBp");
         yield return () => (new WorldGenSettings { Climate = new() { MoistureOrographicLossBpPerKm = -1 } }, "Climate.MoistureOrographicLossBpPerKm");

@@ -81,5 +81,52 @@ public sealed class WorldLayers
     /// <summary>Stage 9: natural areas (many-to-many with cells), indexed in (kind, smallest member cell) order.</summary>
     public List<GeneratedArea> Areas { get; set; } = [];
 
+    /// <summary>Tectonics stage: the per-cell geological record (null before the stage, or for a world without one).</summary>
+    public Tectonics.CrustRecord? Crust { get; set; }
+
+    /// <summary>Tectonics stage: present-day collision strength at plate boundaries, permille of the largest; 0 away from boundaries.</summary>
+    public ushort[] CollisionStrengthPermille { get; set; } = [];
+
+    /// <summary>Tectonics stage: steps (cells) to the nearest present-day plate boundary within the cell's plate; 0 on boundaries.</summary>
+    public ushort[] BoundaryDistanceCells { get; set; } = [];
+
     public bool IsOcean(int cell) => ElevationM[cell] < SeaLevelM;
+
+    /// <summary>Number of <see cref="CloneGlobe"/> calls on the current thread (tests check that no copy is made without an observer).</summary>
+    [ThreadStatic]
+    internal static int CloneCount;
+
+    /// <summary>
+    /// A copy that later changes to this instance do not affect: every layer array is copied (each
+    /// <see cref="Composition"/> row too), the lists are copied, and <see cref="Grid"/>, <see cref="Geometry"/> and the
+    /// immutable <see cref="PlateInfo"/> records are shared.
+    /// </summary>
+    public WorldLayers CloneGlobe()
+    {
+        CloneCount++;
+        return new WorldLayers(Grid, Geometry)
+        {
+            PlateOf = (int[])PlateOf.Clone(),
+            Plates = (PlateInfo[])Plates.Clone(),
+            ElevationM = (int[])ElevationM.Clone(),
+            BoundaryKind = (byte[])BoundaryKind.Clone(),
+            SeaLevelM = SeaLevelM,
+            CurrentDir = (sbyte[])CurrentDir.Clone(),
+            CurrentAnomalyDeciC = (short[])CurrentAnomalyDeciC.Clone(),
+            WindDir = (sbyte[])WindDir.Clone(),
+            WindStrength = (byte[])WindStrength.Clone(),
+            TemperatureDeciC = (short[])TemperatureDeciC.Clone(),
+            PrecipitationMm = (int[])PrecipitationMm.Clone(),
+            BiomeOf = (byte[])BiomeOf.Clone(),
+            Composition = Composition.Select(row => (CompositionEntry[])row.Clone()).ToArray(),
+            DownstreamOf = (int[])DownstreamOf.Clone(),
+            FlowAccum = (long[])FlowAccum.Clone(),
+            WaterBodyKind = (byte[])WaterBodyKind.Clone(),
+            RiverEdges = [.. RiverEdges],
+            Areas = [.. Areas],
+            Crust = Crust?.Clone(),
+            CollisionStrengthPermille = (ushort[])CollisionStrengthPermille.Clone(),
+            BoundaryDistanceCells = (ushort[])BoundaryDistanceCells.Clone(),
+        };
+    }
 }

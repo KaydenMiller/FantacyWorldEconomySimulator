@@ -720,6 +720,7 @@ public static class TileHydrologyStage
             // elevation bin) is several components at one level; they are linked over those saddles into one tree that
             // ends at the lake's exit (full lake) or at the component holding its lowest tile (the sink).
             var saddleSet = new bool[k];
+            var onExitPath = new bool[k]; // tiles whose downstream an earlier exit path already set
             var headOf = new int[nodes];
             var exitOf = new int[nodes]; // full lake node: local tile where its whole outflow passes (outlet or saddle)
             Array.Fill(headOf, -1);
@@ -778,8 +779,12 @@ public static class TileHydrologyStage
 
             // Lake node lakeNode drains from the side of child `from` of merge node pa over pa's saddle: the descent path
             // from that side's entry to the first wet tile of the lake is reversed, the entry drains to the saddle and the
-            // saddle (first assignment wins) to the entry on the other side. Returns the wet tile reached (the outlet of
-            // its component), or −1.
+            // saddle (first assignment wins) to the entry on the other side. A saddle already lying on an earlier exit's
+            // path keeps the downstream that path gave it (it leads out of the lake). Two merge nodes can share one saddle
+            // tile (a tile touching three components); when a later exit reverses a path that holds the saddle's current
+            // target, that target would drain back into the saddle (a two-tile cycle), so the saddle is pointed at this
+            // exit's other side instead, which lies inside the earlier exit's receiving side. Returns the wet tile reached
+            // (the outlet of its component), or −1.
             int Exit(int lakeNode, int pa, int from)
             {
                 bool side0 = _nChild0[pa] == from;
@@ -787,11 +792,16 @@ public static class TileHydrologyStage
                 int other = side0 ? _nEntry1[pa] : _nEntry0[pa];
                 int saddle = _nSaddle[pa];
                 int prev = g[saddle], cur = g[entry], reached = -1;
+                bool assigned = saddleSet[saddle] || onExitPath[saddle];
+                int saddleTarget = assigned ? _down[g[saddle]] : -1;
+                bool targetReversed = false;
                 while (true)
                 {
                     int lc = _local[cur];
                     int next = _down[cur];
+                    if (cur == saddleTarget) targetReversed = true;
                     _down[cur] = prev;
+                    onExitPath[lc] = true;
                     if (comp[lc] >= 0 && lakeOfTile[lc] == lakeNode)
                     {
                         if (compOutlet[comp[lc]] < 0) compOutlet[comp[lc]] = lc;
@@ -802,7 +812,7 @@ public static class TileHydrologyStage
                     prev = cur;
                     cur = next;
                 }
-                if (!saddleSet[saddle])
+                if (!assigned || targetReversed)
                 {
                     saddleSet[saddle] = true;
                     _down[g[saddle]] = g[other];
@@ -1098,6 +1108,7 @@ public static class TileHydrologyStage
             long belowX = bin[x] == s ? sumBelow[x] : sumAll[x];
             long belowY = bin[y] == s ? sumBelow[y] : sumAll[y];
             int merged;
+            int mergedEntry = Before(entryX, entryY, g) ? entryX : entryY;
             if (shallowX || shallowY)
             {
                 bool absorbX = shallowX && (!shallowY || _nFloor[nx] > _nFloor[ny] || (_nFloor[nx] == _nFloor[ny] && nx > ny));
@@ -1121,6 +1132,9 @@ public static class TileHydrologyStage
                 // The absorbed pit's water follows the routing: over the saddle to where the saddle drains.
                 _nLeafRedirect[a] = waterLeaf[_local[_down[g[saddle]]]];
                 merged = keep;
+                // The absorbed entry now drains to the saddle: the merged component's entry is the kept side's (a later
+                // merge at the same saddle tile would otherwise use the absorbed entry and drain back into the saddle).
+                mergedEntry = entryKeep;
             }
             else
             {
@@ -1138,7 +1152,7 @@ public static class TileHydrologyStage
             sumBelow[x] = belowX + belowY;
             bin[x] = s;
             compNode[x] = merged;
-            return (x, Before(entryX, entryY, g) ? entryX : entryY);
+            return (x, mergedEntry);
         }
 
         // Water w arrives at leaf x (see the class comment).

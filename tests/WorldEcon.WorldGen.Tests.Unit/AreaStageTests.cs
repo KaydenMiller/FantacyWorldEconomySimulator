@@ -173,7 +173,7 @@ public class AreaStageTests
         foreach (var g in l.Areas.GroupBy(a => a.Kind).OrderBy(g => g.Key))
             Console.WriteLine($"Areas {g.Key}: {g.Count()}");
 
-        world.Stages.Should().HaveCount(14);
+        world.Stages.Should().HaveCount(13);
 
         var mountainCells = l.Areas.Where(a => a.Kind == GeographicRegionKind.MountainRange).SelectMany(a => a.Cells.Select(c => c.Cell)).ToHashSet();
         var lowCells = l.Areas.Where(a => a.Kind is GeographicRegionKind.Basin or GeographicRegionKind.DryLakeBed or GeographicRegionKind.Lake)

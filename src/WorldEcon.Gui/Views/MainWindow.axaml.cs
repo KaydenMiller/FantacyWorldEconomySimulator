@@ -98,20 +98,107 @@ public partial class MainWindow : Window
         if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) await vm.OpenAsync(path);
     });
 
-    /// <summary>File → New world → preset (the menu item's Tag): choose a file, then generate with progress in the status bar.</summary>
+    /// <summary>The generation settings dialog's last values (seed, preset, file), kept between uses.</summary>
+    private readonly GenerationSettingsViewModel _generation = new();
+
+    /// <summary>File → New world: seed, preset and settings file in the dialog, then a file to save, then generate with progress in the status bar.</summary>
     private void OnNewWorld(object? sender, RoutedEventArgs e) => Run("Could not create the world", async () =>
     {
-        if (Vm is not { CanUseFileActions: true } vm || (sender as MenuItem)?.Tag is not string preset) return;
+        if (Vm is not { CanUseFileActions: true } vm) return;
+        if (!await new GenerationSettingsDialog(_generation).ShowDialog<bool>(this)) return;
+        var settings = _generation.Build();
+        var preset = _generation.Preset;
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
-            Title = $"Create world database ({preset})",
-            SuggestedFileName = $"{preset}.db",
+            Title = $"Create world database ({preset}, seed {_generation.Seed})",
+            SuggestedFileName = $"{preset}-{_generation.Seed}.db",
             DefaultExtension = "db",
             FileTypeChoices = [DbFiles],
             ShowOverwritePrompt = true,
         });
         // The save dialog asked before returning an existing file, so an existing path is a confirmed overwrite.
-        if (file?.TryGetLocalPath() is { } path) await vm.CreateDemoWorldAsync(path, WorldEcon.WorldGen.Pipeline.WorldGenPresets.Get(preset), overwrite: true);
+        if (file?.TryGetLocalPath() is { } path) await vm.CreateDemoWorldAsync(path, settings, overwrite: true, seed: _generation.Seed);
+    });
+
+    private static readonly FilePickerFileType CheckpointFiles = new("Generation checkpoint") { Patterns = ["*.wgckpt"] };
+
+    private static readonly FilePickerFileType JsonFiles = new("Settings JSON") { Patterns = ["*.json"] };
+
+    /// <summary>File → Tune generation…: closes the open world and shows the tuning panel (generation results reach it on this thread).</summary>
+    private void OnTune(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is not { CanUseFileActions: true } vm) return;
+        vm.EnterTuning(_generation, action => Dispatcher.UIThread.InvokeAsync(action).GetTask());
+    }
+
+    private void OnLeaveTune(object? sender, RoutedEventArgs e) => Vm?.LeaveTuning();
+
+    private void OnTuneChooseFile(object? sender, RoutedEventArgs e) => Run("Could not choose a settings file", async () =>
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose a generation settings file",
+            AllowMultiple = false,
+            FileTypeFilter = [JsonFiles, FilePickerFileTypes.All],
+        });
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) _generation.SettingsFile = path;
+    });
+
+    private void OnTuneReload(object? sender, RoutedEventArgs e) => Vm?.Tuning?.Reload();
+
+    private void OnTuneRun(object? sender, RoutedEventArgs e) => Run("Could not run the generation", async () =>
+    {
+        if (Vm?.Tuning is { } t) await t.RunAsync();
+    });
+
+    private void OnTuneRerun(object? sender, RoutedEventArgs e) => Run("Could not rerun the generation", async () =>
+    {
+        if (Vm?.Tuning is { } t) await t.RerunFromSelectedAsync();
+    });
+
+    private void OnTuneStage(object? sender, RoutedEventArgs e)
+    {
+        if (Vm?.Tuning is { } t && (sender as Control)?.DataContext is StageRow row) t.SelectedStage = row.Stage;
+    }
+
+    private void OnTuneSaveCheckpoint(object? sender, RoutedEventArgs e) => Run("Could not save the checkpoint", async () =>
+    {
+        if (Vm?.Tuning is not { CanSaveCheckpoint: true } t) return;
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = $"Save checkpoint after {t.SelectedStageName}",
+            SuggestedFileName = $"seed{t.RunSeed}-{t.SelectedStageName}.wgckpt",
+            DefaultExtension = "wgckpt",
+            FileTypeChoices = [CheckpointFiles],
+            ShowOverwritePrompt = true,
+        });
+        if (file?.TryGetLocalPath() is { } path) t.SaveCheckpoint(path);
+    });
+
+    private void OnTuneOpenCheckpoint(object? sender, RoutedEventArgs e) => Run("Could not open the checkpoint", async () =>
+    {
+        if (Vm?.Tuning is not { CanRun: true } t) return;
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Open generation checkpoint",
+            AllowMultiple = false,
+            FileTypeFilter = [CheckpointFiles, FilePickerFileTypes.All],
+        });
+        if (files.Count > 0 && files[0].TryGetLocalPath() is { } path) await t.OpenCheckpointAsync(path);
+    });
+
+    private void OnTuneSaveWorld(object? sender, RoutedEventArgs e) => Run("Could not save the world", async () =>
+    {
+        if (Vm is not { Tuning: { CanSaveAsWorld: true } t } vm) return;
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = $"Save tuned world (seed {t.RunSeed})",
+            SuggestedFileName = $"tuned-{t.RunSeed}.db",
+            DefaultExtension = "db",
+            FileTypeChoices = [DbFiles],
+            ShowOverwritePrompt = true,
+        });
+        if (file?.TryGetLocalPath() is { } path) await vm.SaveTunedWorldAsync(path);
     });
 
     private void OnExit(object? sender, RoutedEventArgs e) => Close();

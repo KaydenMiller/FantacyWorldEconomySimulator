@@ -1,0 +1,32 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:WorldEcon.Gui.ViewModels"
+        x:Class="WorldEcon.Gui.Views.GenerationSettingsDialog"
+        x:DataType="vm:GenerationSettingsViewModel"
+        Title="Generation settings"
+        Width="520" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        Background="#12151F">
+  <StackPanel Margin="16" Spacing="10">
+    <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+      <TextBlock Text="Seed" VerticalAlignment="Center" />
+      <TextBox Name="SeedBox" Grid.Column="1" Text="{Binding SeedText}" />
+      <TextBlock Grid.Row="1" Text="Preset" VerticalAlignment="Center" />
+      <ComboBox Name="PresetPicker" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch"
+                ItemsSource="{Binding Presets}" SelectedItem="{Binding Preset}" />
+      <TextBlock Grid.Row="2" Text="Settings file" VerticalAlignment="Center" />
+      <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+        <TextBlock Name="SettingsFileText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                   Text="{Binding SettingsFile, TargetNullValue='none (preset only)'}" />
+        <Button Name="ChooseFileButton" Grid.Column="1" Content="Choose…" Click="OnChooseFile" />
+        <Button Name="ClearFileButton" Grid.Column="2" Content="Clear" Click="OnClearFile" />
+      </Grid>
+    </Grid>
+    <TextBlock Name="ErrorText" Text="{Binding Error}" Foreground="#FF7A7A" TextWrapping="Wrap"
+               IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Name="CancelButton" Content="Cancel" Click="OnCancel" IsCancel="True" />
+      <Button Name="GenerateButton" Content="Generate" Click="OnGenerate" IsDefault="True" IsEnabled="{Binding CanGenerate}" />
+    </StackPanel>
+  </StackPanel>
+</Window>

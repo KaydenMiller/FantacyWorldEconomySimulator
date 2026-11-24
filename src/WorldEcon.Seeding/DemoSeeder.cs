@@ -20,7 +20,8 @@ namespace WorldEcon.Seeding;
 /// </summary>
 public static class DemoSeeder
 {
-    private const ulong DemoSeed = 42UL;
+    /// <summary>The demo world's seed when none is given (the seed its authored coordinates were placed for).</summary>
+    public const ulong DefaultSeed = 42UL;
 
     private const long ConsumerSize = 1000;      // matches ConsumerSpawnPhase.DefaultConsumerSize
     private const long WeeklyBudget = 40_000;    // ≈ ConsumerSize × AllowanceIncome default (40/capita)
@@ -30,13 +31,15 @@ public static class DemoSeeder
     /// <see cref="WorldGenPresets.Earth5Km"/> preset when null), auto-places every
     /// settlement (no explicit pins) and saves it, all in one transaction (a failure leaves no world behind). Returns the
     /// created world and the globe seeding report. <paramref name="progress"/> receives the generation and write steps
-    /// (<see cref="SeedingProgress"/>).
+    /// (<see cref="SeedingProgress"/>). <paramref name="seed"/> is the world seed (<see cref="DefaultSeed"/> when omitted).
+    /// <paramref name="generated"/>, when given, is used instead of generating (it must have been generated with
+    /// <paramref name="seed"/> and include tiles); the tuning mode's Save as world passes its finished run.
     /// </summary>
     public static async Task<(World World, GlobeSeedingReport Globe)> SeedAsync(WorldDbContext ctx, WorldGenSettings? settings = null,
-        IProgress<SeedingProgress>? progress = null, CancellationToken ct = default)
+        IProgress<SeedingProgress>? progress = null, CancellationToken ct = default, ulong seed = DefaultSeed, GeneratedWorld? generated = null)
     {
         await using var tx = await ctx.Database.BeginTransactionAsync(ct);
-        var world = Unwrap(World.Create("Aerthos", DemoSeed, CalendarDefinition.Default, "1.0.0"), "world");
+        var world = Unwrap(World.Create("Aerthos", seed, CalendarDefinition.Default, "1.0.0"), "world");
         ctx.Worlds.Add(world);
         var w = world.Id;
 
@@ -130,8 +133,8 @@ public static class DemoSeeder
         Market(ctx, w, hammerfell, (flour, 400, 40), (grain, 400, 15), (ironOre, 300, 20), (coal, 200, 12), (wool, 200, 25), (bread, 400, 28));
         Retail(ctx, w, hammerfell, "The Sundries", 2000, 100_000, (bread, 300, 25), (cloth, 150, 70), (ale, 200, 35));
         Retail(ctx, w, hammerfell, "Apothecary", 5000, 100_000, (potion, 40, 4000));
-        Merchant(ctx, w, hammerfell, 80_000);
-        Merchant(ctx, w, hammerfell, 40_000, "Airship"); // flies the Sky Road to Sunport
+        Merchant(ctx, w, seed, hammerfell, 80_000);
+        Merchant(ctx, w, seed, hammerfell, 40_000, "Airship"); // flies the Sky Road to Sunport
         Consumers(ctx, w, hammerfell, 5);
 
         // Greenfield — the Reach's breadbasket. Surplus grain/flour/wool/cloth to export; feeds itself
@@ -140,7 +143,7 @@ public static class DemoSeeder
         Produce(ctx, w, greenfield, (grindFlour, 2), (bakeBread, 1), (weaveCloth, 2));
         Market(ctx, w, greenfield, (grain, 300, 15), (wool, 160, 25), (flour, 160, 40));
         Retail(ctx, w, greenfield, "Mill Store", 1200, 40_000, (flour, 160, 38), (bread, 120, 25), (cloth, 80, 70));
-        Merchant(ctx, w, greenfield, 30_000);
+        Merchant(ctx, w, seed, greenfield, 30_000);
         Consumers(ctx, w, greenfield, 2);
 
         // Riverwood — grain-farming village. Exports grain; buys bread/ale from passing trade.
@@ -148,7 +151,7 @@ public static class DemoSeeder
         Produce(ctx, w, riverwood, (grindFlour, 1), (bakeBread, 1));
         Market(ctx, w, riverwood, (grain, 160, 15));
         Retail(ctx, w, riverwood, "Trading Post", 1500, 20_000, (bread, 60, 26), (ale, 40, 35));
-        Merchant(ctx, w, riverwood, 10_000);
+        Merchant(ctx, w, seed, riverwood, 10_000);
         Consumers(ctx, w, riverwood, 1);
 
         // Karak Drûm — mining town. Mines iron ore + coal; smelts ingots; forges tools (exports both).
@@ -157,7 +160,7 @@ public static class DemoSeeder
         Produce(ctx, w, karak, (smeltIron, 3), (forgeTools, 2));
         Market(ctx, w, karak, (ironOre, 360, 20), (coal, 200, 12), (bread, 160, 28));
         Retail(ctx, w, karak, "The Anvil", 1800, 40_000, (tools, 60, 140), (ironIngot, 80, 190), (bread, 80, 28));
-        Merchant(ctx, w, karak, 30_000);
+        Merchant(ctx, w, seed, karak, 30_000);
         Consumers(ctx, w, karak, 2);
 
         // Sunport — port city. Self-sufficient in food; presses wine (exports the surplus) and trades
@@ -167,7 +170,7 @@ public static class DemoSeeder
         Market(ctx, w, sunport, (grain, 360, 15), (flour, 200, 40), (grapes, 250, 18), (bread, 300, 30), (wine, 120, 110));
         Retail(ctx, w, sunport, "Harbor Emporium", 2500, 100_000, (wine, 120, 110), (cloth, 100, 75), (potion, 20, 4200));
         Retail(ctx, w, sunport, "Dockside Bakery", 1500, 50_000, (bread, 250, 27));
-        Merchant(ctx, w, sunport, 80_000);
+        Merchant(ctx, w, seed, sunport, 80_000);
         Consumers(ctx, w, sunport, 3);
 
         // Vinemoor — vineyard village. Farms grapes; presses some wine for itself; exports the rest.
@@ -175,8 +178,8 @@ public static class DemoSeeder
         Produce(ctx, w, vinemoor, (pressWine, 1));
         Market(ctx, w, vinemoor, (grapes, 200, 18));
         Retail(ctx, w, vinemoor, "Vintner's Cellar", 1600, 30_000, (wine, 60, 110), (bread, 40, 28));
-        Merchant(ctx, w, vinemoor, 12_000);
-        Merchant(ctx, w, vinemoor, 8_000, "Longboat"); // prefers boats when Vinemoor is a port
+        Merchant(ctx, w, seed, vinemoor, 12_000);
+        Merchant(ctx, w, seed, vinemoor, 8_000, "Longboat"); // prefers boats when Vinemoor is a port
         Consumers(ctx, w, vinemoor, 1);
 
         // ---- Globe ----------------------------------------------------------------------------
@@ -187,7 +190,7 @@ public static class DemoSeeder
             (karak, ironhills),
             (sunport, goldcoast), (vinemoor, goldcoast),
         }.Select(p => (p.Settlement, new PinRequest(p.Settlement.Name, p.Region.Name, null, null, null))).ToList();
-        var globe = await GlobeSeeding.RunAsync(ctx, world, settings ?? WorldGenPresets.Get(WorldGenPresets.Earth5Km), pins, [], progress, ct, roads);
+        var globe = await GlobeSeeding.RunAsync(ctx, world, settings ?? WorldGenPresets.Get(WorldGenPresets.Earth5Km), pins, [], progress, ct, roads, generated);
 
         await ctx.SaveChangesAsync(ct);
         await tx.CommitAsync(ct);
@@ -199,11 +202,11 @@ public static class DemoSeeder
     /// into it (see <see cref="SeedAsync"/>). The CLI's <c>new</c> command and the desktop app both use this.
     /// </summary>
     public static async Task<(World World, GlobeSeedingReport Globe)> CreateAsync(string dbPath, WorldGenSettings? settings = null,
-        IProgress<SeedingProgress>? progress = null, CancellationToken ct = default)
+        IProgress<SeedingProgress>? progress = null, CancellationToken ct = default, ulong seed = DefaultSeed, GeneratedWorld? generated = null)
     {
         await using var ctx = new WorldDbContext(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={dbPath}").Options);
         await ctx.Database.MigrateAsync(ct);
-        return await SeedAsync(ctx, settings, progress, ct);
+        return await SeedAsync(ctx, settings, progress, ct, seed, generated);
     }
 
     // ---- Builders -------------------------------------------------------------------------
@@ -271,11 +274,11 @@ public static class DemoSeeder
 
     private const long MerchantReachTicks = 86_400; // 60 days of travel
 
-    private static void Merchant(WorldDbContext ctx, WorldId w, Settlement s, long capital, string vehicle = VehicleClass.DefaultMerchantClass)
+    private static void Merchant(WorldDbContext ctx, WorldId w, ulong seed, Settlement s, long capital, string vehicle = VehicleClass.DefaultMerchantClass)
     {
         var m = Unwrap(RepresentativeMerchant.Create(w, s.Id, new Money(capital),
             new Mass(600_000), new Volume(1_000_000), MerchantReachTicks, vehicle), $"{s.Name} merchant"); // 600 kg / 1000 L
-        Unwrap(m.SetRiskAversion(RepresentativeMerchant.DefaultRiskAversion(DemoSeed, m.Id)), $"{s.Name} merchant risk");
+        Unwrap(m.SetRiskAversion(RepresentativeMerchant.DefaultRiskAversion(seed, m.Id)), $"{s.Name} merchant risk");
         ctx.Merchants.Add(m);
     }
 

@@ -171,6 +171,21 @@ public class ErrorHandlingTests
         finally { Delete(dir); }
     }
 
+    [Test]
+    public async Task New_world_uses_the_chosen_seed()
+    {
+        var dir = TempDir();
+        try
+        {
+            var vm = new MainViewModel();
+            var path = Path.Combine(dir, "seed7.db");
+            (await vm.CreateDemoWorldAsync(path, Small, seed: 7)).Should().BeTrue(vm.StatusText);
+            vm.Session!.Data.World.Seed.Should().Be(7UL);
+            SqliteConnection.ClearAllPools();
+        }
+        finally { Delete(dir); }
+    }
+
     /// <summary>
     /// Review finding I2: File → New world over the open file closes the open world (renderer disposed, tile source
     /// closed) before the file is replaced, so the old map can never read the new world's tile blocks.

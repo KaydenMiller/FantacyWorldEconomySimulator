@@ -267,6 +267,14 @@ public sealed class GlobeStore(WorldDbContext db) : ITileBlockSource
             WriteLakes(conn, tx, generated.Lakes);
             progress?.Report(new GlobeWriteProgress(GlobeWriteStep.RegionLevel, 0));
             WriteRegionLevel(conn, tx, RegionSummaryCodec.Encode(regions));
+            if (l.Crust is { } crust)
+            {
+                using var geo = conn.CreateCommand();
+                geo.Transaction = tx;
+                geo.CommandText = "INSERT OR REPLACE INTO geology (Id, Data) VALUES (0, $Data)";
+                geo.Parameters.AddWithValue("$Data", WorldEcon.WorldGen.Tectonics.CrustRecordCodec.Encode(crust, l.CollisionStrengthPermille, l.BoundaryDistanceCells));
+                geo.ExecuteNonQuery();
+            }
             // Map imagery rides with the region level step (derived view data).
             if (generated.Imagery is { } imagery) WriteMapImagery(conn, tx, MapImageryRow.ImageryId, MapImageryCodec.EncodeImagery(imagery));
             if (generated.RiverCourses is { } courses) WriteMapImagery(conn, tx, MapImageryRow.RiverCoursesId, MapImageryCodec.EncodeRiverCourses(courses));
@@ -380,6 +388,10 @@ public sealed class GlobeStore(WorldDbContext db) : ITileBlockSource
         layers.TemperatureDeciC = temperature;
         layers.PrecipitationMm = precipitation;
         layers.BiomeOf = biome;
+        var geology = await db.Geology.AsNoTracking().Where(r => r.Id == 0).Select(r => r.Data).SingleOrDefaultAsync(ct);
+        if (geology is not null)
+            (layers.Crust, layers.CollisionStrengthPermille, layers.BoundaryDistanceCells) =
+                WorldEcon.WorldGen.Tectonics.CrustRecordCodec.Decode(geology, layers.Grid.CellCount);
         layers.DownstreamOf = downstream;
         layers.FlowAccum = flow;
         layers.WaterBodyKind = water;

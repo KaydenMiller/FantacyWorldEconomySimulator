@@ -41,7 +41,7 @@ public static class TileElevationStage
         ArgumentNullException.ThrowIfNull(settings);
         var s = settings.Tiles;
         var scale = ReliefScaleBp(globe, s);
-        var ridgeWeight = RidgeWeight(globe);
+        var ridgeWeight = RidgeWeight(globe, s);
         var globeElevation = globe.ElevationM;
         var field = new TileField(tiles.Grid, tiles.GlobeTiles);
         var grid = tiles.Grid;
@@ -101,16 +101,39 @@ public static class TileElevationStage
         return result;
     }
 
-    /// <summary>1 for convergent boundary cells at or above the globe sea level, else 0.</summary>
-    internal static double[] RidgeWeight(WorldLayers globe)
+    /// <summary>
+    /// Crest weight per globe cell, in [0, 1] (version 6, user decision): cells at or above the globe sea level whose last
+    /// mountain building (<see cref="Tectonics.CrustRecord.LastOrogenyAgeMy"/>) is younger than
+    /// <see cref="TilesSettings.RidgeMaxOrogenyAgeMy"/> get kind weight × (1 − age / limit), with Himalayan 1.0, Andean
+    /// 0.8 and arc 0.5; others 0. Old belts and sutures inside plates get crests, and belts wider than one cell get them
+    /// across their width. A world without a crust record falls back to convergent boundary cells (weight 1).
+    /// </summary>
+    internal static double[] RidgeWeight(WorldLayers globe, TilesSettings s)
     {
         var n = globe.Grid.CellCount;
         var result = new double[n];
+        var crust = globe.Crust;
         for (int c = 0; c < n; c++)
         {
-            if (globe.BoundaryKind[c] == (byte)BoundaryKind.Convergent && globe.ElevationM[c] >= globe.SeaLevelM)
-                result[c] = 1;
+            if (globe.ElevationM[c] < globe.SeaLevelM) continue;
+            if (crust is null)
+            {
+                if (globe.BoundaryKind[c] == (byte)BoundaryKind.Convergent) result[c] = 1;
+                continue;
+            }
+
+            var age = crust.LastOrogenyAgeMy[c];
+            if (age == Tectonics.CrustRecord.Never || age >= s.RidgeMaxOrogenyAgeMy) continue;
+            var kind = crust.Orogeny[c] switch
+            {
+                Tectonics.OrogenyKind.Himalayan => 1.0,
+                Tectonics.OrogenyKind.Andean => 0.8,
+                Tectonics.OrogenyKind.Arc => 0.5,
+                _ => 0.0,
+            };
+            result[c] = kind * (1 - age / (double)s.RidgeMaxOrogenyAgeMy);
         }
+
         return result;
     }
 

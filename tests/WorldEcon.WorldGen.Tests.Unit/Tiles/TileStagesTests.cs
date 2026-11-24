@@ -395,12 +395,18 @@ public class TileStagesTests
     }
 
     [Test]
-    public void Ridge_noise_only_raises_tiles_next_to_convergent_land_cells()
+    public void Ridge_noise_only_raises_tiles_next_to_recent_mountain_building()
     {
         var globe = Globe.Value;
-        var weight = TileElevationStage.RidgeWeight(globe);
+        var weight = TileElevationStage.RidgeWeight(globe, new TilesSettings());
         for (int c = 0; c < weight.Length; c++)
-            weight[c].Should().Be(globe.BoundaryKind[c] == (byte)BoundaryKind.Convergent && globe.ElevationM[c] >= globe.SeaLevelM ? 1 : 0);
+        {
+            weight[c].Should().BeInRange(0, 1);
+            if (globe.ElevationM[c] < globe.SeaLevelM || globe.Crust!.LastOrogenyAgeMy[c] >= new TilesSettings().RidgeMaxOrogenyAgeMy)
+                weight[c].Should().Be(0);
+        }
+
+        weight.Should().Contain(w => w > 0, "the history leaves some young mountain belts");
 
         var without = Small(new TilesSettings { RidgeAmplitudeM = 0 });
         var with = Small(new TilesSettings { RidgeAmplitudeM = 400 });
@@ -416,7 +422,7 @@ public class TileStagesTests
             if (d < 0 || d > 401) d.Should().BeInRange(0, 401, $"tile {id}");
             if (d == 0) continue;
             raised++;
-            if (field.At(id).Apply(weight) <= 0) field.At(id).Apply(weight).Should().BePositive($"tile {id} was raised away from convergent land cells");
+            if (field.At(id).Apply(weight) <= 0) field.At(id).Apply(weight).Should().BePositive($"tile {id} was raised away from mountain-building cells");
         }
         raised.Should().BePositive();
     }

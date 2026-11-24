@@ -1177,6 +1177,23 @@ namespace WorldEcon.Persistence.Migrations
                     b.ToTable("log_event_scopes", (string)null);
                 });
 
+            modelBuilder.Entity("WorldEcon.Persistence.Globe.GeologyRow", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<byte[]>("Data")
+                        .IsRequired()
+                        .HasColumnType("BLOB");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("geology", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_geology_Id", "\"Id\" = 0");
+                        });
+                });
+
             modelBuilder.Entity("WorldEcon.Persistence.Globe.GlobeCellCompositionRow", b =>
                 {
                     b.Property<Guid>("WorldId")

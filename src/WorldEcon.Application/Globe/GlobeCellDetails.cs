@@ -41,6 +41,9 @@ public sealed record GlobeCellDetails(
     IReadOnlyList<CellAreaEntry> Areas,
     IReadOnlyList<string> Settlements)
 {
+    /// <summary>The cell's geological record (Tectonics stage); null for a world without one.</summary>
+    public CellGeology? Geology { get; init; }
+
     /// <summary>
     /// Builds the details of <paramref name="cell"/>. Areas are ordered by (kind, name ordinal); settlements are those of
     /// <paramref name="settlements"/> on the cell, in the given order.
@@ -88,7 +91,10 @@ public sealed record GlobeCellDetails(
             rivers,
             l.Grid.Neighbours(cell).ToArray(),
             areas,
-            settlements.Where(s => s.Cell == cell).Select(s => s.Name).ToList());
+            settlements.Where(s => s.Cell == cell).Select(s => s.Name).ToList())
+        {
+            Geology = l.Crust is { } r && cell < r.Count ? CellGeology.From(l, r, cell) : null,
+        };
     }
 
     /// <summary>Coverage of <paramref name="cell"/> in the area (member cells are sorted by cell id), or null.</summary>
@@ -105,5 +111,66 @@ public sealed record GlobeCellDetails(
         }
 
         return null;
+    }
+}
+
+/// <summary>
+/// One cell's geological record (design 2026-11-24, section 4). Ages are million years (My) before present; null means
+/// never.
+/// </summary>
+public sealed record CellGeology(
+    WorldEcon.WorldGen.Tectonics.CrustKind Kind,
+    double ThicknessKm,
+    ushort FormedAgeMy,
+    WorldEcon.WorldGen.Tectonics.OrogenyKind Orogeny,
+    ushort? LastOrogenyAgeMy,
+    int OrogenyCount,
+    ushort? ArcMagmaAgeMy,
+    WorldEcon.WorldGen.Tectonics.CrustFlags Flags,
+    ushort? RiftAgeMy,
+    ushort? PassiveMarginAgeMy,
+    double SedimentKm,
+    double MaxBurialKm,
+    int CoalExposureMy,
+    int EvaporiteExposureMy,
+    int CollisionStrengthPermille,
+    int BoundaryDistanceCells)
+{
+    /// <summary>Label/value rows for the GUI details panel and <c>globe cell</c>.</summary>
+    public IReadOnlyList<(string Label, string Value)> Describe()
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        string Ago(ushort? a) => a is { } v ? string.Create(inv, $"{v:N0} My ago") : "never";
+        var flags = new List<string>();
+        if ((Flags & WorldEcon.WorldGen.Tectonics.CrustFlags.Suture) != 0) flags.Add("suture");
+        if ((Flags & WorldEcon.WorldGen.Tectonics.CrustFlags.CollisionGranite) != 0) flags.Add("collision granite");
+        if ((Flags & WorldEcon.WorldGen.Tectonics.CrustFlags.FailedRift) != 0) flags.Add("failed rift");
+        var orogeny = Orogeny == WorldEcon.WorldGen.Tectonics.OrogenyKind.None
+            ? "none"
+            : string.Create(inv, $"{Orogeny}, last {Ago(LastOrogenyAgeMy)} ({OrogenyCount} episode{(OrogenyCount == 1 ? "" : "s")})");
+        if (ArcMagmaAgeMy is not null) orogeny += $", arc magma {Ago(ArcMagmaAgeMy)}";
+        if (flags.Count > 0) orogeny += "; " + string.Join(", ", flags);
+        var rift = RiftAgeMy is null && PassiveMarginAgeMy is null
+            ? "none"
+            : string.Join(", ", new[] { RiftAgeMy is null ? null : $"rifted {Ago(RiftAgeMy)}", PassiveMarginAgeMy is null ? null : $"passive margin since {Ago(PassiveMarginAgeMy)}" }.Where(x => x is not null));
+        return
+        [
+            ("Crust", string.Create(inv, $"{Kind}, {ThicknessKm:0.#} km thick, formed {FormedAgeMy:N0} My ago")),
+            ("Mountain building", orogeny),
+            ("Rift", rift),
+            ("Sediment", string.Create(inv, $"{SedimentKm:0.00} km (deepest burial {MaxBurialKm:0.00} km)")),
+            ("Coal / salt exposure", string.Create(inv, $"coal {CoalExposureMy:N0} My, evaporite {EvaporiteExposureMy:N0} My")),
+            ("Plate boundary", string.Create(inv, $"collision strength {CollisionStrengthPermille} ‰, {(BoundaryDistanceCells == 0 ? "on the boundary" : $"{BoundaryDistanceCells} cells from it")}")),
+        ];
+    }
+
+    internal static CellGeology From(WorldLayers l, WorldEcon.WorldGen.Tectonics.CrustRecord r, int c)
+    {
+        static ushort? Age(ushort v) => v == WorldEcon.WorldGen.Tectonics.CrustRecord.Never ? null : v;
+        return new CellGeology(r.Kind[c], r.ThicknessDam[c] / 100.0, r.FormedAgeMy[c], r.Orogeny[c], Age(r.LastOrogenyAgeMy[c]),
+            r.OrogenyCount[c], Age(r.ArcMagmaAgeMy[c]), r.Flags[c], Age(r.RiftAgeMy[c]), Age(r.PassiveMarginAgeMy[c]),
+            r.SedimentDam[c] / 100.0, r.MaxBurialDam[c] / 100.0, r.CoalExposureMy[c], r.EvaporiteExposureMy[c],
+            c < l.CollisionStrengthPermille.Length ? l.CollisionStrengthPermille[c] : 0,
+            c < l.BoundaryDistanceCells.Length ? l.BoundaryDistanceCells[c] : 0);
     }
 }

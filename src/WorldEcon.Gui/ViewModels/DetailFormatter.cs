@@ -36,6 +36,7 @@ public static partial class DetailFormatter
             new("Settlements", d.Settlements.Count == 0 ? "none" : string.Join(", ", d.Settlements)),
             new("Neighbours", string.Join(", ", neighbours)),
         };
+        if (d.Geology is { } g) rows.InsertRange(rows.FindIndex(r => r.Label == "Plate") + 1, g.Describe().Select(x => new DetailRow(x.Label, x.Value)));
         return rows;
     }
 

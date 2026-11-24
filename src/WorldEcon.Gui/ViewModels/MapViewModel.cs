@@ -20,7 +20,7 @@ public sealed class MapViewModel : ObservableObject
     /// <summary>Scale factor per wheel notch.</summary>
     public const double WheelStep = 1.2;
 
-    private readonly WorldSession _session;
+    private readonly IMapSession _session;
     private MapViewState _view;
     private int _layerIndex = (int)GlobeLayer.Biome;
     private bool _borders;
@@ -51,7 +51,7 @@ public sealed class MapViewModel : ObservableObject
     private MapLevel _level;
     private bool _gpuActive;
 
-    public MapViewModel(WorldSession session)
+    public MapViewModel(IMapSession session)
     {
         _session = session;
         var centre = session.Markers.Count > 0 ? session.Layers.Geometry.Centre(session.Markers[0].GlobeCell) : new Vector3d(0, 0, 1);
@@ -64,6 +64,12 @@ public sealed class MapViewModel : ObservableObject
     public event EventHandler? Invalidated;
 
     public MapRenderer Renderer => _session.Renderer;
+
+    /// <summary>
+    /// False for a world without map imagery or region data (a tuning-mode stage preview): the GPU scene is built from
+    /// them, so such a world is drawn by the CPU map control.
+    /// </summary>
+    public bool GpuAllowed => _session.World.Imagery is not null && _session.Regions is not null;
 
     /// <summary>
     /// True while the GPU backend draws the cells and rivers of the current view (set by the GPU control); the map
@@ -234,6 +240,13 @@ public sealed class MapViewModel : ObservableObject
         HighlightedGlobeCells = _highlighted,
     };
 
+    /// <summary>Takes over another map's camera (tuning mode keeps the camera while stepping between stages of one grid).</summary>
+    public void CopyViewFrom(MapViewModel other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        SetView(other.View);
+    }
+
     public void SetViewport(double width, double height)
     {
         if (width <= 0 || height <= 0 || (width == _view.Width && height == _view.Height)) return;
@@ -289,7 +302,7 @@ public sealed class MapViewModel : ObservableObject
     public Vector3d CentreOf(MapPick pick) => pick.Level switch
     {
         MapLevel.Globe => _session.Layers.Geometry.Centre(pick.Id),
-        MapLevel.Region => _session.Regions.Geometry.Centre(pick.Id),
+        MapLevel.Region => _session.Regions!.Geometry.Centre(pick.Id), // Region level needs regions (EffectiveLevel)
         _ => _session.World.Tiles!.Centre(pick.Id),
     };
 

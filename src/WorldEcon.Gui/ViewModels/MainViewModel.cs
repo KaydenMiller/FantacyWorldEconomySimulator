@@ -34,6 +34,7 @@ public sealed class MainViewModel : ObservableObject
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
     private WorldSession? _session;
+    private StageViewerViewModel? _tuning;
     private MapViewModel? _map;
     private AreasViewModel _areas = AreasViewModel.Empty;
     private string _detailsTitle = "Nothing selected";
@@ -176,6 +177,108 @@ public sealed class MainViewModel : ObservableObject
 
     public bool HasWorld => _session is not null;
 
+    /// <summary>Tuning mode's stage viewer (File → Tune generation…); null outside tuning mode.</summary>
+    public StageViewerViewModel? Tuning
+    {
+        get => _tuning;
+        private set
+        {
+            if (!Set(ref _tuning, value)) return;
+            Raise(nameof(IsTuning));
+            Raise(nameof(ShowsMap));
+        }
+    }
+
+    public bool IsTuning => _tuning is not null;
+
+    /// <summary>True when the map is shown: an open world or tuning mode.</summary>
+    public bool ShowsMap => HasWorld || IsTuning;
+
+    /// <summary>
+    /// Enters tuning mode: the open world is closed and the map follows <see cref="Tuning"/>'s current stage (the stage's
+    /// layer is applied; the camera is kept while stepping). <paramref name="uiDispatch"/> posts generation results to the
+    /// user interface thread.
+    /// </summary>
+    public void EnterTuning(GenerationSettingsViewModel settings, Func<Action, Task> uiDispatch)
+    {
+        LeaveTuning();
+        var old = CloseSession();
+        if (old is not null) _ = Task.Run(old.Dispose);
+        var tuning = new StageViewerViewModel(settings, uiDispatch);
+        tuning.PropertyChanged += OnTuningChanged;
+        Tuning = tuning;
+        StatusText = "Tuning mode: choose a seed and settings, then Run. Nothing is written until Save as world.";
+    }
+
+    /// <summary>Leaves tuning mode and clears the map (no world is open afterwards).</summary>
+    public void LeaveTuning()
+    {
+        if (_tuning is not { } tuning) return;
+        tuning.PropertyChanged -= OnTuningChanged;
+        if (_map is not null)
+        {
+            _map.PropertyChanged -= OnMapChanged;
+            _map.PropertyChanged -= OnTuningMapChanged;
+        }
+
+        Map = null;
+        Tuning = null;
+        tuning.Dispose();
+        RaiseMapState();
+    }
+
+    /// <summary>Seeds a world database from the finished tuning run (no second generation) and opens it, leaving tuning mode.</summary>
+    public async Task<bool> SaveTunedWorldAsync(string path)
+    {
+        if (_tuning is not { World: { } world, RunSettings: { } settings } tuning) return false;
+        return await CreateDemoWorldAsync(path, settings, overwrite: true, seed: tuning.RunSeed, generated: world);
+    }
+
+    private void OnTuningChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (sender is not StageViewerViewModel tuning || !ReferenceEquals(tuning, _tuning)) return;
+        if (e.PropertyName == nameof(StageViewerViewModel.CurrentSession))
+        {
+            var old = _map;
+            if (old is not null)
+            {
+                old.PropertyChanged -= OnMapChanged;
+                old.PropertyChanged -= OnTuningMapChanged;
+            }
+
+            if (tuning.CurrentSession is not { } session)
+            {
+                Map = null;
+            }
+            else
+            {
+                var map = new MapViewModel(session) { LayerIndex = (int)tuning.CurrentLayer };
+                if (old is not null)
+                {
+                    map.SetViewport(old.View.Width, old.View.Height);
+                    if (old.Renderer.World.Globe.Grid.CellCount == session.Layers.Grid.CellCount) map.CopyViewFrom(old);
+                }
+
+                map.PropertyChanged += OnMapChanged;
+                map.PropertyChanged += OnTuningMapChanged;
+                Map = map;
+            }
+
+            RaiseMapState();
+        }
+        else if (e.PropertyName == nameof(StageViewerViewModel.CurrentLayer) && _map is { } m && m.Layer != tuning.CurrentLayer)
+        {
+            m.LayerIndex = (int)tuning.CurrentLayer;
+        }
+    }
+
+    // A layer picked on the map in tuning mode becomes the viewer's layer (kept while stepping).
+    private void OnTuningMapChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MapViewModel.LayerIndex) && sender is MapViewModel map && _tuning is { } t && t.CurrentLayer != map.Layer)
+            t.CurrentLayer = map.Layer;
+    }
+
     /// <summary>"Globe", "Region" or "Detail"; empty without a world.</summary>
     public string LevelName => _map?.LevelName ?? "";
 
@@ -296,6 +399,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Shows a loaded world: a fresh map at Globe View, the Areas list, empty details. The previous session is disposed.</summary>
     public void UseSession(WorldSession session)
     {
+        LeaveTuning();
         var old = _session;
         if (_map is not null) _map.PropertyChanged -= OnMapChanged;
         Session = session;
@@ -318,6 +422,7 @@ public sealed class MainViewModel : ObservableObject
         AreaDetailsTitle = "No area selected";
         AreaDetailRows = [];
         Raise(nameof(HasWorld));
+        Raise(nameof(ShowsMap));
         ShowNothing();
         RaiseMapState();
         // Closing waits for tile loads inside the old source; off the user interface thread.
@@ -360,7 +465,8 @@ public sealed class MainViewModel : ObservableObject
     /// When the replaced file is the open world (<see cref="SameFile"/>), the open world is closed first (its tile reads use
     /// the file); if the replace then fails, the unchanged old file is opened again and the error says so.
     /// </summary>
-    public async Task<bool> CreateDemoWorldAsync(string path, WorldGenSettings? settings = null, bool overwrite = false)
+    public async Task<bool> CreateDemoWorldAsync(string path, WorldGenSettings? settings = null, bool overwrite = false, ulong seed = DemoSeeder.DefaultSeed,
+        GeneratedWorld? generated = null)
     {
         if (IsBusy) return false;
         if (File.Exists(path) && !overwrite)
@@ -374,9 +480,10 @@ public sealed class MainViewModel : ObservableObject
         BusyPercent = 0;
         BusyPercentKnown = true;
         // Created on the user interface thread, so reports from the seeding worker are posted back to it.
+        var remaining = new RemainingTime();
         var progress = new Progress<SeedingProgress>(p =>
         {
-            BusyText = string.Create(Inv, $"Generating the world: {p.Step} ({p.Fraction * 100:F0} %)…");
+            BusyText = string.Create(Inv, $"Generating the world: {p.Step} ({p.Fraction * 100:F0} %, {remaining.Text(p.Fraction)})…");
             BusyPercent = p.Fraction * 100;
         });
         var dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
@@ -386,7 +493,7 @@ public sealed class MainViewModel : ObservableObject
         WarningsText = "";
         try
         {
-            var (_, report) = await Task.Run(() => DemoSeeder.CreateAsync(temp, settings, progress));
+            var (_, report) = await Task.Run(() => DemoSeeder.CreateAsync(temp, settings, progress, seed: seed, generated: generated));
             warnings = report.Warnings;
             // The open world reads tiles from its file: close it (renderer disposed, tile source closed, running loads
             // drained) before the pools are cleared and the file is replaced, so it never reads the new world's blocks.
@@ -785,6 +892,7 @@ public sealed class MainViewModel : ObservableObject
         Session = null;
         Areas = AreasViewModel.Empty;
         Raise(nameof(HasWorld));
+        Raise(nameof(ShowsMap));
         ShowNothing();
         RaiseMapState();
         return old;

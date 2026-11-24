@@ -13,7 +13,7 @@ namespace WorldEcon.Gui.ViewModels;
 /// Tiles are read on demand from <see cref="LoadedGlobe.Tiles"/> (the database file for a loaded world). Dispose the
 /// session when it is replaced: that stops the renderer's tile loads and closes its tile source.
 /// </summary>
-public sealed class WorldSession : IDisposable
+public sealed class WorldSession : IMapSession
 {
     private readonly Dictionary<int, TileLake> _lakes;
     private readonly ClosableTileSource _tiles;
@@ -56,6 +56,8 @@ public sealed class WorldSession : IDisposable
     public WorldLayers Layers => Data.Layers;
 
     public RegionSummary Regions => Data.Regions;
+
+    RegionSummary? IMapSession.Regions => Regions;
 
     /// <summary>Database file the world came from; null for an in-memory world.</summary>
     public string? Path { get; }

@@ -70,27 +70,45 @@ internal static class CommandRunner
     private static WorldDbContext OpenContext(string path)
         => new(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={path}").Options);
 
-    // ---- new <dbPath> [--preset <name>] [--generation <file.json>] ----
+    // ---- new <dbPath> [--preset <name>] [--generation <file.json>] [--seed <n>] [--resume <file.wgckpt>] ----
     private static async Task<int> CmdNew(string[] args)
     {
-        var usage = $"new <dbPath> [--preset {string.Join("|", WorldGenPresets.Names)}] [--generation <file.json>]";
+        var usage = $"new <dbPath> [--preset {string.Join("|", WorldGenPresets.Names)}] [--generation <file.json>] [--seed <n>] [--resume <file.wgckpt>]";
         if (args.Length < 2)
             return MissingArgs(usage);
 
         var path = args[1];
-        string preset = WorldGenPresets.Earth5Km;
+        string? presetArg = null;
         string? generationFile = null;
+        string? resumePath = null;
+        ulong? seedArg = null;
         for (var i = 2; i < args.Length; i += 2)
         {
-            if (i + 1 >= args.Length || (args[i] != "--preset" && args[i] != "--generation"))
+            if (i + 1 >= args.Length || args[i] is not ("--preset" or "--generation" or "--seed" or "--resume"))
             {
                 Console.Error.WriteLine($"Error: unexpected arguments. Usage: {usage}");
                 return 1;
             }
 
-            if (args[i] == "--preset") preset = args[i + 1];
-            else generationFile = args[i + 1];
+            var value = args[i + 1];
+            switch (args[i])
+            {
+                case "--preset": presetArg = value; break;
+                case "--generation": generationFile = value; break;
+                case "--resume": resumePath = value; break;
+                default:
+                    if (!ulong.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var s))
+                    {
+                        Console.Error.WriteLine($"Error: --seed must be a whole number from 0 to {ulong.MaxValue}, not '{value}'.");
+                        return 1;
+                    }
+
+                    seedArg = s;
+                    break;
+            }
         }
+
+        var preset = presetArg ?? WorldGenPresets.Earth5Km;
 
         // Checked before generation (about 25 s at the default preset): seeding into an existing world database fails
         // only when the tile blocks are inserted.
@@ -100,9 +118,21 @@ internal static class CommandRunner
             return 1;
         }
 
-        // The file overrides the preset: properties it does not name keep the preset's values.
-        var baseSettings = WorldGenPresets.Get(preset);
-        var settings = generationFile is null ? baseSettings : GenerationSettingsFile.Read(generationFile, baseSettings);
+        // The file overrides the preset: properties it does not name keep the preset's values. With --resume the
+        // checkpoint's settings are the base instead (replaced by an explicit --preset), and its seed is the default seed.
+        var checkpoint = resumePath is null ? null : WorldEcon.WorldGen.Pipeline.Checkpoints.CheckpointCodec.Read(resumePath);
+        WorldGenSettings settings;
+        if (checkpoint is not null)
+            settings = WorldGenerator.ResumeSettings(checkpoint, presetArg, generationFile is null ? null : await File.ReadAllTextAsync(generationFile));
+        else
+        {
+            var baseSettings = WorldGenPresets.Get(preset);
+            settings = generationFile is null ? baseSettings : GenerationSettingsFile.Read(generationFile, baseSettings);
+        }
+
+        var seed = seedArg ?? checkpoint?.WorldSeed ?? DemoSeeder.DefaultSeed;
+        // Generated before the database is created, so a checkpoint mismatch leaves no file behind.
+        var generated = checkpoint is null ? null : WorldGenerator.Generate(seed, settings, new WorldGenOptions(Resume: checkpoint));
         var g = settings.Grid;
         Console.WriteLine($"Generating world at {path}: preset {preset}{(generationFile is null ? "" : $" + {generationFile}")}, " +
             $"radius {g.PlanetRadiusKm:N0} km, frequency {g.Frequency} x {g.RegionMultiplier} x {g.TileMultiplier}");
@@ -115,7 +145,7 @@ internal static class CommandRunner
         {
             ctx.Database.Migrate();
             var progress = new StepPrinter();
-            (world, globe) = await DemoSeeder.SeedAsync(ctx, settings, progress);
+            (world, globe) = await DemoSeeder.SeedAsync(ctx, settings, progress, seed: seed, generated: generated);
             progress.Finish();
             settlements = await ctx.Settlements.CountAsync();
             goods = await ctx.Goods.CountAsync();
@@ -139,8 +169,10 @@ internal static class CommandRunner
     private sealed class StepPrinter : IProgress<SeedingProgress>
     {
         private readonly Stopwatch _sw = Stopwatch.StartNew();
+        private readonly RemainingTime _remaining = new();
         private string? _step;
         private double _fraction;
+        private string _estimate = "";
 
         public void Report(SeedingProgress value)
         {
@@ -148,6 +180,7 @@ internal static class CommandRunner
             Flush();
             _step = value.Step;
             _fraction = value.Fraction;
+            _estimate = _remaining.Text(value.Fraction);
             _sw.Restart();
         }
 
@@ -156,7 +189,7 @@ internal static class CommandRunner
         private void Flush()
         {
             if (_step is not null)
-                Console.WriteLine($"  [{_fraction * 100,3:F0} %] {_step,-22} {_sw.Elapsed.TotalSeconds,8:F2} s");
+                Console.WriteLine($"  [{_fraction * 100,3:F0} %] {_step,-22} {_sw.Elapsed.TotalSeconds,8:F2} s   (at start: {_estimate})");
             _step = null;
         }
     }

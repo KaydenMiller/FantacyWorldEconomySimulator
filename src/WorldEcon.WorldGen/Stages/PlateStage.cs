@@ -81,8 +81,9 @@ public static class PlateStage
             cumulative += sizes[p];
         }
 
-        var minSpeed = s.Plates.MinAngularSpeedPermille / 1000.0;
-        var maxSpeed = s.Plates.MaxAngularSpeedPermille / 1000.0;
+        // mm/year at the plate's fastest point = km per million years; divided by the radius gives radians per My.
+        var minSpeed = s.Plates.MinSpeedMmPerYr / (double)s.Grid.PlanetRadiusKm;
+        var maxSpeed = s.Plates.MaxSpeedMmPerYr / (double)s.Grid.PlanetRadiusKm;
         var plates = new PlateInfo[plateCount];
         for (var p = 0; p < plateCount; p++)
         {

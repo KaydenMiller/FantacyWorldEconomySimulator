@@ -13,34 +13,32 @@ namespace WorldEcon.WorldGen.Tests.Unit;
 /// </summary>
 public class GoldenSeedTests
 {
-    private const int ExpectedGeneratorVersion = 5;
+    private const int ExpectedGeneratorVersion = 6;
 
     private static readonly (WorldGenStage Stage, ulong Hash)[] Golden =
     [
-        (WorldGenStage.Plates, 15461327187818838491UL),
-        (WorldGenStage.Elevation, 3080992284226982191UL),
-        (WorldGenStage.SeaLevel, 6917040920465372478UL),
-        (WorldGenStage.Currents, 2193152278278954746UL),
-        (WorldGenStage.Winds, 12983842637910938549UL),
-        (WorldGenStage.Climate, 4014776759878084955UL),
+        (WorldGenStage.Tectonics, 9377539388380863061UL),
+        (WorldGenStage.SeaLevel, 11255876333845877843UL),
+        (WorldGenStage.Currents, 532743064411830595UL),
+        (WorldGenStage.Winds, 7032149197387826730UL),
+        (WorldGenStage.Climate, 12272396955960600774UL),
         (WorldGenStage.TileGrid, 0UL),
-        (WorldGenStage.TileElevation, 6748854441168672647UL),
-        (WorldGenStage.TileSeaLevel, 2897217092163579793UL),
-        (WorldGenStage.TileClimate, 17207401778292905099UL),
-        (WorldGenStage.TileHydrology, 7473861701537284876UL),
-        (WorldGenStage.TileLandform, 9246537001816030756UL),
-        (WorldGenStage.Summary, 16761013873505122623UL),
-        (WorldGenStage.Areas, 13051592550779283734UL),
+        (WorldGenStage.TileElevation, 1759501930387671347UL),
+        (WorldGenStage.TileSeaLevel, 10149557267568397831UL),
+        (WorldGenStage.TileClimate, 9076257588571890062UL),
+        (WorldGenStage.TileHydrology, 7372405873056323825UL),
+        (WorldGenStage.TileLandform, 8744367443217559826UL),
+        (WorldGenStage.Summary, 13043148366052014586UL),
+        (WorldGenStage.Areas, 17875372424145839914UL),
     ];
 
     private static readonly (WorldGenStage Stage, ulong Hash)[] GoldenGlobe =
     [
-        (WorldGenStage.Plates, 4886939027779998393UL),
-        (WorldGenStage.Elevation, 15041891890802781804UL),
-        (WorldGenStage.SeaLevel, 13613541121370462862UL),
-        (WorldGenStage.Currents, 7876328726986954892UL),
-        (WorldGenStage.Winds, 13894721113808039364UL),
-        (WorldGenStage.Climate, 6143986598395424875UL),
+        (WorldGenStage.Tectonics, 12605790800125933539UL),
+        (WorldGenStage.SeaLevel, 2340789401102290603UL),
+        (WorldGenStage.Currents, 6873463776063210102UL),
+        (WorldGenStage.Winds, 13439950535715908344UL),
+        (WorldGenStage.Climate, 8328911130752445880UL),
     ];
 
     private static readonly WorldGenSettings Settings = new() { Grid = new() { Frequency = 16, RegionMultiplier = 3, TileMultiplier = 4 } };

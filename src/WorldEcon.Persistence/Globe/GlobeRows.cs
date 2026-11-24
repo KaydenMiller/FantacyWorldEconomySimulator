@@ -133,6 +133,13 @@ public sealed class MapImageryRow
     public byte[] Data { get; set; } = [];
 }
 
+/// <summary>The Tectonics stage's geological record and boundary layers as one payload (table <c>geology</c>, one row with Id 0; <see cref="WorldEcon.WorldGen.Tectonics.CrustRecordCodec"/>).</summary>
+public sealed class GeologyRow
+{
+    public int Id { get; set; }
+    public byte[] Data { get; set; } = [];
+}
+
 /// <summary>The region-cell summary arrays as an opaque byte payload (table <c>region_level</c>, one row with Id 0; format owned by the writer).</summary>
 public sealed class RegionLevelRow
 {

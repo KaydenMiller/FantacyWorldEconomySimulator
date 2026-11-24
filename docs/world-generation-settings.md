@@ -11,6 +11,7 @@ _Last updated: 2026-11-22 (generator version 4, tile detail world: Grid multipli
 - [Units](#units)
 - [Grid](#grid)
 - [Plates](#plates)
+- [Tectonics](#tectonics)
 - [Elevation](#elevation)
 - [SeaLevel](#sealevel)
 - [Currents](#currents)
@@ -91,43 +92,63 @@ Cross-field: `Frequency` × `RegionMultiplier` × `TileMultiplier` ≤ 14,654 (e
 
 ## Plates
 
-Stage 1 (plates).
+Starting plates of the Tectonics stage (generator version 6): random flood fill and a random rotation per plate.
 
 | Setting | Unit | Default | Range | What it changes |
 |---|---|---|---|---|
-| `Count` | plates | 20 | 1–cell count | Number of plates grown by random flood fill. |
-| `ContinentalFractionBp` | bp | 4000 | 0–10,000 | Plates are marked continental, in id order, until this share of cells is reached. |
-| `MinAngularSpeedPermille` | ‰ of model speed | 200 | 0–10,000 | Lower end of each plate's uniform angular-speed draw. |
-| `MaxAngularSpeedPermille` | ‰ of model speed | 1000 | 0–10,000 | Upper end of the draw. Only the ratio between plates matters: boundary pressure is divided by the largest pressure. |
+| `Count` | plates | 20 | 1–cell count | Number of starting plates. Rifts add plates and fusions remove them during the history. |
+| `ContinentalFractionBp` | bp | 4000 | 0–10,000 | Share of cells that start as continental crust (cratons), independent of plates. |
+| `MinSpeedMmPerYr` | mm/year | 10 | 0–500 | Lower end of each plate's uniform speed draw, at its fastest point (1 mm/year = 1 km per million years). New in version 6. |
+| `MaxSpeedMmPerYr` | mm/year | 100 | 0–500 | Upper end of the draw. Real plates move about 10–100 mm/year. New in version 6. |
 
-Cross-field: `MinAngularSpeedPermille` ≤ `MaxAngularSpeedPermille`.
+Cross-field: `MinSpeedMmPerYr` ≤ `MaxSpeedMmPerYr`. Removed in version 6: `MinAngularSpeedPermille`, `MaxAngularSpeedPermille` (a settings file naming them fails with "unknown setting").
+
+## Tectonics
+
+The plate history simulation (version 6; design `docs/superpowers/specs/2026-11-24-plate-history-simulation-design.md`). Cratons are placed, then `SimulatedMy` / `StepMy` steps run: plates move, overlapping crust subducts or collides, gaps fill with new ocean floor, plates fuse and rift, mountains erode into sediment, and coal and evaporite exposure accumulate. Elevation comes from crust thickness (Airy isostasy). Values marked calibrated were tuned on seeds 1–20 at the default preset against `globe gen --metrics`.
+
+| Setting | Unit | Default | Range | What it changes |
+|---|---|---|---|---|
+| `StartArrangement` | — | 0 | 0–1 | 0: cratons start packed into one supercontinent; 1: scattered at least two craton radii apart. |
+| `CratonCount` | cratons | 10 | 1–1,000 | Continental cores at the start. |
+| `SimulatedMy` | million years | 250 | 1–4,000 | Length of the history. |
+| `StepMy` | million years | 2 | 1–100 | Time per step. |
+| `FrameEverySteps` | steps | 10 | 1–10,000 | Steps between frames shown in the tuning viewer. |
+| `RiftRateBpPer100My` | bp of one rift per 100 My | 5000 | 0–100,000 | Rift rate of a reference plate; larger and more continental plates rift more often. |
+| `SubductionUpliftCells` | cells | 2 | 1–50 | Cells inboard of a subduction front where uplift peaks (zero by twice this). |
+| `CollisionRadiusFactorBp` | bp | 10000 | 0–100,000 | Collision footprint: larger and faster closures thicken a wider area. |
+| `ErosionEFoldMy` | million years | 150 (calibrated; start 200) | 1–100,000 | Mountain height e-folding time. |
+| `FusionMaxSpeedPermille` | ‰ of the fastest plate speed | 200 (calibrated; start 300) | 0–1,000 | Continents in contact closing slower than this fuse. |
+| `CollisionMaxSteps` | steps | 20 (calibrated; start 10) | 1–10,000 | Steps of continental contact after which plates fuse whatever their speed (later fusion lets continents drift apart again). |
+| `FailedRiftBp` | bp | 3000 | 0–10,000 | Chance a rift fails and the plates fuse again before ocean forms. |
+| `FailedRiftSteps` | steps | 5 | 1–1,000 | Steps until a failing rift fuses again. |
+| `TopographyNoiseM` | m | 150 | 0–2,000 | Noise on the final elevation (below the continental margin drop, so it cannot cut channels). |
+| `SlabPullBp` | bp | 20000 | 0–100,000 | A plate's target speed × (1 + this × share of its boundary subducting under a neighbour). |
+| `ContinentalDragBp` | bp | 5000 | 0–10,000 | Target speed × (1 − this × continental share). |
+| `CollisionDragBp` | bp | 7000 | 0–10,000 | Target speed × (1 − this) while in a continental collision. |
+| `SpeedEaseMy` | million years | 20 | 1–10,000 | E-folding time in which a plate's speed approaches its target. |
+| `PoleDriftDegPer100My` | degrees per 100 My | 15 | 0–180 | Random wander of each plate's rotation pole, applied every 10 My. |
+| `TargetPlateCount` | plates | 16 | 1–1,000 | Oceanic split rate × (target / current count)², limited to 0.1–10. |
+| `OceanicRiftShareBp` | bp | 10000 (calibrated; start 3000) | 0–10,000 | Weight of oceanic splits (ridge jumps, microplates) relative to continental breakups; only these are steered by the plate count. |
+
+Cross-field: `StepMy` ≤ `SimulatedMy`.
 
 ## Elevation
 
-Stage 2 (elevation). A boundary cell takes a value from its boundary kind and the two plates' crust types. Convergent values interpolate from the `…WeakM` value at zero pressure to the `…StrongM` value at the largest pressure on the globe. Interior cells interpolate from their nearest boundary value to their plate's base over `FalloffCells` steps. Noise is added, then the value is clamped to [`MinElevationM`, `MaxElevationM`]. Last, continental shelves: Stage 2 computes the sea level Stage 3 will pick (`SeaLevel.LandFractionBp`), then raises every ocean cell within `ShelfWidthCells` ocean steps of land on a continental plate to at least sea level + `ShelfDepthM`. Convergent boundary cells (trenches, island arcs) are neither raised nor crossed. Raised cells stay below the sea level, so Stage 3 picks the same sea level and the land share is unchanged.
+Elevation shaping read by the Tectonics stage (version 6): the noise shape, the clamp, and continental shelves. Shelves: ocean cells within `ShelfWidthCells` steps of land on continental crust are raised to at least sea level + `ShelfDepthM`; convergent boundary cells (trenches) are neither raised nor crossed.
 
 | Setting | Unit | Default | Range | What it changes |
 |---|---|---|---|---|
-| `FalloffCells` | cells | 6 | 1–1,000,000 | Width of the band over which boundary relief fades into the plate base. |
-| `NoiseAmplitudeM` | m | 400 | 0–10,000 | Noise in [−1, 1] is multiplied by this. |
-| `NoiseOctaves` | octaves | 4 | 0–16 | Fractal noise layers; 0 disables noise. |
+| `NoiseOctaves` | octaves | 4 | 0–16 | Fractal noise layers; 0 disables noise. Amplitude is `Tectonics.TopographyNoiseM`. |
 | `NoiseFrequency` | lattice cells per unit radius | 4 | 1–1,000 | Feature size of the first octave. |
 | `NoisePersistenceBp` | bp | 5000 | 0–10,000 | Amplitude multiplier per octave. |
 | `NoiseLacunarityBp` | bp | 20000 | 10,000–40,000 | Frequency multiplier per octave. |
-| `ContinentalBaseM` | m | 300 | ±20,000 | Continental plate interior and transform-boundary elevation. |
-| `OceanicBaseM` | m | −4000 | ±20,000 | Oceanic plate interior and transform-boundary elevation. |
-| `CollisionWeakM` / `CollisionStrongM` | m | 4000 / 7000 | ±20,000 | Convergent, both plates continental. |
-| `CoastalRangeWeakM` / `CoastalRangeStrongM` | m | 2000 / 4000 | ±20,000 | Convergent, this plate continental, partner oceanic. |
-| `TrenchWeakM` / `TrenchStrongM` | m | −6000 / −9000 | ±20,000 | Convergent, this plate oceanic, partner continental. |
-| `IslandArcWeakM` / `IslandArcStrongM` | m | 500 / 2000 | ±20,000 | Convergent, both plates oceanic. |
-| `DivergentContinentalM` | m | −500 | ±20,000 | Divergent boundary on a continental plate (rift). |
-| `DivergentOceanicM` | m | −2000 | ±20,000 | Divergent boundary on an oceanic plate (ridge). |
 | `MinElevationM` | m | −11,000 | ±20,000 | Lowest stored elevation. |
 | `MaxElevationM` | m | 9,000 | ±20,000 | Highest stored elevation. |
-| `ShelfDepthM` | m relative to sea level | −200 | −20,000 to −1 | Shelf floor: ocean cells near continental coasts are raised to at least this far below sea level. New in phase 2. |
-| `ShelfWidthCells` | ocean steps | 2 | 0–1,000 | Shelf width from a continental coast; 0 disables shelves. New in phase 2. |
+| `ShelfDepthM` | m relative to sea level | −200 | −20,000 to −1 | Shelf floor. |
+| `ShelfWidthCells` | ocean steps | 2 | 0–1,000 | Shelf width from a continental coast; 0 disables shelves. |
 
-Cross-field: `MinElevationM` ≤ `MaxElevationM`. Weak and strong values may be in either order.
+Cross-field: `MinElevationM` ≤ `MaxElevationM`. Removed in version 6 with the Elevation stage: `FalloffCells`, `NoiseAmplitudeM`, `ContinentalBaseM`, `OceanicBaseM`, `CollisionWeakM`, `CollisionStrongM`, `CoastalRangeWeakM`, `CoastalRangeStrongM`, `TrenchWeakM`, `TrenchStrongM`, `IslandArcWeakM`, `IslandArcStrongM`, `DivergentContinentalM`, `DivergentOceanicM`.
 
 ## SeaLevel
 
@@ -281,7 +302,8 @@ Tile stages (TileElevation, TileSeaLevel, TileClimate, TileHydrology, TileLandfo
 | `DetailAmplitudeM` | m | 300 | 0–5,000 | TileElevation: detail noise amplitude (noise in [−1, 1] times this) at a relief scale of 10,000 bp; about the hill relief inside a 50 km area. |
 | `ReliefScaleMinBp` | bp | 500 | 0–10,000 | TileElevation: lower clamp of the relief scale applied to `DetailAmplitudeM`. The scale of a globe cell is its relief (largest minus smallest elevation among the cell and its neighbours) × 10 bp per metre (1,000 m = 10,000 bp). 500 bp leaves 15 m of detail on plains. |
 | `ReliefScaleMaxBp` | bp | 20,000 | 100–30,000 | TileElevation: upper clamp of the relief scale; 20,000 bp (600 m detail) is reached at 2,000 m relief. |
-| `RidgeAmplitudeM` | m | 400 | 0–5,000 | TileElevation: additional ridge noise amplitude near convergent plate boundaries; about the ridge-line height over a mountain belt flank. |
+| `RidgeAmplitudeM` | m | 400 | 0–5,000 | TileElevation: additional ridge noise amplitude on cells with recent mountain building (version 6: the Tectonics orogeny record; before: convergent boundary cells); about the ridge-line height over a mountain belt flank. |
+| `RidgeMaxOrogenyAgeMy` | million years | 150 | 0–10,000 | TileElevation: crests on cells whose last mountain building is younger than this, fading with age; Himalayan weight 1.0, Andean 0.8, arc 0.5. New in version 6. |
 | `OrographicGainBp` | bp per (m/km) | 60 | 0–10,000 | TileClimate: precipitation gain per metre of upwind rise per km, as bp of base precipitation (20 m/km windward slope: +12 %; 50 m/km: +30 %). Task 5 calibration: 150 gave 2.09 % of land at ≥ 3,500 mm on seed 42 and 100 gave 2.49 % on seed 1 (target ≤ 2 %); 60 gives 0.90–1.62 % on seeds 42, 1, 2, 3, 7. |
 | `OrographicMinBp` | bp | 3,000 | 0–10,000 | TileClimate: lower clamp of tile precipitation as a share of the interpolated globe value (30 % in a rain shadow). |
 | `OrographicMaxBp` | bp | 25,000 | 0–50,000 | TileClimate: upper clamp (2.5 times on windward slopes). |

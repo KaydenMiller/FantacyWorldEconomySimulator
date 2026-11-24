@@ -89,13 +89,16 @@ public class GlobeStoreTests
             l.RiverEdges.Should().Equal(g.RiverEdges);
             g.RiverEdges.Should().NotBeEmpty("the fixture must exercise river rows");
             l.Areas.Should().BeEmpty("GlobeStore does not persist areas (seeding writes them as geographic regions)");
+            l.Crust.Should().NotBeNull("the geological record is stored in the geology table");
+            l.Crust!.Hash().Should().Be(g.Crust!.Hash());
+            l.CollisionStrengthPermille.Should().Equal(g.CollisionStrengthPermille);
+            l.BoundaryDistanceCells.Should().Equal(g.BoundaryDistanceCells);
 
             // Hashes recomputed on the loaded layers: the stages whose layers are stored as generated equal their stage
             // hashes; the elevation, sea level, biome and hydrology layers are the tile summaries, so they are compared
             // with the summary hash of the generated layers (Areas excluded: not loaded).
             var recomputed = new Dictionary<WorldGenStage, ulong>
             {
-                [WorldGenStage.Plates] = PlateStage.Hash(l),
                 [WorldGenStage.Currents] = CurrentStage.Hash(l),
                 [WorldGenStage.Winds] = WindStage.Hash(l),
                 [WorldGenStage.Climate] = ClimateStage.Hash(l),

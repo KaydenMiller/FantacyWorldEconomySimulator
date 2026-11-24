@@ -133,6 +133,17 @@ public sealed class MapImageryRowConfiguration : IEntityTypeConfiguration<MapIma
     }
 }
 
+public sealed class GeologyRowConfiguration : IEntityTypeConfiguration<GeologyRow>
+{
+    public void Configure(EntityTypeBuilder<GeologyRow> b)
+    {
+        b.ToTable("geology", t => t.HasCheckConstraint("CK_geology_Id", "\"Id\" = 0"));
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever();
+        b.Property(x => x.Data).IsRequired();
+    }
+}
+
 public sealed class RegionLevelRowConfiguration : IEntityTypeConfiguration<RegionLevelRow>
 {
     public void Configure(EntityTypeBuilder<RegionLevelRow> b)

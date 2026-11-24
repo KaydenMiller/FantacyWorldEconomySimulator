@@ -62,40 +62,140 @@ public sealed record PlateSettings
     /// <summary>Target share of cells on continental plates (plates are marked continental in id order until reached). Range 0–10,000.</summary>
     public int ContinentalFractionBp { get; init; } = 4000;
 
-    /// <summary>Lower end of the uniform Euler angular-speed draw, thousandths of the model's speed unit. Range 0–10,000; at most <see cref="MaxAngularSpeedPermille"/>.</summary>
-    public int MinAngularSpeedPermille { get; init; } = 200;
+    /// <summary>
+    /// Lower end of the uniform plate speed draw, mm/year at the plate's fastest point (1 mm/year = 1 km per million
+    /// years). Range 0–500; at most <see cref="MaxSpeedMmPerYr"/>. Real plates move about 10–100 mm/year; Cortial et al.
+    /// 2019 cap speed at 100 mm/year.
+    /// </summary>
+    public int MinSpeedMmPerYr { get; init; } = 10;
 
-    /// <summary>Upper end of the uniform Euler angular-speed draw. Range 0–10,000.</summary>
-    public int MaxAngularSpeedPermille { get; init; } = 1000;
+    /// <summary>Upper end of the uniform plate speed draw, mm/year. Range 0–500.</summary>
+    public int MaxSpeedMmPerYr { get; init; } = 100;
 
     internal void Validate(SectionValidator v, GridSettings grid)
     {
         v.Range(nameof(Count), Count, 1, grid.CellCountOrNull() ?? int.MaxValue);
         v.Range(nameof(ContinentalFractionBp), ContinentalFractionBp, 0, 10_000);
-        v.Range(nameof(MinAngularSpeedPermille), MinAngularSpeedPermille, 0, 10_000);
-        v.Range(nameof(MaxAngularSpeedPermille), MaxAngularSpeedPermille, 0, 10_000);
-        v.Order(nameof(MinAngularSpeedPermille), MinAngularSpeedPermille, nameof(MaxAngularSpeedPermille), MaxAngularSpeedPermille, strict: false);
+        v.Range(nameof(MinSpeedMmPerYr), MinSpeedMmPerYr, 0, 500);
+        v.Range(nameof(MaxSpeedMmPerYr), MaxSpeedMmPerYr, 0, 500);
+        v.Order(nameof(MinSpeedMmPerYr), MinSpeedMmPerYr, nameof(MaxSpeedMmPerYr), MaxSpeedMmPerYr, strict: false);
     }
 }
 
 /// <summary>
-/// Stage 2 (elevation). A boundary cell's value is chosen by boundary kind and the two plates' crust types; convergent
-/// values interpolate from the <c>…WeakM</c> value at zero pressure to the <c>…StrongM</c> value at the world's
-/// largest pressure. Interior cells interpolate from their nearest boundary value to their plate's base over
-/// <see cref="FalloffCells"/> steps. Noise is added, then the result is clamped to
-/// [<see cref="MinElevationM"/>, <see cref="MaxElevationM"/>]. Last, ocean cells near continental coasts are raised to a
-/// shelf (<see cref="ShelfDepthM"/>, <see cref="ShelfWidthCells"/>).
+/// The Tectonics stage (plate history simulation; design 2026-11-24). Start values from the research report's calibration
+/// section; the values marked "calibrated" are tuned against the metrics in <c>globe gen --metrics</c>.
+/// </summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record TectonicsSettings
+{
+    /// <summary>0 = cratons start packed into one supercontinent; 1 = cratons start scattered with a minimum separation. Range 0–1.</summary>
+    public int StartArrangement { get; init; } = 0;
+
+    /// <summary>Continental cores placed at the start, independent of plates. Range 1–1,000.</summary>
+    public int CratonCount { get; init; } = 10;
+
+    /// <summary>Length of the simulated history, million years (My). Range 1–4,000; at least <see cref="StepMy"/>.</summary>
+    public int SimulatedMy { get; init; } = 250;
+
+    /// <summary>Time per simulation step, My. Range 1–100.</summary>
+    public int StepMy { get; init; } = 2;
+
+    /// <summary>Steps between frames published to the stage viewer. Range 1–10,000.</summary>
+    public int FrameEverySteps { get; init; } = 10;
+
+    /// <summary>Rift rate λ0 for a reference plate, basis points of one rift per 100 My (calibrated). Range 0–100,000.</summary>
+    public int RiftRateBpPer100My { get; init; } = 5_000;
+
+    /// <summary>Cells inboard of a subduction front where uplift peaks; uplift falls to zero by twice this. Range 1–50.</summary>
+    public int SubductionUpliftCells { get; init; } = 2;
+
+    /// <summary>Collision footprint factor, basis points: radius in cells = factor/10,000 × sqrt(terrane cells × closing speed in cells per step) (calibrated). Range 0–100,000.</summary>
+    public int CollisionRadiusFactorBp { get; init; } = 10_000;
+
+    /// <summary>Mountain height e-folding time, My (research: 100–350; calibrated to 150 with the longer collisions, design start value 200). Range 1–100,000.</summary>
+    public int ErosionEFoldMy { get; init; } = 150;
+
+    /// <summary>Continents in contact whose relative speed is below this share of the maximum plate speed, permille, fuse (calibrated). Range 0–1,000.</summary>
+    public int FusionMaxSpeedPermille { get; init; } = 200;
+
+    /// <summary>Steps of continental contact after which two plates fuse whatever their speed (calibrated). Range 1–10,000.</summary>
+    public int CollisionMaxSteps { get; init; } = 20;
+
+    /// <summary>Chance that a rift fails and the two plates fuse again before ocean forms, basis points. Range 0–10,000.</summary>
+    public int FailedRiftBp { get; init; } = 3_000;
+
+    /// <summary>Steps after which a failing rift fuses again (calibrated). Range 1–1,000.</summary>
+    public int FailedRiftSteps { get; init; } = 5;
+
+    /// <summary>Noise added to the final elevation, metres; kept below the continental freeboard so it cannot cut channels. Range 0–2,000.</summary>
+    public int TopographyNoiseM { get; init; } = 150;
+
+    /// <summary>
+    /// Slab pull: a plate's target speed is its drawn speed × (1 + this/10,000 × share of its boundary that is subducting
+    /// under a neighbour), so plates dragged by sinking ocean floor speed up. Basis points. Range 0–100,000.
+    /// </summary>
+    public int SlabPullBp { get; init; } = 20_000;
+
+    /// <summary>Continental drag: target speed × (1 − this/10,000 × the plate's continental share). Basis points. Range 0–10,000.</summary>
+    public int ContinentalDragBp { get; init; } = 5_000;
+
+    /// <summary>Collision drag: target speed × (1 − this/10,000) while the plate is in a continental collision. Basis points. Range 0–10,000.</summary>
+    public int CollisionDragBp { get; init; } = 7_000;
+
+    /// <summary>A plate's speed approaches its target with this e-folding time, million years. Range 1–10,000.</summary>
+    public int SpeedEaseMy { get; init; } = 20;
+
+    /// <summary>How far each plate's rotation pole wanders, degrees per 100 million years (applied every 10 My). Range 0–180.</summary>
+    public int PoleDriftDegPer100My { get; init; } = 15;
+
+    /// <summary>
+    /// Plate count the rift rate steers toward: the rift probability is multiplied by (target / current plate count)²,
+    /// limited to 0.1–10. Range 1–1,000.
+    /// </summary>
+    public int TargetPlateCount { get; init; } = 16;
+
+    /// <summary>Weight of an all-oceanic plate in the rift probability, in place of its continental share when larger (oceanic plates split too). Basis points. Range 0–10,000.</summary>
+    public int OceanicRiftShareBp { get; init; } = 10_000;
+
+    internal void Validate(SectionValidator v)
+    {
+        v.Range(nameof(StartArrangement), StartArrangement, 0, 1);
+        v.Range(nameof(CratonCount), CratonCount, 1, 1_000);
+        v.Range(nameof(SimulatedMy), SimulatedMy, 1, 4_000);
+        v.Range(nameof(StepMy), StepMy, 1, 100);
+        v.Range(nameof(FrameEverySteps), FrameEverySteps, 1, 10_000);
+        v.Range(nameof(RiftRateBpPer100My), RiftRateBpPer100My, 0, 100_000);
+        v.Range(nameof(SubductionUpliftCells), SubductionUpliftCells, 1, 50);
+        v.Range(nameof(CollisionRadiusFactorBp), CollisionRadiusFactorBp, 0, 100_000);
+        v.Range(nameof(ErosionEFoldMy), ErosionEFoldMy, 1, 100_000);
+        v.Range(nameof(FusionMaxSpeedPermille), FusionMaxSpeedPermille, 0, 1_000);
+        v.Range(nameof(CollisionMaxSteps), CollisionMaxSteps, 1, 10_000);
+        v.Range(nameof(FailedRiftBp), FailedRiftBp, 0, 10_000);
+        v.Range(nameof(FailedRiftSteps), FailedRiftSteps, 1, 1_000);
+        v.Range(nameof(TopographyNoiseM), TopographyNoiseM, 0, 2_000);
+        v.Range(nameof(SlabPullBp), SlabPullBp, 0, 100_000);
+        v.Range(nameof(ContinentalDragBp), ContinentalDragBp, 0, 10_000);
+        v.Range(nameof(CollisionDragBp), CollisionDragBp, 0, 10_000);
+        v.Range(nameof(SpeedEaseMy), SpeedEaseMy, 1, 10_000);
+        v.Range(nameof(PoleDriftDegPer100My), PoleDriftDegPer100My, 0, 180);
+        v.Range(nameof(TargetPlateCount), TargetPlateCount, 1, 1_000);
+        v.Range(nameof(OceanicRiftShareBp), OceanicRiftShareBp, 0, 10_000);
+        v.Order(nameof(StepMy), StepMy, nameof(SimulatedMy), SimulatedMy, strict: false);
+    }
+}
+
+/// <summary>
+/// Elevation shaping read by the Tectonics stage (version 6): the noise shape (octaves, frequency, persistence,
+/// lacunarity; its amplitude is <see cref="TectonicsSettings.TopographyNoiseM"/>), the clamp
+/// [<see cref="MinElevationM"/>, <see cref="MaxElevationM"/>], and continental shelves (<see cref="ShelfDepthM"/>,
+/// <see cref="ShelfWidthCells"/>). The version 5 boundary heights and fall-off were removed with the Elevation stage.
 /// </summary>
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed record ElevationSettings
 {
     private const int Limit = 20_000;
 
-    /// <summary>Steps (cells) over which a boundary value fades into the plate base. Range 1–1,000,000.</summary>
-    public int FalloffCells { get; init; } = 6;
-
-    /// <summary>Noise amplitude: noise in [−1, 1] times this. Range 0–10,000.</summary>
-    public int NoiseAmplitudeM { get; init; } = 400;
 
     /// <summary>Fractal noise octaves (0 disables noise). Range 0–16.</summary>
     public int NoiseOctaves { get; init; } = 4;
@@ -108,42 +208,6 @@ public sealed record ElevationSettings
 
     /// <summary>Frequency multiplier per octave. Range 10,000–40,000.</summary>
     public int NoiseLacunarityBp { get; init; } = 20000;
-
-    /// <summary>Base elevation of continental plate interiors and transform boundaries. Range ±20,000.</summary>
-    public int ContinentalBaseM { get; init; } = 300;
-
-    /// <summary>Base elevation of oceanic plate interiors and transform boundaries. Range ±20,000.</summary>
-    public int OceanicBaseM { get; init; } = -4000;
-
-    /// <summary>Convergent, both plates continental, at zero pressure. Range ±20,000.</summary>
-    public int CollisionWeakM { get; init; } = 4000;
-
-    /// <summary>Convergent, both plates continental, at the largest pressure. Range ±20,000.</summary>
-    public int CollisionStrongM { get; init; } = 7000;
-
-    /// <summary>Convergent, this plate continental and the partner oceanic (coastal range), at zero pressure. Range ±20,000.</summary>
-    public int CoastalRangeWeakM { get; init; } = 2000;
-
-    /// <summary>Convergent coastal range at the largest pressure. Range ±20,000.</summary>
-    public int CoastalRangeStrongM { get; init; } = 4000;
-
-    /// <summary>Convergent, this plate oceanic and the partner continental (trench), at zero pressure. Range ±20,000.</summary>
-    public int TrenchWeakM { get; init; } = -6000;
-
-    /// <summary>Convergent trench at the largest pressure. Range ±20,000.</summary>
-    public int TrenchStrongM { get; init; } = -9000;
-
-    /// <summary>Convergent, both plates oceanic (island arc), at zero pressure. Range ±20,000.</summary>
-    public int IslandArcWeakM { get; init; } = 500;
-
-    /// <summary>Convergent island arc at the largest pressure. Range ±20,000.</summary>
-    public int IslandArcStrongM { get; init; } = 2000;
-
-    /// <summary>Divergent boundary on a continental plate (rift). Range ±20,000.</summary>
-    public int DivergentContinentalM { get; init; } = -500;
-
-    /// <summary>Divergent boundary on an oceanic plate (ridge). Range ±20,000.</summary>
-    public int DivergentOceanicM { get; init; } = -2000;
 
     /// <summary>
     /// Continental shelf: ocean cells within <see cref="ShelfWidthCells"/> steps of land on a continental plate are raised
@@ -164,24 +228,10 @@ public sealed record ElevationSettings
 
     internal void Validate(SectionValidator v)
     {
-        v.Range(nameof(FalloffCells), FalloffCells, 1, 1_000_000);
-        v.Range(nameof(NoiseAmplitudeM), NoiseAmplitudeM, 0, 10_000);
         v.Range(nameof(NoiseOctaves), NoiseOctaves, 0, 16);
         v.Range(nameof(NoiseFrequency), NoiseFrequency, 1, 1_000);
         v.Range(nameof(NoisePersistenceBp), NoisePersistenceBp, 0, 10_000);
         v.Range(nameof(NoiseLacunarityBp), NoiseLacunarityBp, 10_000, 40_000);
-        v.Range(nameof(ContinentalBaseM), ContinentalBaseM, -Limit, Limit);
-        v.Range(nameof(OceanicBaseM), OceanicBaseM, -Limit, Limit);
-        v.Range(nameof(CollisionWeakM), CollisionWeakM, -Limit, Limit);
-        v.Range(nameof(CollisionStrongM), CollisionStrongM, -Limit, Limit);
-        v.Range(nameof(CoastalRangeWeakM), CoastalRangeWeakM, -Limit, Limit);
-        v.Range(nameof(CoastalRangeStrongM), CoastalRangeStrongM, -Limit, Limit);
-        v.Range(nameof(TrenchWeakM), TrenchWeakM, -Limit, Limit);
-        v.Range(nameof(TrenchStrongM), TrenchStrongM, -Limit, Limit);
-        v.Range(nameof(IslandArcWeakM), IslandArcWeakM, -Limit, Limit);
-        v.Range(nameof(IslandArcStrongM), IslandArcStrongM, -Limit, Limit);
-        v.Range(nameof(DivergentContinentalM), DivergentContinentalM, -Limit, Limit);
-        v.Range(nameof(DivergentOceanicM), DivergentOceanicM, -Limit, Limit);
         v.Range(nameof(MinElevationM), MinElevationM, -Limit, Limit);
         v.Range(nameof(MaxElevationM), MaxElevationM, -Limit, Limit);
         v.Range(nameof(ShelfDepthM), ShelfDepthM, -Limit, -1);
@@ -678,6 +728,12 @@ public sealed record TilesSettings
     public int RidgeAmplitudeM { get; init; } = 400;
 
     /// <summary>
+    /// Crests are drawn on cells whose last mountain building (Tectonics stage orogeny record) is younger than this many
+    /// million years, fading with age (calibrated). Range 0–10,000.
+    /// </summary>
+    public int RidgeMaxOrogenyAgeMy { get; init; } = 150;
+
+    /// <summary>
     /// Precipitation gain per metre of upwind rise per km (a windward slope of 20 m/km gives +12 %, 50 m/km +30 %), in bp
     /// of the base precipitation. The globe climate already rains out moisture on rising cells, so the tile gain only
     /// redistributes inside a cell; calibration (task 5): 150 gave 2.09 % (seed 42) and 100 gave 2.49 % (seed 1) of land
@@ -779,6 +835,7 @@ public sealed record TilesSettings
         v.Range(nameof(ReliefScaleMinBp), ReliefScaleMinBp, 0, 10_000);
         v.Range(nameof(ReliefScaleMaxBp), ReliefScaleMaxBp, 100, 30_000);
         v.Range(nameof(RidgeAmplitudeM), RidgeAmplitudeM, 0, AmplitudeLimit);
+        v.Range(nameof(RidgeMaxOrogenyAgeMy), RidgeMaxOrogenyAgeMy, 0, 10_000);
         v.Range(nameof(OrographicGainBp), OrographicGainBp, 0, 10_000);
         v.Range(nameof(OrographicMinBp), OrographicMinBp, 0, 10_000);
         v.Range(nameof(OrographicMaxBp), OrographicMaxBp, 0, 50_000);

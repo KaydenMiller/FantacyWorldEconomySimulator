@@ -37,14 +37,14 @@ public class WorldGenSettingsTests
     public void Every_section_and_leaf_is_an_int_property_with_a_section_record()
     {
         WorldGenSettingsJson.Sections.Select(s => s.Name).Should().Equal(
-            "Grid", "Plates", "Elevation", "SeaLevel", "Currents", "Winds", "Climate", "Biomes", "Hydrology", "Areas", "Pinning", "Tiles", "Roads");
+            "Grid", "Plates", "Tectonics", "Elevation", "SeaLevel", "Currents", "Winds", "Climate", "Biomes", "Hydrology", "Areas", "Pinning", "Tiles", "Roads");
         foreach (var section in WorldGenSettingsJson.Sections)
         {
             var all = section.PropertyType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
             all.Should().OnlyContain(p => p.PropertyType == typeof(int), $"{section.Name} leaves are ints so the JSON binder and validator cover them");
         }
 
-        AllLeaves().Count().Should().Be(151);
+        AllLeaves().Count().Should().Be(159);
     }
 
     [Test]
@@ -69,7 +69,7 @@ public class WorldGenSettingsTests
 
     public static IEnumerable<Func<(WorldGenSettings Settings, string Code)>> CrossFieldViolations()
     {
-        yield return () => (new WorldGenSettings { Plates = new() { MinAngularSpeedPermille = 1001 } }, "settings.Plates.MaxAngularSpeedPermille");
+        yield return () => (new WorldGenSettings { Plates = new() { MinSpeedMmPerYr = 101 } }, "settings.Plates.MaxSpeedMmPerYr");
         yield return () => (new WorldGenSettings { Elevation = new() { MinElevationM = 9_001 } }, "settings.Elevation.MaxElevationM");
         yield return () => (new WorldGenSettings { Currents = new() { TropicLatDeg = 61 } }, "settings.Currents.PolarLatDeg");
         yield return () => (new WorldGenSettings { Climate = new() { PrecipitationSoftKneeMm = 4001 } }, "settings.Climate.PrecipitationCeilingMm");
@@ -351,10 +351,10 @@ public class WorldGenSettingsTests
         var a = WorldGenerator.Generate(5, baseline).Stages;
         var b = WorldGenerator.Generate(5, baseline with { Elevation = new() { NoiseOctaves = 2 } }).Stages;
         var c = WorldGenerator.Generate(5, baseline with { Winds = new() { PeakStrength = 200 } }).Stages;
-        var d = WorldGenerator.Generate(5, baseline with { Biomes = new() { GrasslandBelowMm = 900 } }).Stages;
+        var d = WorldGenerator.Generate(5, baseline with { Biomes = new() { IceBelowDeciC = -50, TundraBelowDeciC = 100, TaigaBelowDeciC = 200, TemperateMaxDeciC = 260 } }).Stages;
 
-        Hash(b, WorldGenStage.Elevation).Should().NotBe(Hash(a, WorldGenStage.Elevation));
-        Hash(c, WorldGenStage.Elevation).Should().Be(Hash(a, WorldGenStage.Elevation));
+        Hash(b, WorldGenStage.Tectonics).Should().NotBe(Hash(a, WorldGenStage.Tectonics));
+        Hash(c, WorldGenStage.Tectonics).Should().Be(Hash(a, WorldGenStage.Tectonics));
         Hash(c, WorldGenStage.Winds).Should().NotBe(Hash(a, WorldGenStage.Winds));
         Hash(d, WorldGenStage.TileHydrology).Should().Be(Hash(a, WorldGenStage.TileHydrology));
         Hash(d, WorldGenStage.TileLandform).Should().NotBe(Hash(a, WorldGenStage.TileLandform));

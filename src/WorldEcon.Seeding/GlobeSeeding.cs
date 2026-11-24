@@ -94,13 +94,22 @@ public static class GlobeSeeding
         IReadOnlyList<AreaNameRequest> names,
         IProgress<SeedingProgress>? progress = null,
         CancellationToken ct = default,
-        RoadSeed? roads = null)
+        RoadSeed? roads = null,
+        GeneratedWorld? generated = null)
     {
         roads ??= RoadSeed.Empty;
         RoadSeeding.Validate(roads, pins.Select(p => p.Settlement.Name).ToList());
         var genProgress = progress is null ? null : new SyncProgress<(WorldGenStage Stage, double Fraction)>(p =>
             progress.Report(new SeedingProgress(p.Stage.ToString(), p.Fraction * GenerationShare)));
-        var generated = WorldGenerator.Generate(world.Seed, settings, new WorldGenOptions(Progress: genProgress));
+        if (generated is not null)
+        {
+            if (generated.WorldSeed != world.Seed)
+                throw new InvalidOperationException($"The generated world has seed {generated.WorldSeed}; the world being seeded has seed {world.Seed}.");
+            if (generated.Tiles is null)
+                throw new InvalidOperationException("The generated world has no tiles (a globe-only run); seeding needs a full run.");
+        }
+
+        generated ??= WorldGenerator.Generate(world.Seed, settings, new WorldGenOptions(Progress: genProgress));
         ct.ThrowIfCancellationRequested();
         var layers = generated.Layers;
 

@@ -21,6 +21,7 @@ public sealed record WorldGenSettings
 
     public GridSettings Grid { get; init; } = new();
     public PlateSettings Plates { get; init; } = new();
+    public TectonicsSettings Tectonics { get; init; } = new();
     public ElevationSettings Elevation { get; init; } = new();
     public SeaLevelSettings SeaLevel { get; init; } = new();
     public CurrentSettings Currents { get; init; } = new();
@@ -45,6 +46,7 @@ public sealed record WorldGenSettings
         var v = new SettingsValidator();
         Grid.Validate(v.For(nameof(Grid)));
         Plates.Validate(v.For(nameof(Plates)), Grid);
+        Tectonics.Validate(v.For(nameof(Tectonics)));
         Elevation.Validate(v.For(nameof(Elevation)));
         SeaLevel.Validate(v.For(nameof(SeaLevel)));
         Currents.Validate(v.For(nameof(Currents)));

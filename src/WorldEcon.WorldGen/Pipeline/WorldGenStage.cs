@@ -35,4 +35,7 @@ public enum WorldGenStage
 
     /// <summary>Globe-cell summaries written into <see cref="WorldLayers"/> and the region-cell summary.</summary>
     Summary,
+
+    /// <summary>Plate history simulation (version 6); replaces Plates and Elevation, whose values stay reserved.</summary>
+    Tectonics,
 }

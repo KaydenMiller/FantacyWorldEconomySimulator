@@ -172,7 +172,9 @@ public sealed partial class MapRenderer : IDisposable
         for (var t = 0; t < _gCorners.Length; t++) _gCorners[t] = ToF(_l.Geometry.Corner(t));
         (_gRingStart, _gRing) = Rings(grid);
         _gMountain = new bool[grid.CellCount];
-        for (var c = 0; c < _gMountain.Length; c++) _gMountain[c] = !_l.IsOcean(c) && LayerPalette.MountainShareBp(_l, c) >= MountainSymbolMinBp;
+        // A world part-way through generation (stage viewer) may have no elevation yet: no mountain symbols then.
+        var hasElevation = _l.ElevationM.Length == grid.CellCount;
+        for (var c = 0; c < _gMountain.Length; c++) _gMountain[c] = hasElevation && !_l.IsOcean(c) && LayerPalette.MountainShareBp(_l, c) >= MountainSymbolMinBp;
         _gColours = new uint[]?[_layerCount];
         _rColours = new uint[]?[_layerCount];
         _clusterStamp = new int[grid.CellCount];
@@ -1440,8 +1442,10 @@ public sealed partial class MapRenderer : IDisposable
         {
             colours[c] = layer switch
             {
-                GlobeLayer.Hydrology => LayerPalette.HydrologyColor((WaterBodyKind)_l.WaterBodyKind[c], (Biome)_l.BiomeOf[c], RiverT(_l.FlowAccum[c])),
-                GlobeLayer.Elevation => LayerPalette.ElevationColor(_l.ElevationM[c], _l.SeaLevelM, _l.IsOcean(c)),
+                // Partly generated worlds (stage viewer) lack these layers: ColorOf draws them as no data.
+                GlobeLayer.Hydrology when _l.WaterBodyKind.Length > c && _l.BiomeOf.Length > c =>
+                    LayerPalette.HydrologyColor((WaterBodyKind)_l.WaterBodyKind[c], (Biome)_l.BiomeOf[c], RiverT(_l.FlowAccum[c])),
+                GlobeLayer.Elevation when _l.ElevationM.Length > c => LayerPalette.ElevationColor(_l.ElevationM[c], _l.SeaLevelM, _l.IsOcean(c)),
                 _ => LayerPalette.ColorOf(_l, layer, c),
             };
         }
