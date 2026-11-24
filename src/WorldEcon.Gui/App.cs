@@ -25,6 +25,23 @@ public sealed class App : Avalonia.Application
             var vm = new MainViewModel();
             var window = new MainWindow { DataContext = vm };
             desktop.MainWindow = window;
+            if (options.FullScreen is { } screenName)
+            {
+                window.WindowStartupLocation = Avalonia.Controls.WindowStartupLocation.Manual;
+                window.Opened += (_, _) =>
+                {
+                    // Diagnostic: a fixed window size for timings. Match the screen by display name, else the primary.
+                    var all = window.Screens.All;
+                    foreach (var s in all) Console.WriteLine($"Screen '{s.DisplayName}' bounds {s.Bounds} scaling {s.Scaling} primary {s.IsPrimary}");
+                    var screen = all.FirstOrDefault(s => s.DisplayName?.Contains(screenName, StringComparison.OrdinalIgnoreCase) == true)
+                        ?? window.Screens.Primary ?? all.FirstOrDefault();
+                    if (screen is null) return;
+                    window.Position = screen.Bounds.Position;
+                    window.WindowState = Avalonia.Controls.WindowState.FullScreen;
+                    Console.WriteLine($"Full screen on '{screen.DisplayName}' {screen.Bounds}");
+                };
+            }
+
             if (options.ExitAfterSeconds is { } seconds)
                 DispatcherTimer.RunOnce(() => desktop.Shutdown(), TimeSpan.FromSeconds(seconds));
             if (options.DbPath is { } db)
@@ -37,6 +54,17 @@ public sealed class App : Avalonia.Application
                         if (ok && vm.Map is { } map)
                         {
                             if (options.Layer is { } layer) map.LayerIndex = (int)layer;
+                            foreach (var t in options.Toggles)
+                            {
+                                switch (t)
+                                {
+                                    case "borders": map.Borders = true; break;
+                                    case "hex-grid": map.HexGrid = true; break;
+                                    case "river-arrows": map.RiverArrows = true; break;
+                                    case "river-ends": map.RiverEnds = true; break;
+                                }
+                            }
+
                             if (options.Centre is { } c) map.CentreOn(UnitVector(c.LatDeg, c.LonDeg));
                             if (options.ZoomTo is { } level) map.ZoomToLevel(level);
                             // Detail View draws region cells until the tile blocks arrive; a scripted screenshot waits for them.

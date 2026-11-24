@@ -1222,6 +1222,71 @@ public class MapRendererTests
         }
     }
 
+    /// <summary>The GPU backend's Skia overlay (<see cref="MapRenderer.DrawOverlay"/>) on a transparent canvas.</summary>
+    private static SKBitmap RenderOverlay(MapRenderer r, MapViewState view, MapDrawOptions options)
+    {
+        var bmp = new SKBitmap(new SKImageInfo((int)view.Width, (int)view.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        using var canvas = new SKCanvas(bmp);
+        canvas.Clear(SKColors.Transparent);
+        r.DrawOverlay(canvas, view, options);
+        canvas.Flush();
+        return bmp;
+    }
+
+    [Test]
+    public async Task Gpu_overlay_draws_river_arrows_and_ends_at_every_level()
+    {
+        var w = WorldB();
+        using var r = new MapRenderer(w);
+        var river = r.DrawnRivers.OrderByDescending(d => d.Points.Length).First();
+        var mid = river.Points[river.Points.Length / 2];
+        var views = new[]
+        {
+            w.ViewFromYawPitch(W, H, GlobeViewState.Facing(mid).YawDeg, GlobeViewState.Facing(mid).PitchDeg, 2),
+            w.View(mid, w.ScaleForRegionPx(40), W, H),
+            w.View(mid, w.ScaleForTilePx(30), W, H),
+        };
+        await r.LoadVisibleAsync(views[2]);
+        var all = Plain with { RiverArrows = true, RiverEnds = true, Rivers = true };
+        foreach (var v in views)
+        {
+            var level = r.EffectiveLevel(v);
+            using var on = RenderOverlay(r, v, all);
+            using var noArrows = RenderOverlay(r, v, all with { RiverArrows = false });
+            using var noEnds = RenderOverlay(r, v, all with { RiverEnds = false });
+            using var noRivers = RenderOverlay(r, v, all with { Rivers = false });
+            Differing(on, noArrows).Should().BeGreaterThan(0, $"arrows in the GPU overlay at {level} View");
+            Differing(on, noEnds).Should().BeGreaterThan(0, $"ends in the GPU overlay at {level} View");
+            using var plain = RenderOverlay(r, v, Plain);
+            Differing(noRivers, plain).Should().Be(0, $"no river marks without Rivers at {level} View");
+        }
+    }
+
+    [Test]
+    public async Task Gpu_overlay_hex_grid_does_not_depend_on_the_last_cpu_frame()
+    {
+        var w = WorldB();
+        var regions = w.Regions!;
+        var centre = regions.Geometry.Centre(LandRegion(regions, 200));
+        var region = w.View(centre, w.ScaleForRegionPx(40), W, H);
+        var detail = w.View(centre, w.ScaleForTilePx(30), W, H);
+        var elsewhere = w.View(new Vector3d(-centre.X, -centre.Y, -centre.Z), w.ScaleForRegionPx(40), W, H);
+        var options = Plain with { HexGrid = true };
+        foreach (var v in new[] { region, detail })
+        {
+            using var fresh = new MapRenderer(w);
+            await fresh.LoadVisibleAsync(v);
+            using var a = RenderOverlay(fresh, v, options);
+            using var plain = RenderOverlay(fresh, v, Plain);
+            Differing(a, plain).Should().BeGreaterThan(1000, $"the hex grid is drawn at {fresh.EffectiveLevel(v)} View without a CPU frame first");
+
+            // A CPU frame of another view must not change what the overlay outlines.
+            using (Render(fresh, elsewhere, Plain)) { }
+            using var b = RenderOverlay(fresh, v, options);
+            Differing(a, b).Should().Be(0, $"the overlay hex grid at {fresh.EffectiveLevel(v)} View");
+        }
+    }
+
     // ---- latitude and longitude lines ----
 
     [Test]

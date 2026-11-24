@@ -5,7 +5,7 @@ namespace WorldEcon.Gui;
 /// <summary>
 /// Desktop app entry point. Usage:
 /// <c>WorldEcon.Gui [&lt;db&gt;] [--centre &lt;lat&gt;,&lt;lon&gt;] [--zoom-to globe|region|detail] [--layer &lt;name&gt;]
-/// [--screenshot &lt;png&gt;] [--exit-after &lt;seconds&gt;] [--spin &lt;frames&gt;] [--sweep &lt;frames&gt;] [--renderer gpu|cpu] [--export-gpu &lt;dir&gt;]</c>.
+/// [--screenshot &lt;png&gt;] [--exit-after &lt;seconds&gt;] [--spin &lt;frames&gt;] [--sweep &lt;frames&gt;] [--renderer gpu|cpu] [--export-gpu &lt;dir&gt;] [--toggle &lt;names&gt;] [--fullscreen &lt;screen&gt;]</c>.
 /// <c>--centre</c> turns the map to a point after load; <c>--zoom-to</c> sets the scale where that view is shown (Region
 /// View: region cells 45 px; Detail View: tiles 26 px; the visible tile blocks are loaded before the screenshot);
 /// <c>--layer</c> picks the colour layer. <c>--screenshot</c> saves a PNG of the main window once the world has loaded
@@ -40,7 +40,7 @@ public static class Program
 /// <summary>Command-line options of the desktop app.</summary>
 internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double? ExitAfterSeconds, int? SpinFrames)
 {
-    public const string Usage = "Usage: WorldEcon.Gui [<db>] [--centre <lat>,<lon>] [--zoom-to globe|region|detail] [--layer <name>] [--screenshot <png>] [--exit-after <seconds>] [--spin <frames>] [--sweep <frames>] [--renderer gpu|cpu] [--export-gpu <dir>]";
+    public const string Usage = "Usage: WorldEcon.Gui [<db>] [--centre <lat>,<lon>] [--zoom-to globe|region|detail] [--layer <name>] [--screenshot <png>] [--exit-after <seconds>] [--spin <frames>] [--sweep <frames>] [--renderer gpu|cpu] [--export-gpu <dir>] [--toggle borders,hex-grid,river-arrows,river-ends] [--fullscreen <screen>]";
 
     /// <summary>Map centre after load (degrees), or null to keep the default (the first settlement).</summary>
     public (double LatDeg, double LonDeg)? Centre { get; init; }
@@ -56,6 +56,15 @@ internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double
 
     /// <summary>Diagnostic: frames over which to wheel-zoom Globe → Detail → Globe after load and print timings per level, or null.</summary>
     public int? SweepFrames { get; init; }
+
+    /// <summary>Diagnostic: map toggles to switch on after load (borders, hex-grid, river-arrows, river-ends).</summary>
+    public IReadOnlyList<string> Toggles { get; init; } = [];
+
+    /// <summary>Diagnostic: screen (display name, or "primary") to open full screen on, so timings use a fixed window size.</summary>
+    public string? FullScreen { get; init; }
+
+    /// <summary>Toggle names accepted by <c>--toggle</c>.</summary>
+    public static readonly string[] ToggleNames = ["borders", "hex-grid", "river-arrows", "river-ends"];
 
     /// <summary>Colour layer after load, or null for the default (Biome).</summary>
     public WorldEcon.Rendering.GlobeLayer? Layer { get; init; }
@@ -112,6 +121,16 @@ internal sealed record GuiOptions(string? DbPath, string? ScreenshotPath, double
                     if (!Enum.TryParse<WorldEcon.Rendering.MapLevel>(z, ignoreCase: true, out var level) || !Enum.IsDefined(level))
                         throw new ArgumentException($"--zoom-to expects globe, region or detail, not '{z}'.");
                     o = o with { ZoomTo = level };
+                    break;
+                case "--fullscreen":
+                    o = o with { FullScreen = Value() };
+                    break;
+                case "--toggle":
+                    var tv = Value();
+                    var names = tv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (names.Length == 0 || names.FirstOrDefault(n => !ToggleNames.Contains(n)) is { } bad)
+                        throw new ArgumentException($"--toggle expects a comma-separated list of {string.Join(", ", ToggleNames)}, not '{tv}'.");
+                    o = o with { Toggles = [.. o.Toggles, .. names] };
                     break;
                 case "--layer":
                     var l = Value();

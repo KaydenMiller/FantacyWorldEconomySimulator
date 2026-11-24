@@ -211,7 +211,7 @@ public partial class MainWindow : Window
 
                 var worst = builds.IndexOf(builds.Max());
                 var gcMs = (GC.GetTotalPauseDuration() - gcPause0).TotalMilliseconds;
-                Console.WriteLine($"Spin {frames} frames at {map.LevelName} View, {session.Renderer.LastDrawnCells} cells drawn: frame interval {Stats(intervals)}");
+                Console.WriteLine($"Spin {frames} frames at {map.LevelName} View, map {map.View.Width:F0}x{map.View.Height:F0} px at scaling {RenderScaling}, {session.Renderer.LastDrawnCells} cells drawn: frame interval {Stats(intervals)}");
                 Console.WriteLine($"  CPU build {Stats(builds)}; whole draw {Stats(draws)}");
                 if (gpuFrames > 0)
                     Console.WriteLine($"  GPU renderer on {gpuFrames}/{intervals.Count} frames: GL submit {Stats(submits)}; Skia overlay {Stats(overlays)}");

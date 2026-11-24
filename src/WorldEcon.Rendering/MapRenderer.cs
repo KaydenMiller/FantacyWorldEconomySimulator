@@ -527,6 +527,11 @@ public sealed partial class MapRenderer : IDisposable
             _stamp++;
             var level = EffectiveLevel(view);
             var frame = new Frame(view, options, level);
+            // The hex grid and Detail View river marks walk the visible globe cells; Draw fills this list, but on the GPU
+            // path Draw does not run, so without this the list is empty or left from an older CPU frame.
+            if (level != MapLevel.Globe) VisibleGlobeCells(view, _visible);
+            // The GPU draws the river strokes; the arrows and source/mouth dots are Skia, drawn here (as Draw does after its strokes).
+            if (options.Rivers && (options.RiverArrows || options.RiverEnds)) DrawRiverMarksOnly(canvas, ref frame);
             DrawOverlayItems(canvas, ref frame);
             LastOverlayMs = sw.Elapsed.TotalMilliseconds;
         }
@@ -961,22 +966,28 @@ public sealed partial class MapRenderer : IDisposable
                 {
                     if (_screenRun.Count == 0) runStart = i;
                     _screenRun.Add(q);
-                    if (sourceDot && i == 0) _riverDots.Add((q.X, q.Y, false, RiverWidth(level[0], unit, minFrac, addFrac, maxPx), level[0]));
-                    if (mouthDot && i == pts.Length - 1) _riverDots.Add((q.X, q.Y, true, RiverWidth(level[i], unit, minFrac, addFrac, maxPx), level[i]));
+                    // Only on-screen dots (the front of the globe reaches far past the window at Region View: 8 of 576 were on screen).
+                    if (sourceDot && i == 0 && f.OnScreen(q.X, q.Y, RiverMarkMarginPx)) _riverDots.Add((q.X, q.Y, false, RiverWidth(level[0], unit, minFrac, addFrac, maxPx), level[0]));
+                    if (mouthDot && i == pts.Length - 1 && f.OnScreen(q.X, q.Y, RiverMarkMarginPx)) _riverDots.Add((q.X, q.Y, true, RiverWidth(level[i], unit, minFrac, addFrac, maxPx), level[i]));
                     continue;
                 }
 
-                if (f.Options.RiverArrows && _screenRun.Count >= 2) AddArrows(CollectionsMarshal.AsSpan(_screenRun), level, runStart, unit, minFrac, addFrac, maxPx);
+                if (f.Options.RiverArrows && _screenRun.Count >= 2) AddArrows(ref f, CollectionsMarshal.AsSpan(_screenRun), level, runStart, unit, minFrac, addFrac, maxPx);
                 _screenRun.Clear();
             }
         }
     }
 
-    private void AddArrows(ReadOnlySpan<SKPoint> run, byte[] level, int firstIndex, float unit, float minFrac, float addFrac, float maxPx)
+    /// <summary>Margin (pixels) past the screen edge within which river dots and chevrons are still added: the largest dot radius (1.5 × 10 px width) or chevron arm (2.5 × 14 px) fits.</summary>
+    private const float RiverMarkMarginPx = 40f;
+
+    private void AddArrows(ref Frame f, ReadOnlySpan<SKPoint> run, byte[] level, int firstIndex, float unit, float minFrac, float addFrac, float maxPx)
     {
         // Width for the arrow size: the run's widest (downstream) level.
         var w = RiverWidth(level[firstIndex + run.Length - 1], unit, minFrac, addFrac, maxPx);
-        foreach (var a in RiverChains.ArrowPlacements(run, RiverArrowSpacingPx)) AddChevron(a.X, a.Y, a.Dx, a.Dy, w);
+        // Placements are measured along the whole run so the spacing does not shift while panning; only on-screen ones are added.
+        foreach (var a in RiverChains.ArrowPlacements(run, RiverArrowSpacingPx))
+            if (f.OnScreen(a.X, a.Y, RiverMarkMarginPx)) AddChevron(a.X, a.Y, a.Dx, a.Dy, w);
     }
 
     /// <summary>A chevron with its tip at (x, y) pointing along (dx, dy); arms max(4, 2.5 × width) px at ±35° behind the tip.</summary>
@@ -1059,6 +1070,35 @@ public sealed partial class MapRenderer : IDisposable
         StrokeRivers(canvas, unit, 0.08f, 0.25f, 14f);
         if (marks) DrawRiverMarks(canvas);
     }
+
+    /// <summary>
+    /// River arrows and source/mouth dots without the strokes (<see cref="DrawOverlay"/>: the GPU draws the strokes), from
+    /// the same river sets and width scales as <see cref="DrawRegionRivers"/> and <see cref="DrawTileRivers"/>.
+    /// </summary>
+    private void DrawRiverMarksOnly(SKCanvas canvas, ref Frame f)
+    {
+        var view = f.View;
+        _riverArrowPath.Rewind();
+        _riverDots.Clear();
+        if (f.Level == MapLevel.Detail)
+        {
+            if (_cache is null) return;
+            var unit = (float)(_w.TileAngle * view.ScalePxPerRad);
+            foreach (var g in _visible)
+            {
+                if (_cache.TryGet(g, out _) is not { } e || BlockRiverSet(e) is not { } set) continue;
+                AddRiverMarks(ref f, set, f.Options.Borders, unit, 0.08f, 0.25f, 14f, detail: true);
+            }
+        }
+        else if (RiverSetFor(view) is { } set)
+        {
+            var unit = (float)(_w.RegionCellAngle * view.ScalePxPerRad);
+            AddRiverMarks(ref f, set, f.Level != MapLevel.Globe && f.Options.Borders, unit, 0.07f, 0.18f, 10f, detail: false);
+        }
+
+        DrawRiverMarks(canvas);
+    }
+
 
     private void StrokeRivers(SKCanvas canvas, float unitPx, float minFrac, float addFrac, float maxPx)
     {

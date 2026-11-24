@@ -44,10 +44,18 @@ public sealed partial class MapRenderer
             }
 
             case MapLevel.Region when _r is not null:
+            {
+                var margin = (float)(_w.RegionCellAngle * view.ScalePxPerRad);
                 foreach (var g in _visible)
                     foreach (var c in _regionsOf!.TilesOf(g))
+                    {
+                        // Visible globe cells reach past the screen edge; skip their region cells that are off screen.
+                        if (!view.ProjectFast(_rCentres[c], out var x, out var y) || !f.OnScreen(x, y, margin)) continue;
                         AddOutline(_gridPath, ref f, new MapPick(MapLevel.Region, c, g, c));
+                    }
+
                 break;
+            }
 
             case MapLevel.Detail when _cache is not null:
                 foreach (var g in _visible)
@@ -75,7 +83,9 @@ public sealed partial class MapRenderer
         }
 
         _stroke.Color = HexGridColor;
-        _stroke.StrokeWidth = 1f;
+        // Hairline (width 0: one device pixel): Skia's GPU backend draws thousands of hairline contours with its hairline
+        // renderer, while a 1 px stroke of the same path is tessellated on the CPU every frame (184 ms at Globe View, 4K).
+        _stroke.StrokeWidth = 0f;
         canvas.DrawPath(_gridPath, _stroke);
     }
 
