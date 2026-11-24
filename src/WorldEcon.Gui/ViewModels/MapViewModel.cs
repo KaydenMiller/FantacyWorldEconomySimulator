@@ -32,6 +32,12 @@ public sealed class MapViewModel : ObservableObject
     private bool _landRoutes = true;
     private bool _seaRoutes = true;
     private bool _airRoutes = true;
+    private bool _caravans = true;
+    private bool _junctions;
+    private bool _sites = true;
+    private IReadOnlyList<MapCaravan>? _caravanMarkers;
+    private MapObject? _selectedObject;
+    private Guid? _highlightedRoute;
     private bool _labels = true;
     private bool _arrows = true;
     private bool _equator = true;
@@ -120,6 +126,45 @@ public sealed class MapViewModel : ObservableObject
 
     public bool AirRoutes { get => _airRoutes; set => Toggle(ref _airRoutes, value); }
 
+    /// <summary>Caravan markers (on by default; also need Routes and the caravan's category on).</summary>
+    public bool Caravans { get => _caravans; set => Toggle(ref _caravans, value); }
+
+    /// <summary>Junction circles at Region and Detail View (off by default).</summary>
+    public bool Junctions { get => _junctions; set => Toggle(ref _junctions, value); }
+
+    /// <summary>Site diamonds (on by default).</summary>
+    public bool Sites { get => _sites; set => Toggle(ref _sites, value); }
+
+    /// <summary>Selected caravan, settlement or node (ring), or null.</summary>
+    public MapObject? SelectedObject
+    {
+        get => _selectedObject;
+        set
+        {
+            if (Set(ref _selectedObject, value)) Invalidate();
+        }
+    }
+
+    /// <summary>Route drawn with a yellow casing, or null.</summary>
+    public Guid? HighlightedRoute
+    {
+        get => _highlightedRoute;
+        set
+        {
+            if (Set(ref _highlightedRoute, value)) Invalidate();
+        }
+    }
+
+    /// <summary>Sets the caravans to draw (the caravan layer's placed markers) and redraws.</summary>
+    public void SetCaravans(IReadOnlyList<MapCaravan>? caravans)
+    {
+        _caravanMarkers = caravans;
+        Invalidate();
+    }
+
+    /// <summary>Caravans, settlements or nodes under (x, y) as last drawn (see <see cref="MapRenderer.PickObjects"/>).</summary>
+    public IReadOnlyList<MapObject> PickObjects(double x, double y, MapObjectKind? only = null) => Renderer.PickObjects(x, y, only);
+
     public bool Labels { get => _labels; set => Toggle(ref _labels, value); }
 
     public bool Arrows { get => _arrows; set => Toggle(ref _arrows, value); }
@@ -172,6 +217,13 @@ public sealed class MapViewModel : ObservableObject
         SeaRoutes = _seaRoutes,
         AirRoutes = _airRoutes,
         RouteLines = _session.RouteLines,
+        Caravans = _caravans,
+        CaravanMarkers = _caravanMarkers,
+        Junctions = _junctions,
+        Sites = _sites,
+        NodeMarkers = _session.NodeMarkers,
+        SelectedObject = _selectedObject,
+        HighlightedRoute = _highlightedRoute,
         Labels = _labels,
         Arrows = _arrows,
         Equator = _equator,
@@ -262,5 +314,6 @@ public sealed class MapViewModel : ObservableObject
         if (Set(ref field, value, name)) Invalidate();
     }
 
-    private void Invalidate() => Invalidated?.Invoke(this, EventArgs.Empty);
+    /// <summary>Asks for a redraw (for example after a node was renamed).</summary>
+    public void Invalidate() => Invalidated?.Invoke(this, EventArgs.Empty);
 }

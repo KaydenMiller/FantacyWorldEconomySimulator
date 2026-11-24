@@ -1,4 +1,5 @@
 using WorldEcon.Application.Globe;
+using WorldEcon.Application.Routes;
 using WorldEcon.Rendering;
 using WorldEcon.WorldGen.Grid;
 using WorldEcon.WorldGen.Pipeline;
@@ -27,11 +28,21 @@ public sealed class WorldSession : IDisposable
         World = new MapWorld(data.Layers, data.Regions, data.Lakes, s.Grid.TileMultiplier, _tiles, s.Tiles.RiverMinFlow, s.Tiles.MajorRiverFlow, s.Hydrology)
         { Imagery = data.Imagery, RiverCourses = data.RiverCourses };
         Renderer = new MapRenderer(World);
-        Markers = data.Settlements.Select(x => new MapMarker(x.Cell, x.TileId ?? -1, x.Name, (MapPortKind)(int)x.Port)).ToList();
+        Markers = data.Settlements.Select(x => new MapMarker(x.Cell, x.TileId ?? -1, x.Name, (MapPortKind)(int)x.Port, x.Id)).ToList();
         RouteLines = data.Routes.Where(r => r.Tiles.Count >= 2)
-            .Select(r => new MapRoute((MapRouteKind)(int)r.Category, r.Tiles)).ToList();
-        _routesByTile = data.Routes.SelectMany(r => r.Tiles.Distinct().Select(t => (t, r)))
-            .GroupBy(x => x.t).ToDictionary(g => g.Key, g => (IReadOnlyList<GlobeRoute>)g.Select(x => x.r).ToList());
+            .Select(r => new MapRoute(r.Id, (MapRouteKind)(int)r.Category, r.Tiles)).ToList();
+        _routeLines = RouteLines.GroupBy(r => r.RouteId).ToDictionary(g => g.Key, g => g.First());
+        foreach (var r in data.Routes) _routes[r.Id] = r;
+        _routesByTile = data.Routes.SelectMany(r => r.Tiles.Distinct().Select(t => (t, r.Id)))
+            .GroupBy(x => x.t).ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToArray());
+        foreach (var n in data.Nodes)
+        {
+            _nodes[n.Id] = n;
+            _nodeByTile.TryAdd(n.TileId, n.Id);
+        }
+
+        _nodeMarkers = data.Nodes.Select(ToMarker).ToList();
+        CurrentTick = data.World.CurrentTick.Value;
         _lakes = data.Lakes.ToDictionary(l => l.Id);
         TileSizeKm = TileMetrics.SizeKm(s.Grid.PlanetRadiusKm, data.TileGrid.Count);
     }
@@ -60,10 +71,104 @@ public sealed class WorldSession : IDisposable
     /// <summary>Route lines of the travel graph (one per route, styled by Land, Sea or Air).</summary>
     public IReadOnlyList<MapRoute> RouteLines { get; }
 
-    private readonly Dictionary<int, IReadOnlyList<GlobeRoute>> _routesByTile;
+    private readonly Dictionary<int, Guid[]> _routesByTile;
+    private readonly Dictionary<Guid, MapRoute> _routeLines;
+    private readonly Dictionary<Guid, GlobeRoute> _routes = [];
+    private readonly Dictionary<Guid, GlobeNode> _nodes = [];
+    private readonly Dictionary<int, Guid> _nodeByTile = [];
+    private List<MapNode> _nodeMarkers;
 
     /// <summary>Routes whose tile path includes <paramref name="tile"/>.</summary>
-    public IReadOnlyList<GlobeRoute> RoutesOnTile(int tile) => _routesByTile.GetValueOrDefault(tile, []);
+    public IReadOnlyList<GlobeRoute> RoutesOnTile(int tile) =>
+        _routesByTile.TryGetValue(tile, out var ids) ? ids.Select(id => _routes[id]).ToList() : [];
+
+    /// <summary>The drawn line of a route, or null when the route has fewer than two tiles or is unknown.</summary>
+    public MapRoute? RouteLine(Guid routeId) => _routeLines.GetValueOrDefault(routeId);
+
+    /// <summary>A route of the travel graph (end names follow renames), or null.</summary>
+    public GlobeRoute? Route(Guid routeId) => _routes.GetValueOrDefault(routeId);
+
+    /// <summary>Junction and site markers.</summary>
+    public IReadOnlyList<MapNode> NodeMarkers => _nodeMarkers;
+
+    /// <summary>A junction or site (name follows renames), or null.</summary>
+    public GlobeNode? Node(Guid id) => _nodes.GetValueOrDefault(id);
+
+    /// <summary>The junction or site on <paramref name="tile"/>, or null.</summary>
+    public GlobeNode? NodeOnTile(int tile) => _nodeByTile.TryGetValue(tile, out var id) ? _nodes[id] : null;
+
+    /// <summary>
+    /// World tick the economy views show: the world's tick when opened, then the tick read by each caravan refresh
+    /// (the file may have been advanced since it was opened).
+    /// </summary>
+    public long CurrentTick { get; set; }
+
+    private readonly object _workGate = new();
+    private readonly List<Task> _work = [];
+
+    /// <summary>
+    /// Registers a read or write of the world's file (caravan read, city panel load, rename) so that replacing the file
+    /// can wait for it (<see cref="PendingFileWork"/>). Returns <paramref name="work"/>.
+    /// </summary>
+    public T Track<T>(T work) where T : Task
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        lock (_workGate)
+        {
+            _work.RemoveAll(t => t.IsCompleted);
+            _work.Add(work);
+        }
+
+        return work;
+    }
+
+    /// <summary>Tracked file work that has not finished.</summary>
+    public IReadOnlyList<Task> PendingFileWork
+    {
+        get
+        {
+            lock (_workGate) return _work.Where(t => !t.IsCompleted).ToList();
+        }
+    }
+
+    /// <summary>Waits for every tracked read and write of the file (their failures are ignored here; each reports its own).</summary>
+    public async Task DrainFileWorkAsync()
+    {
+        try
+        {
+            await Task.WhenAll(PendingFileWork).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Reported by the code that started the work.
+        }
+    }
+
+    /// <summary>Raised when economy data changed (refresh, rename, an advance): open panels re-query.</summary>
+    public event EventHandler? DataChanged;
+
+    public void RaiseDataChanged() => DataChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Applies a saved rename: the node, its marker label and the end names of its routes.</summary>
+    public void ApplyRename(RenamedNode renamed)
+    {
+        ArgumentNullException.ThrowIfNull(renamed);
+        if (!_nodes.TryGetValue(renamed.Id, out var node)) return;
+        node = node with { Name = renamed.Name };
+        _nodes[node.Id] = node;
+        _nodeMarkers = _nodeMarkers.Select(m => m.Id == node.Id ? ToMarker(node) : m).ToList();
+        foreach (var id in node.RouteIds)
+        {
+            if (!_routes.TryGetValue(id, out var r)) continue;
+            if (r.NodeAId == node.Id) r = r with { NodeA = node.Label };
+            if (r.NodeBId == node.Id) r = r with { NodeB = node.Label };
+            _routes[id] = r;
+        }
+    }
+
+    private MapNode ToMarker(GlobeNode n) => new(n.Id, n.Kind == Domain.Geography.RouteNodeKind.Site ? MapNodeKind.Site : MapNodeKind.Junction,
+        World.Tiles is { } tiles && (uint)n.TileId < (uint)tiles.Count ? GlobeCellOfTile(n.TileId) : -1,
+        n.TileId, n.Name);
 
     /// <summary>Tile size, km: flat-to-flat width √(2A/√3) of a regular hexagon of the mean tile area A (<see cref="TileMetrics.SizeKm"/>; 5.00 km at the earth-5km preset).</summary>
     public double TileSizeKm { get; }

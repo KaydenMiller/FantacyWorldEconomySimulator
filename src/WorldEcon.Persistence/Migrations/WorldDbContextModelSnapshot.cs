@@ -821,7 +821,10 @@ namespace WorldEcon.Persistence.Migrations
 
                     b.HasIndex("WorldId", "TileId");
 
-                    b.ToTable("route_nodes", (string)null);
+                    b.ToTable("route_nodes", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_route_nodes_name_length", "\"Kind\" = 'Settlement' OR \"Name\" IS NULL OR length(\"Name\") <= 64");
+                        });
                 });
 
             modelBuilder.Entity("WorldEcon.Domain.Geography.RouteTile", b =>

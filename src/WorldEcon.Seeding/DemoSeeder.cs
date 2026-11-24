@@ -62,14 +62,16 @@ public static class DemoSeeder
         // Hammerfell–Sunport also has an air route. Sea travel needs no entry: voyages join every pair of ports sharing water.
         var roads = new RoadSeed(
         [
-            new SeedRoute(hammerfell.Name, greenfield.Name, 2),
+            new SeedRoute(hammerfell.Name, greenfield.Name, 2, Via: ["Greystone Quarry"]),
             new SeedRoute(hammerfell.Name, riverwood.Name, 3),
             new SeedRoute(hammerfell.Name, karak.Name, 6),
             new SeedRoute(greenfield.Name, karak.Name, 5),
             new SeedRoute(hammerfell.Name, sunport.Name, 4),
             new SeedRoute(sunport.Name, vinemoor.Name, 2),
             new SeedRoute(hammerfell.Name, sunport.Name, 1, "Air", Name: "Sky Road"),
-        ], []);
+        ],
+        // A site on the Hammerfell–Greenfield road (middle tile of that road at the earth-5km preset), so sites show on the map.
+        [new SeedNode("Site", "Greystone Quarry", 31.5706, -48.7102)]);
 
         // ---- Goods --------------------------------------------------------------------------
         // Raw inputs (extracted by farms/mines; not directly consumed by population).

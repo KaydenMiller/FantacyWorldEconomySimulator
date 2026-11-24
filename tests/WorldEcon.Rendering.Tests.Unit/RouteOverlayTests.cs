@@ -54,10 +54,10 @@ public class RouteOverlayTests
         var view = world.View(new Vector3d(0.15, 0.05, 1).Normalize(), 1200, 800, 600);
         foreach (var (kind, colour) in new[] { (MapRouteKind.Land, MapRenderer.LandRouteColor), (MapRouteKind.Sea, MapRenderer.SeaRouteColor), (MapRouteKind.Air, MapRenderer.AirRouteColor) })
         {
-            Count(world, view, Options(new MapRoute(kind, path)), colour).Should().BeGreaterThan(20, kind.ToString());
+            Count(world, view, Options(new MapRoute(Guid.NewGuid(), kind, path)), colour).Should().BeGreaterThan(20, kind.ToString());
             var others = new[] { MapRenderer.LandRouteColor, MapRenderer.SeaRouteColor, MapRenderer.AirRouteColor }.Where(c => c != colour);
             foreach (var other in others)
-                Count(world, view, Options(new MapRoute(kind, path)), other).Should().Be(0);
+                Count(world, view, Options(new MapRoute(Guid.NewGuid(), kind, path)), other).Should().Be(0);
         }
     }
 
@@ -65,7 +65,7 @@ public class RouteOverlayTests
     public void Toggle_off_and_far_side_draw_nothing()
     {
         var (world, path) = Setup();
-        var route = new MapRoute(MapRouteKind.Land, path);
+        var route = new MapRoute(Guid.NewGuid(), MapRouteKind.Land, path);
         var front = world.View(new Vector3d(0.15, 0.05, 1).Normalize(), 1200, 800, 600);
         Count(world, front, Options(route) with { Routes = false }, MapRenderer.LandRouteColor).Should().Be(0);
         var back = world.View(new Vector3d(0, 0, -1), 300, 800, 600);
@@ -78,7 +78,7 @@ public class RouteOverlayTests
         var (world, path) = Setup();
         var view = world.View(world.Tiles!.Centre(path[path.Length / 2]), world.ScaleForRegionPx(40), 800, 600);
         view.Level.Should().NotBe(MapLevel.Globe);
-        Count(world, view, Options(new MapRoute(MapRouteKind.Land, path)), MapRenderer.LandRouteColor).Should().BeGreaterThan(20);
+        Count(world, view, Options(new MapRoute(Guid.NewGuid(), MapRouteKind.Land, path)), MapRenderer.LandRouteColor).Should().BeGreaterThan(20);
     }
 
     [Test]
@@ -86,7 +86,7 @@ public class RouteOverlayTests
     {
         var (world, path) = Setup();
         var view = world.View(new Vector3d(0.15, 0.05, 1).Normalize(), 1200, 800, 600);
-        MapRoute[] all = [new(MapRouteKind.Land, path), new(MapRouteKind.Sea, path), new(MapRouteKind.Air, path)];
+        MapRoute[] all = [new(Guid.NewGuid(), MapRouteKind.Land, path), new(Guid.NewGuid(), MapRouteKind.Sea, path), new(Guid.NewGuid(), MapRouteKind.Air, path)];
         var noSea = Options(all) with { SeaRoutes = false };
         Count(world, view, noSea, MapRenderer.SeaRouteColor).Should().Be(0);
         Count(world, view, noSea, MapRenderer.AirRouteColor).Should().BeGreaterThan(20);

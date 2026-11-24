@@ -487,6 +487,35 @@ public class GlobeSeedingTests
     }
 
     [Test]
+    public async Task Site_on_water_moves_to_nearest_land_tile_and_warns()
+    {
+        const ulong worldSeed = 42;
+        var layers = WorldGenerator.Generate(worldSeed, Settings).Layers;
+        var land = Enumerable.Range(0, layers.Grid.CellCount).First(c => Pinnable(layers, c));
+        // An ocean cell next to land: the nearest land tile is close by.
+        var ocean = Enumerable.Range(0, layers.Grid.CellCount).First(c => layers.IsOcean(c) && layers.Grid.Neighbours(c).ToArray().Any(n => !layers.IsOcean(n))
+            && layers.Grid.Neighbours(c).ToArray().All(n => layers.IsOcean(n) || n != land));
+        var v = layers.Geometry.Centre(ocean);
+        double lat = Math.Asin(v.Y) * 180 / Math.PI, lon = Math.Atan2(v.X, v.Z) * 180 / Math.PI;
+        var seed = MinimalSeed(worldSeed, [new SeedRegion("The Reach", [Bare("Alderford", cell: land)])])
+            with { Nodes = [new SeedNode("Site", "Wreck Point", lat, lon)] };
+
+        var path = TempDb();
+        try
+        {
+            var (_, warnings) = await ImportAsync(path, seed);
+            warnings.Should().Contain(w => w.StartsWith("Site 'Wreck Point' is on water", StringComparison.Ordinal) && w.Contains("nearest land tile"));
+            await using var ctx = NewContextOnFile(path);
+            var site = await ctx.RouteNodes.SingleAsync(n => n.Kind == Domain.Geography.RouteNodeKind.Site);
+            site.Name.Should().Be("Wreck Point"); // the import succeeding shows its tile is land: road generation rejects a node on water
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
     public async Task Different_landmasses_warn_and_new_succeeds_with_air_route()
     {
         // Find a seed whose frequency-16 globe has at least two landmasses with pinnable cells.

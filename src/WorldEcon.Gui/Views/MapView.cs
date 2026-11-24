@@ -124,6 +124,14 @@ public sealed class MapView : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
+        if (_vm is not null && e.GetCurrentPoint(this).Properties.IsRightButtonPressed)
+        {
+            // Right-click on a settlement marker: open it in its own window (desktop).
+            var rp = e.GetPosition(this);
+            if (_vm.ContextClick(rp.X, rp.Y)) e.Handled = true;
+            return;
+        }
+
         if (_vm is null || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
         var p = e.GetPosition(this);
         Focus();
@@ -146,7 +154,7 @@ public sealed class MapView : Control
         if (_map is null) return;
         var p = e.GetPosition(this);
         if (_drag.Move(p) is { } delta) _map.Pan(delta.X, delta.Y);
-        else if (!_drag.Pressed) _map.HoverAt(p.X, p.Y);
+        else if (!_drag.Pressed) _vm?.HoverAt(p.X, p.Y);
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)

@@ -239,12 +239,15 @@
     }
   ],
   "routes": [
-    { "fromSettlement": "Hammerfell", "toSettlement": "Greenfield", "danger": 2, "category": "Land" },
+    { "fromSettlement": "Hammerfell", "toSettlement": "Greenfield", "danger": 2, "category": "Land", "via": ["Greystone Quarry"] },
     { "fromSettlement": "Hammerfell", "toSettlement": "Riverwood", "danger": 3, "category": "Land" },
     { "fromSettlement": "Hammerfell", "toSettlement": "Karak Drûm", "danger": 6, "category": "Land" },
     { "fromSettlement": "Greenfield", "toSettlement": "Karak Drûm", "danger": 5, "category": "Land" },
     { "fromSettlement": "Hammerfell", "toSettlement": "Sunport", "danger": 4, "category": "Land" },
     { "fromSettlement": "Sunport", "toSettlement": "Vinemoor", "danger": 2, "category": "Land" },
     { "fromSettlement": "Hammerfell", "toSettlement": "Sunport", "danger": 1, "category": "Air", "name": "Sky Road" }
+  ],
+  "nodes": [
+    { "kind": "Site", "name": "Greystone Quarry", "lat": 31.5706, "lon": -48.7102 }
   ]
 }

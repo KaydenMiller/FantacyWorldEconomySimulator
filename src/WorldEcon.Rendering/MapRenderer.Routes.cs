@@ -35,6 +35,8 @@ public sealed partial class MapRenderer
     private readonly ConditionalWeakTable<MapRoute, RouteGeometry> _routeGeometry = new();
     private readonly HashSet<int> _markerTiles = [];
     private readonly SKPath[] _routePaths = [new(), new(), new()];
+    private readonly SKPath _highlightPath = new();
+    private readonly SKPaint _highlight = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round, Color = SKColors.Yellow };
     private readonly SKPaint _routeCasing = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round, Color = new SKColor(0x2A, 0x1C, 0x0E, 0xC0) };
     private readonly SKPaint _routeLand = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round, Color = LandRouteColor };
     private readonly SKPaint _routeSea = new() { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeJoin = SKStrokeJoin.Round, Color = SeaRouteColor, PathEffect = SKPathEffect.CreateDash([9f, 6f], 0) };
@@ -65,7 +67,7 @@ public sealed partial class MapRenderer
     private void DrawRoutes(SKCanvas canvas, ref Frame f, IReadOnlyList<MapRoute> routes)
     {
         foreach (var p in _routePaths) p.Rewind();
-        var view = f.View;
+        _highlightPath.Rewind();
         var grouped = f.Level != MapLevel.Globe;
         _markerTiles.Clear();
         if (!grouped && f.Options.Settlements && f.Options.Markers is { } markers)
@@ -76,45 +78,14 @@ public sealed partial class MapRenderer
         {
             var on = route.Kind switch { MapRouteKind.Land => opts.LandRoutes, MapRouteKind.Sea => opts.SeaRoutes, _ => opts.AirRoutes };
             if (!on || Geometry(route) is not { } g) continue;
-            var path = _routePaths[(int)route.Kind];
-            var open = false;
-            float lx = 0, ly = 0;
-            if (_markerTiles.Contains(route.Tiles[0]) && view.ProjectFast(_gCentres[g.GlobeCells[0]], out var sx, out var sy))
-            {
-                path.MoveTo(sx, sy);
-                open = true;
-                (lx, ly) = (sx, sy);
-            }
+            AppendRoute(_routePaths[(int)route.Kind], ref f, route, g, grouped);
+            if (opts.HighlightedRoute == route.RouteId) AppendRoute(_highlightPath, ref f, route, g, grouped);
+        }
 
-            for (var i = 0; i < g.Points.Length; i++)
-            {
-                if (!view.ProjectFast(g.Points[i], out var x, out var y))
-                {
-                    open = false; // behind the globe: break the line
-                    continue;
-                }
-
-                if (grouped) (x, y) = Apply(ClusterCached(ref f, g.GlobeCells[i]), x, y);
-                if (!open)
-                {
-                    path.MoveTo(x, y);
-                    open = true;
-                }
-                else if (i == g.Points.Length - 1 || MathF.Abs(x - lx) + MathF.Abs(y - ly) >= RouteMinStepPx)
-                {
-                    path.LineTo(x, y);
-                }
-                else
-                {
-                    continue;
-                }
-
-                lx = x;
-                ly = y;
-            }
-
-            if (open && _markerTiles.Contains(route.Tiles[^1]) && view.ProjectFast(_gCentres[g.GlobeCells[^1]], out var ex, out var ey))
-                path.LineTo(ex, ey);
+        if (!_highlightPath.IsEmpty)
+        {
+            _highlight.StrokeWidth = 6.5f;
+            canvas.DrawPath(_highlightPath, _highlight);
         }
 
         if (!_routePaths[0].IsEmpty)
@@ -138,6 +109,50 @@ public sealed partial class MapRenderer
         }
     }
 
+    /// <summary>Appends one route's line to <paramref name="path"/> (see <see cref="DrawRoutes"/>).</summary>
+    private void AppendRoute(SKPath path, ref Frame f, MapRoute route, RouteGeometry g, bool grouped)
+    {
+        var view = f.View;
+        var open = false;
+        float lx = 0, ly = 0;
+        if (_markerTiles.Contains(route.Tiles[0]) && view.ProjectFast(_gCentres[g.GlobeCells[0]], out var sx, out var sy))
+        {
+            path.MoveTo(sx, sy);
+            open = true;
+            (lx, ly) = (sx, sy);
+        }
+
+        for (var i = 0; i < g.Points.Length; i++)
+        {
+            if (!view.ProjectFast(g.Points[i], out var x, out var y))
+            {
+                open = false; // behind the globe: break the line
+                continue;
+            }
+
+            if (grouped) (x, y) = Apply(ClusterCached(ref f, g.GlobeCells[i]), x, y);
+            if (!open)
+            {
+                path.MoveTo(x, y);
+                open = true;
+            }
+            else if (i == g.Points.Length - 1 || MathF.Abs(x - lx) + MathF.Abs(y - ly) >= RouteMinStepPx)
+            {
+                path.LineTo(x, y);
+            }
+            else
+            {
+                continue;
+            }
+
+            lx = x;
+            ly = y;
+        }
+
+        if (open && _markerTiles.Contains(route.Tiles[^1]) && view.ProjectFast(_gCentres[g.GlobeCells[^1]], out var ex, out var ey))
+            path.LineTo(ex, ey);
+    }
+
     /// <summary>Port ring colour (the sea route blue, opaque).</summary>
     public static readonly SKColor PortRingColor = new(0x7F, 0xD8, 0xFF);
 
@@ -154,6 +169,8 @@ public sealed partial class MapRenderer
     {
         _portRing.Dispose();
         foreach (var p in _routePaths) p.Dispose();
+        _highlightPath.Dispose();
+        _highlight.Dispose();
         _routeCasing.Dispose();
         _routeLand.Dispose();
         _routeSea.PathEffect?.Dispose();

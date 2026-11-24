@@ -366,7 +366,7 @@ internal static class GlobeCommands
         if (level is { } target && target != MapLevel.Globe)
             view = view.WithScale((target == MapLevel.Region ? mapWorld.ScaleForRegionPx(45) : mapWorld.ScaleForTilePx(24)) * zoom);
         var markers = g.Settlements.Select(s => new MapMarker(s.Cell, s.TileId ?? -1, s.Name, (MapPortKind)(int)s.Port)).ToList();
-        var routeLines = g.Routes.Where(r => r.Tiles.Count >= 2).Select(r => new MapRoute((MapRouteKind)(int)r.Category, r.Tiles)).ToList();
+        var routeLines = g.Routes.Where(r => r.Tiles.Count >= 2).Select(r => new MapRoute(r.Id, (MapRouteKind)(int)r.Category, r.Tiles)).ToList();
         var png = GlobePngRenderer.RenderMap(renderer, view, new MapDrawOptions { Layer = layer, Markers = markers, Equator = equator, Graticule = graticule, RiverArrows = riverArrows, RiverEnds = riverEnds, HexGrid = hexGrid, Routes = routes, LandRoutes = landRoutes, SeaRoutes = seaRoutes, AirRoutes = airRoutes, RouteLines = routeLines });
         await File.WriteAllBytesAsync(outPath, png);
         Console.WriteLine($"Wrote {layer} ({size}x{size}, yaw {yaw.ToString(Inv)}, pitch {pitch.ToString(Inv)}, {renderer.LastLevel} view, scale {view.ScalePxPerRad.ToString("F0", Inv)} px/rad, {markers.Count} markers, {(routes ? routeLines.Count : 0)} routes) to {outPath} ({png.Length} bytes)");

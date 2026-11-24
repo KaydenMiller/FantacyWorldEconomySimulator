@@ -120,6 +120,80 @@ public class HeadlessFlowTests
     }
 
     [Test]
+    public async Task Opening_a_settlement_shows_the_City_tab_with_its_name()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"gui_city_{Guid.NewGuid():N}.db");
+        try
+        {
+            await DemoSeeder.CreateAsync(db, TestWorlds.Settings);
+            SqliteConnection.ClearAllPools();
+            await Session.Value.Dispatch(async () =>
+            {
+                var vm = new MainViewModel();
+                var window = new MainWindow { DataContext = vm, Width = 1280, Height = 800 };
+                window.Show();
+                await Pump(vm.OpenAsync(db));
+                var town = vm.Session!.Data.Settlements.Single(s => s.Name == "Hammerfell");
+                vm.OpenSettlement(town.Id);
+                await Pump(vm.City!.Loaded);
+                Dispatcher.UIThread.RunJobs();
+                window.FindControl<TabControl>("SideTabs")!.SelectedItem.Should().Be(window.FindControl<TabItem>("CityTab"));
+                window.FindControl<CityPanelView>("CityPanel")!.FindControl<TextBlock>("CityName")!.Text.Should().Be("Hammerfell");
+                window.FindControl<CityPanelView>("CityPanel")!.FindControl<TextBlock>("CityAsOf")!.Text.Should().StartWith("as of Y");
+                window.Close();
+                vm.Session.Dispose();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(db);
+        }
+    }
+
+    [Test]
+    public async Task Pop_out_button_opens_a_city_window_and_closing_the_main_window_closes_it()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"gui_popout_{Guid.NewGuid():N}.db");
+        try
+        {
+            await DemoSeeder.CreateAsync(db, TestWorlds.Settings);
+            SqliteConnection.ClearAllPools();
+            await Session.Value.Dispatch(async () =>
+            {
+                var vm = new MainViewModel();
+                var window = new MainWindow { DataContext = vm, Width = 1280, Height = 800 };
+                var host = new PanelWindowHost(window);
+                vm.Windows = new PanelWindows(host); // the headless lifetime is not a desktop one: set the host here
+                window.Show();
+                await Pump(vm.OpenAsync(db));
+                var town = vm.Session!.Data.Settlements.Single(s => s.Name == "Hammerfell");
+                vm.OpenSettlement(town.Id);
+                await Pump(vm.City!.Loaded);
+                Dispatcher.UIThread.RunJobs();
+                var popOut = window.FindControl<CityPanelView>("CityPanel")!.FindControl<Button>("CityPopOut")!;
+                popOut.IsVisible.Should().BeTrue();
+                popOut.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                var popped = host.Windows.Single();
+                await Pump(((CityPanelViewModel)popped.DataContext!).Loaded);
+                Dispatcher.UIThread.RunJobs();
+                popped.Title.Should().Be($"Hammerfell — {vm.Session.Data.World.Name}");
+                Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(popped).OfType<TextBlock>().Should().Contain(t => t.Name == "CityName" && t.Text == "Hammerfell");
+                var session = vm.Session;
+                window.Close();
+                Dispatcher.UIThread.RunJobs();
+                host.Windows.Should().BeEmpty();
+                session.Dispose();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            File.Delete(db);
+        }
+    }
+
+    [Test]
     public async Task Globe_region_detail_tile_and_back_flow_in_a_headless_window()
     {
         var db = Path.Combine(Path.GetTempPath(), $"gui_{Guid.NewGuid():N}.db");
@@ -158,7 +232,13 @@ public class HeadlessFlowTests
                 var marker = session.Markers[0];
                 var cell = marker.GlobeCell;
                 var (cx, cy) = map.View.Project(session.Layers.Geometry.Centre(cell))!.Value;
+                // The settlement marker sits on the cell centre and a click there selects the settlement; hide it for this cell click.
+                map.Settlements = false;
+                Dispatcher.UIThread.RunJobs();
+                using (Capture(window, frames, "1-before-click.png")) { } // a draw without the marker, so the click hits the cell
                 Click(window, InWindow(mapView, cx, cy, window));
+                map.Settlements = true;
+                map.Selected.Should().NotBeNull($"the click selected '{vm.DetailsTitle}' ({map.SelectedObject})");
                 map.Selected!.Value.Should().Be(new MapPick(MapLevel.Globe, map.Selected.Value.Id, cell, map.Selected.Value.RegionCell));
                 detailsTitle.Text.Should().Be($"Globe cell {cell}");
                 vm.DetailRows.Should().Contain(r => r.Label == "Settlements" && r.Value.Contains(marker.Label));
@@ -271,12 +351,17 @@ public class HeadlessFlowTests
                     tp = session.Renderer.ProjectInGroup(map.View, session.World.Tiles!.Centre(marker.TileId), cell, map.Borders);
                 }
 
+                // As in step 1: the settlement marker is on this tile; hide it so the click selects the tile.
+                map.Settlements = false;
+                Dispatcher.UIThread.RunJobs();
+                using (Capture(window, frames, "4-before-click.png")) { }
                 Click(window, InWindow(mapView, tp!.Value.X, tp.Value.Y, window));
+                map.Settlements = true;
                 await Pump(vm.DetailsLoaded);
                 map.Selected!.Value.Level.Should().Be(MapLevel.Detail);
                 map.Selected.Value.Id.Should().Be(marker.TileId);
                 detailsTitle.Text.Should().Be($"Tile {marker.TileId}");
-                vm.DetailRows.Should().Contain(new DetailRow("Settlements", marker.Label))
+                vm.DetailRows.Should().Contain(r => r.Label == "Settlements" && r.Value == marker.Label)
                     .And.Contain(r => r.Label == "Landform")
                     .And.Contain(new DetailRow("Globe cell", cell.ToString(System.Globalization.CultureInfo.InvariantCulture)));
                 using (var frame = Capture(window, frames, "4-tile-selected.png")) SameAsOffscreen(frame, map, origin, "selected tile");

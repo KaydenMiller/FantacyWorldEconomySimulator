@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:WorldEcon.Gui.ViewModels"
+             x:Class="WorldEcon.Gui.Views.CityPanelView"
+             x:DataType="vm:CityPanelViewModel">
+  <UserControl.Resources>
+    <FontFamily x:Key="TableFont">Cascadia Mono, DejaVu Sans Mono, Consolas, Menlo, monospace</FontFamily>
+    <DataTemplate x:Key="LineTemplate" x:DataType="vm:TableLine">
+      <Panel>
+        <TextBlock Text="{Binding Text}" FontFamily="{StaticResource TableFont}" FontSize="12" IsVisible="{Binding HasNoLink}" />
+        <Button Content="{Binding Text}" FontFamily="{StaticResource TableFont}" FontSize="12" IsVisible="{Binding HasLink}" Click="OnLine"
+                Padding="0" Background="Transparent" BorderThickness="0" Foreground="#7FB8FF" Cursor="Hand" HorizontalAlignment="Left" />
+      </Panel>
+    </DataTemplate>
+  </UserControl.Resources>
+
+  <DockPanel Margin="8">
+    <StackPanel DockPanel.Dock="Top" Spacing="4">
+      <Grid ColumnDefinitions="*,Auto,Auto">
+        <TextBox Name="CitySearch" Text="{Binding SearchText}" PlaceholderText="Search settlements…" />
+        <Button Name="CityRefresh" Grid.Column="1" Margin="6,0,0,0" Content="Refresh" Click="OnRefresh" />
+        <Button Name="CityPopOut" Grid.Column="2" Margin="6,0,0,0" Content="Pop out" Click="OnPopOut" IsVisible="{Binding CanPopOut}" />
+      </Grid>
+      <ListBox Name="CitySearchResults" ItemsSource="{Binding SearchResults}" MaxHeight="160" IsVisible="{Binding HasSearchResults}" SelectionChanged="OnSearchChosen">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:SettlementChoice">
+            <TextBlock Text="{Binding Name}" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <TextBlock Name="CityName" Text="{Binding HeaderText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+      <TextBlock Text="{Binding SubHeaderText}" Foreground="#8890A0" TextWrapping="Wrap" />
+      <TextBlock Name="CityAsOf" Text="{Binding AsOfText}" Foreground="#8890A0" />
+      <TextBlock Name="CityError" Text="{Binding Error}" IsVisible="{Binding HasError}" Foreground="#FF9090" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+      <StackPanel Spacing="4" IsVisible="{Binding HasDetails}">
+        <Expander Name="MarketSection" Header="{Binding MarketTitle}" IsExpanded="{Binding MarketExpanded}" HorizontalAlignment="Stretch">
+          <StackPanel>
+            <TextBlock Text="{Binding MarketHeader}" FontFamily="{StaticResource TableFont}" FontSize="12" Foreground="#8890A0" />
+            <ItemsControl ItemsSource="{Binding MarketLines}" ItemTemplate="{StaticResource LineTemplate}" />
+          </StackPanel>
+        </Expander>
+        <Expander Name="ShopsSection" Header="{Binding ShopsTitle}" IsExpanded="{Binding ShopsExpanded}" HorizontalAlignment="Stretch">
+          <ItemsControl ItemsSource="{Binding ShopLines}" ItemTemplate="{StaticResource LineTemplate}" />
+        </Expander>
+        <Expander Name="MerchantsSection" Header="{Binding MerchantsTitle}" IsExpanded="{Binding MerchantsExpanded}" HorizontalAlignment="Stretch">
+          <ItemsControl ItemsSource="{Binding MerchantLines}" ItemTemplate="{StaticResource LineTemplate}" />
+        </Expander>
+        <Expander Name="TravelSection" Header="{Binding TravelTitle}" IsExpanded="{Binding TravelExpanded}" HorizontalAlignment="Stretch">
+          <StackPanel Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="Vehicle" VerticalAlignment="Center" Foreground="#8890A0" />
+              <ComboBox Name="VehicleFilter" ItemsSource="{Binding VehicleClasses}" SelectedItem="{Binding VehicleFilter}" MinWidth="120" />
+              <CheckBox Name="FromHereOnly" Content="From here only" IsChecked="{Binding FromHereOnly}" />
+            </StackPanel>
+            <TextBlock Text="{Binding TravelHeader}" FontFamily="{StaticResource TableFont}" FontSize="12" Foreground="#8890A0" />
+            <ItemsControl ItemsSource="{Binding TravelLines}" ItemTemplate="{StaticResource LineTemplate}" />
+          </StackPanel>
+        </Expander>
+        <Expander Name="EntrancesSection" Header="{Binding EntrancesTitle}" IsExpanded="{Binding EntrancesExpanded}" HorizontalAlignment="Stretch">
+          <StackPanel>
+            <TextBlock Text="{Binding EntranceHeader}" FontFamily="{StaticResource TableFont}" FontSize="12" Foreground="#8890A0" />
+            <ItemsControl ItemsSource="{Binding EntranceLines}" ItemTemplate="{StaticResource LineTemplate}" />
+          </StackPanel>
+        </Expander>
+        <Expander Name="CaravansSection" Header="{Binding CaravansTitle}" IsExpanded="{Binding CaravansExpanded}" HorizontalAlignment="Stretch">
+          <ItemsControl ItemsSource="{Binding CaravanLines}" ItemTemplate="{StaticResource LineTemplate}" />
+        </Expander>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

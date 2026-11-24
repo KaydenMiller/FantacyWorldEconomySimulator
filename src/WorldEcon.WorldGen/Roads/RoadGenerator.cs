@@ -84,13 +84,26 @@ public static class RoadGenerator
                 }
                 path.AddRange(path.Count == 0 ? piece : piece[1..]);
             }
+            // A waypoint with no land path (for example a site placed for another world size) does not cost the road:
+            // the road is built between its ends without the waypoints, when they are joined by land.
+            var viaDropped = false;
+            if (failure is not null && r.ViaKeys.Count > 0
+                && RoadSearch.Find(terrain, r.Category, byKey[r.FromKey].TileId, byKey[r.ToKey].TileId, network.UsedTiles(r.Category)) is { } direct)
+            {
+                warnings.Add($"Road '{r.Name}': no land path through {string.Join(", ", r.ViaKeys.Select(k => byKey[k].Name))}; built without that waypoint.");
+                path = [.. direct];
+                failure = null;
+                viaDropped = true;
+            }
             if (failure is not null) { warnings.Add(failure); continue; }
             if (path.Count < 2 || path.Distinct().Count() != path.Count)
             {
                 warnings.Add($"Road '{r.Name}': its waypoints make the path revisit a tile. Not built.");
                 continue;
             }
-            network.AddRoad(i, path.ToArray(), r.Category);
+            // Sites named as waypoints are stops: the road is split there (unless the road was built without its waypoints).
+            var siteStops = viaDropped ? null : r.ViaKeys.Select(k => byKey[k]).Where(n => n.Kind == RoadNodeKind.Site).Select(n => n.TileId).ToHashSet();
+            network.AddRoad(i, path.ToArray(), r.Category, siteStops);
             built[i] = true;
         }
 

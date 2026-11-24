@@ -56,6 +56,7 @@ internal static class CommandRunner
                 "globe" => await GlobeCommands.RunAsync(args, OpenContext, MissingArgs),
                 "route" => await RouteCommands.RunAsync(args, OpenContext, MissingArgs),
                 "knowledge" => await RouteCommands.KnowledgeAsync(args, OpenContext, MissingArgs),
+                "node" => await NodeCommands.RunAsync(args, OpenContext, MissingArgs),
                 _ => Unknown(args[0]),
             };
         }
@@ -908,6 +909,7 @@ internal static class CommandRunner
         Console.WriteLine("  caravans <dbPath>                          List caravans (in-transit and delivered) with their position on the route graph.");
         Console.WriteLine("  route upgrade <dbPath> <routeId> <surface> Change a route's surface (Track|DirtRoad|Paved for Land) at the current tick;");
         Console.WriteLine("                                             caravans on it are rescheduled. <routeId>: the id prefix shown by list.");
+        Console.WriteLine("  node rename <dbPath> <nodeId> <name|--clear> Name a junction or site (1–64 characters), or clear its name.");
         Console.WriteLine("  snapshot <dbPath> <destPath>               Write a consistent snapshot copy of the DB.");
         Console.WriteLine("  buy      <dbPath> <settlement> <good> <qty> Party buys a good off shop shelves.");
         Console.WriteLine("  adjust   <dbPath> <settlement> <good> <delta> Party adjusts market stock (delta may be negative).");

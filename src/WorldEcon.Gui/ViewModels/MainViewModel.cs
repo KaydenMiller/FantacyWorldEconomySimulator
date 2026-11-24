@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.Data.Sqlite;
+using WorldEcon.Application.Queries;
 using WorldEcon.Persistence.Globe;
 using WorldEcon.Seeding;
 using WorldEcon.Rendering;
@@ -46,6 +47,13 @@ public sealed class MainViewModel : ObservableObject
     private string _areaDetailsTitle = "No area selected";
     private IReadOnlyList<DetailRow> _areaDetailRows = [];
     private int _detailsRequest;
+    private CaravanLayer? _caravans;
+    private string? _hoverText;
+    private NodeNameEditor? _nodeEditor;
+    private CityPanelViewModel? _city;
+    private int _caravanRequest;
+    private PanelWindows _windows = new(null);
+    private int _sideTabIndex;
 
     public MainViewModel()
     {
@@ -56,6 +64,97 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ZoomToRegionCommand { get; }
 
     public RelayCommand BackCommand { get; }
+
+    /// <summary>Caravans of the open world (empty for a world without a file); null without a world.</summary>
+    public CaravanLayer? Caravans => _caravans;
+
+    /// <summary>Completes when the caravan query started by the last <see cref="UseSession"/> or <see cref="RefreshCaravansAsync"/> finished.</summary>
+    public Task CaravansLoaded { get; private set; } = Task.CompletedTask;
+
+    /// <summary>Raised with a settlement id when a settlement marker is clicked or a settlement link is opened.</summary>
+    public event EventHandler<Guid>? SettlementRequested;
+
+    /// <summary>Index of the Details tab in the sidebar.</summary>
+    public const int DetailsTabIndex = 0;
+
+    /// <summary>Index of the City tab in the sidebar.</summary>
+    public const int CityTabIndex = 1;
+
+    /// <summary>Index of the Layers tab in the sidebar.</summary>
+    public const int LayersTabIndex = 2;
+
+    /// <summary>Index of the Areas tab in the sidebar.</summary>
+    public const int AreasTabIndex = 3;
+
+    /// <summary>Selected sidebar tab (see the *TabIndex constants).</summary>
+    public int SideTabIndex
+    {
+        get => _sideTabIndex;
+        set => Set(ref _sideTabIndex, value);
+    }
+
+    /// <summary>
+    /// Pop-out windows. The window sets a desktop host; without one (tests, single-window platforms) pop-outs are not
+    /// offered. Setting it gives new windows city panels whose row clicks act on this map.
+    /// </summary>
+    public PanelWindows Windows
+    {
+        get => _windows;
+        set
+        {
+            _windows.CloseAll();
+            _windows = value ?? new PanelWindows(null);
+            _windows.CityFactory ??= (session, _) => new CityPanelViewModel(session,
+                obj => { if (ReferenceEquals(session, _session)) { SelectObject(obj); _windows.ActivateMain(); } },
+                route => { if (ReferenceEquals(session, _session) && _map is not null) { _map.HighlightedRoute = route; _windows.ActivateMain(); } },
+                id => { if (ReferenceEquals(session, _session)) CentreOnSettlement(id); });
+            if (_city is not null) _city.CanPopOut = _windows.Supported;
+            Raise(nameof(Windows));
+        }
+    }
+
+    /// <summary>Right-click at a map pixel: a settlement marker there opens in its own window. False when nothing was opened.</summary>
+    public bool ContextClick(double x, double y)
+    {
+        if (_map is null || !_windows.Supported) return false;
+        // Only settlements: a caravan leaving the town sits on its marker and would otherwise win the pick.
+        if (_map.PickObjects(x, y, MapObjectKind.Settlement).FirstOrDefault() is not { Kind: MapObjectKind.Settlement } s) return false;
+        OpenSettlementInWindow(s.Id);
+        return true;
+    }
+
+    /// <summary>Opens a settlement in its own window (desktop only; ignored without a host or world).</summary>
+    public void OpenSettlementInWindow(Guid id)
+    {
+        if (!_windows.Supported || _session is null) return;
+        _ = _windows.OpenCityAsync(_session, id);
+    }
+
+    /// <summary>The docked city panel (follows the selected settlement); null without a world.</summary>
+    public CityPanelViewModel? City
+    {
+        get => _city;
+        private set => Set(ref _city, value);
+    }
+
+    /// <summary>The name box for the selected junction or site; null when something else is selected.</summary>
+    public NodeNameEditor? NodeEditor
+    {
+        get => _nodeEditor;
+        private set
+        {
+            if (Set(ref _nodeEditor, value)) Raise(nameof(HasNodeEditor));
+        }
+    }
+
+    public bool HasNodeEditor => _nodeEditor is not null;
+
+    /// <summary>Tooltip text for the caravan, settlement or node under the pointer; null when none.</summary>
+    public string? HoverText
+    {
+        get => _hoverText;
+        private set => Set(ref _hoverText, value);
+    }
 
     public WorldSession? Session
     {
@@ -203,6 +302,19 @@ public sealed class MainViewModel : ObservableObject
         Map = new MapViewModel(session);
         _map!.PropertyChanged += OnMapChanged;
         Areas = new AreasViewModel(session.Layers.Areas, OnAreaSelected);
+        _caravans = new CaravanLayer(session);
+        var map = _map;
+        // A copy per update: the render thread draws from options captured earlier while the layer is rewritten here.
+        _caravans.Changed += (_, _) => map.SetCaravans(_caravans?.OnRoute.ToArray());
+        if (old is not null) old.DataChanged -= OnDataChanged;
+        session.DataChanged += OnDataChanged;
+        _windows.CloseAll(); // pop-outs of the old world close before it is disposed
+        _city?.Detach();
+        City = NewCityPanel(session);
+        _city!.CanPopOut = _windows.Supported;
+        var city = _city;
+        _city.PopOutRequested += (_, _) => { if (city.SettlementId is { } id) OpenSettlementInWindow(id); };
+        CaravansLoaded = RefreshCaravansAsync();
         AreaDetailsTitle = "No area selected";
         AreaDetailRows = [];
         Raise(nameof(HasWorld));
@@ -224,6 +336,8 @@ public sealed class MainViewModel : ObservableObject
             var session = await Task.Run(() => WorldSession.LoadAsync(path));
             UseSession(session);
             ClearError();
+            // Finish with the caravans read: once OpenAsync returns nothing reads the file (it may be replaced or deleted).
+            await CaravansLoaded;
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -278,7 +392,9 @@ public sealed class MainViewModel : ObservableObject
             // drained) before the pools are cleared and the file is replaced, so it never reads the new world's blocks.
             if (_session is { Path: { } open } && SameFile(open, path))
             {
-                var closing = CloseSession();
+                var closing = CloseSession(); // detaches the city panels and pop-outs
+                // Every read or write of the file still running (caravans, city panels, renames) finishes before the file is replaced.
+                if (closing is not null) await closing.DrainFileWorkAsync();
                 closedPath = open;
                 await Task.Run(() => closing?.Close());
             }
@@ -330,13 +446,176 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Reports an exception from a window event handler (the handlers are <c>async void</c> and must not throw).</summary>
     public void ReportUnexpected(string context, Exception ex) => ReportError(context, ex);
 
-    /// <summary>Selects what is under a map pixel at the current level; false when the pixel shows no map.</summary>
+    /// <summary>
+    /// Re-reads the caravans of the open world from its file (worker thread) and places them at the tick read with them.
+    /// Does nothing for a world without a file. Errors go to the status bar and error text.
+    /// </summary>
+    public async Task RefreshCaravansAsync()
+    {
+        if (_session is not { Path: { } path } session || _caravans is not { } layer) return;
+        var request = ++_caravanRequest;
+        try
+        {
+            var result = await session.Track(Task.Run(() => CaravanQuery(path)));
+            // Another world replaced this one, or a later refresh was started: this result is stale.
+            if (!ReferenceEquals(session, _session) || session.IsClosed || request != _caravanRequest) return;
+            if (result.IsError)
+            {
+                StatusText = $"Could not load caravans: {result.FirstError.Description}";
+                return;
+            }
+
+            layer.Load(result.Value);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (ReferenceEquals(session, _session)) ReportError("Could not load caravans", ex);
+        }
+    }
+
+    /// <summary>Reads the caravans of a world file (tests replace it with a stub).</summary>
+    internal Func<string, Task<ErrorOr.ErrorOr<CaravanPositions>>> CaravanQuery { get; set; } = path => CaravanPositionsQuery.RunAsync(path);
+
+    /// <summary>
+    /// Selects what is under a map pixel: a caravan (several when their markers merged), settlement or junction/site as
+    /// last drawn, else the globe cell, region cell or tile at the current level. False when the pixel shows no map.
+    /// </summary>
     public bool Click(double x, double y)
     {
-        if (_map?.PickAt(x, y) is not { } pick) return false;
+        if (_map is null) return false;
+        var objects = _map.PickObjects(x, y);
+        if (objects.Count == 0 || objects[0].Kind != MapObjectKind.Settlement) LeaveCityTab();
+        if (objects.Count > 1 && objects.All(o => o.Kind == MapObjectKind.Caravan))
+        {
+            SelectCaravans(objects.Select(o => o.Id).ToList());
+            return true;
+        }
+
+        if (objects.Count > 0)
+        {
+            SelectObject(objects[0]);
+            return true;
+        }
+
+        if (_map.PickAt(x, y) is not { } pick) return false;
         Select(pick);
         return true;
     }
+
+    /// <summary>Hover at a map pixel: the cell hover ring, and <see cref="HoverText"/> for a caravan, settlement or node.</summary>
+    public void HoverAt(double x, double y)
+    {
+        if (_map is null || _session is not { } session) return;
+        _map.HoverAt(x, y);
+        var objects = _map.PickObjects(x, y);
+        HoverText = objects.Count == 0 ? null : objects.Count > 1 ? $"{objects.Count} caravans" : objects[0] switch
+        {
+            { Kind: MapObjectKind.Caravan } o when _caravans?.Caravan(o.Id) is { } c => DetailFormatter.HoverText(c),
+            { Kind: MapObjectKind.Settlement } o => session.Data.Settlements.FirstOrDefault(s => s.Id == o.Id)?.Name,
+            { Kind: MapObjectKind.Node } o => session.Node(o.Id)?.Label,
+            _ => null,
+        };
+    }
+
+    /// <summary>Selects a caravan, settlement or junction/site and shows its details; a settlement also raises <see cref="SettlementRequested"/>.</summary>
+    public void SelectObject(MapObject obj)
+    {
+        if (_session is not { } session || _map is null) return;
+        _detailsRequest++;
+        _map.Selected = null;
+        _map.SelectedObject = obj;
+        _map.HighlightedRoute = null;
+        NodeEditor = null;
+        DetailsLoaded = Task.CompletedTask;
+        switch (obj.Kind)
+        {
+            case MapObjectKind.Caravan when _caravans?.Caravan(obj.Id) is { } c:
+                if (_caravans.TryPosition(c.Id, out var leg, out _)) _map.HighlightedRoute = c.Legs[leg].RouteId;
+                (DetailsTitle, DetailRows) = DetailFormatter.Caravan(c, _caravans, session);
+                break;
+            case MapObjectKind.Node when session.Node(obj.Id) is { } n:
+                ShowNode(n);
+                NodeEditor = new NodeNameEditor(session, n, ShowNode);
+                break;
+            case MapObjectKind.Settlement when session.Data.Settlements.FirstOrDefault(s => s.Id == obj.Id) is { } s:
+                DetailsTitle = s.Name;
+                DetailRows = [new DetailRow("Settlement", s.Name, () => OpenSettlement(s.Id)), new DetailRow("Tile", s.TileId?.ToString(Inv) ?? "none"),
+                    new DetailRow("Port", s.Port.ToString()), .. NewWindowRow(s.Id)];
+                OpenSettlement(s.Id);
+                break;
+            default:
+                DetailsTitle = "Not found";
+                DetailRows = [new DetailRow("Status", "it is no longer in the loaded data")];
+                break;
+        }
+    }
+
+    private void ShowNode(Application.Globe.GlobeNode n)
+    {
+        // A rename that finishes after the user selected something else must not overwrite the new selection's details.
+        if (_session is not { } session || _map?.SelectedObject != new MapObject(MapObjectKind.Node, n.Id) || session.Node(n.Id) is null) return;
+        (DetailsTitle, DetailRows) = DetailFormatter.Node(n, session, _caravans, id => SelectObject(new MapObject(MapObjectKind.Caravan, id)));
+        _map?.Invalidate();
+    }
+
+    /// <summary>Lists caravans whose markers merged; each row selects one.</summary>
+    public void SelectCaravans(IReadOnlyList<Guid> ids)
+    {
+        if (_map is null || _caravans is not { } layer) return;
+        _detailsRequest++;
+        _map.Selected = null;
+        _map.SelectedObject = null;
+        _map.HighlightedRoute = null;
+        NodeEditor = null;
+        DetailsTitle = $"{ids.Count} caravans";
+        DetailRows = DetailFormatter.CaravanLinks(ids.Select(layer.Caravan).OfType<CaravanOnMap>(), id => SelectObject(new MapObject(MapObjectKind.Caravan, id)));
+        DetailsLoaded = Task.CompletedTask;
+    }
+
+    /// <summary>Shows a settlement in the docked city panel, switches the sidebar to the City tab and raises <see cref="SettlementRequested"/>.</summary>
+    public void OpenSettlement(Guid id)
+    {
+        if (_city is not null)
+        {
+            _ = _city.ShowAsync(id);
+            SideTabIndex = CityTabIndex;
+        }
+
+        SettlementRequested?.Invoke(this, id);
+    }
+
+    /// <summary>A city panel over <paramref name="session"/> whose row clicks act on this window's map.</summary>
+    internal CityPanelViewModel NewCityPanel(WorldSession session) => new(session,
+        obj => { if (ReferenceEquals(session, _session)) SelectObject(obj); },
+        route => { if (ReferenceEquals(session, _session) && _map is not null) _map.HighlightedRoute = route; },
+        id => { if (ReferenceEquals(session, _session)) CentreOnSettlement(id); });
+
+    private void CentreOnSettlement(Guid id)
+    {
+        if (_session is not { } session || _map is null) return;
+        if (session.Data.Settlements.FirstOrDefault(s => s.Id == id) is not { } s) return;
+        _map.CentreOn(s.TileId is { } t && session.World.Tiles is { } tiles ? tiles.Centre(t) : session.Layers.Geometry.Centre(s.Cell));
+    }
+
+    /// <summary>Refresh (any panel, a rename, an advance): the caravans are read again; open panels re-query themselves.</summary>
+    private void OnDataChanged(object? sender, EventArgs e)
+    {
+        if (ReferenceEquals(sender, _session)) CaravansLoaded = RefreshCaravansAsync();
+    }
+
+    /// <summary>A map click moves the sidebar off the City tab to Details (other tabs stay).</summary>
+    private void LeaveCityTab()
+    {
+        if (SideTabIndex == CityTabIndex) SideTabIndex = DetailsTabIndex;
+    }
+
+    /// <summary>Link rows for the settlements of a tile or globe cell (each with a "New window" row on the desktop).</summary>
+    private IReadOnlyList<DetailRow> SettlementLinks(Func<Application.Globe.GlobeSettlement, bool> where) =>
+        _session is null ? [] : _session.Data.Settlements.Where(where)
+            .SelectMany(s => (IEnumerable<DetailRow>)[new DetailRow("Open city", s.Name, () => OpenSettlement(s.Id)), .. NewWindowRow(s.Id)]).ToList();
+
+    private IReadOnlyList<DetailRow> NewWindowRow(Guid id) =>
+        _windows.Supported ? [new DetailRow("New window", "Open in new window", () => OpenSettlementInWindow(id))] : [];
 
     /// <summary>Double-click: select what is under the pixel and, for a globe cell or region cell, zoom to Region View on it.</summary>
     public bool Activate(double x, double y) => Click(x, y) && ZoomToRegion();
@@ -353,6 +632,10 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_session is not { } session || _map is null) return;
         _map.Selected = pick;
+        _map.SelectedObject = null;
+        _map.HighlightedRoute = null;
+        NodeEditor = null;
+        LeaveCityTab();
         RaiseMapState();
         var request = ++_detailsRequest;
         switch (pick.Level)
@@ -386,7 +669,7 @@ public sealed class MainViewModel : ObservableObject
                 ? [new DetailRow("Status", $"no tile block is stored for globe cell {cell}; regenerate the world")]
                 : i < 0
                     ? [new DetailRow("Status", $"tile {tile} is not in the block of globe cell {cell}")]
-                    : DetailFormatter.Tile(tile, block, i, session);
+                    : [.. DetailFormatter.Tile(tile, block, i, session), .. SettlementLinks(s => s.TileId == tile)];
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -477,7 +760,7 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_session is null) return;
         DetailsTitle = $"Globe cell {cell}";
-        DetailRows = DetailFormatter.Cell(_session.CellDetails(cell), _session.Layers);
+        DetailRows = [.. DetailFormatter.Cell(_session.CellDetails(cell), _session.Layers), .. SettlementLinks(s => s.Cell == cell)];
     }
 
     private void ShowNothing()
@@ -492,6 +775,12 @@ public sealed class MainViewModel : ObservableObject
         if (_map is not null) _map.PropertyChanged -= OnMapChanged;
         var old = _session;
         _detailsRequest++;
+        _caravans = null;
+        NodeEditor = null;
+        if (old is not null) old.DataChanged -= OnDataChanged;
+        _windows.CloseAll();
+        _city?.Detach();
+        City = null;
         Map = null;
         Session = null;
         Areas = AreasViewModel.Empty;

@@ -8,7 +8,7 @@ using WorldEcon.WorldGen.Tiles;
 namespace WorldEcon.Gui.ViewModels;
 
 /// <summary>Turns globe cell, region cell, tile and area details into label/value rows for the details panel (invariant culture).</summary>
-public static class DetailFormatter
+public static partial class DetailFormatter
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
@@ -95,6 +95,7 @@ public static class DetailFormatter
             new("Globe cell", block.GlobeCell.ToString(Inv)),
             new("Region cell", session.RegionCellOfTile(tile).ToString(Inv)),
             new("Settlements", here.Count == 0 ? "none" : string.Join(", ", here)),
+            new("Node", NodeText(session, tile)),
             new("Routes", RoutesText(session.RoutesOnTile(tile))),
         ];
     }

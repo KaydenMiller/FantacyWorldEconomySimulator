@@ -506,6 +506,60 @@ public class RoadGeneratorTests
     }
 
     [Test]
+    public void Site_waypoint_splits_the_road_into_two_routes_ending_at_it()
+    {
+        var s = new Synth();
+        int a = s.Hex, b = s.Far(a, 8);
+        int site = s.Far(s.Far(a, 4), 2);
+        var g = RoadGenerator.Generate(s.Terrain(), [Node("a", a), Node("b", b), Node("site", site, RoadNodeKind.Site)],
+            [Road("scenic", "a", "b", RoadCategory.Land, "site")]).Value;
+        g.Segments.Should().HaveCount(2);
+        var siteIndex = g.Nodes.Single(n => n.Kind == RoadNodeKind.Site).Index;
+        g.Segments.Should().OnlyContain(x => x.NodeA == siteIndex || x.NodeB == siteIndex);
+        g.Roads[0].Entries.Should().HaveCount(2);
+    }
+
+    [Test]
+    public void Junction_waypoint_still_follows_the_spoke_rule()
+    {
+        var s = new Synth();
+        int a = s.Hex, b = s.Far(a, 8);
+        int j = s.Far(s.Far(a, 4), 2);
+        var g = RoadGenerator.Generate(s.Terrain(), [Node("a", a), Node("b", b), Node("j", j, RoadNodeKind.Junction)],
+            [Road("scenic", "a", "b", RoadCategory.Land, "j")]).Value;
+        g.Segments.Should().ContainSingle("a junction with no other spokes does not cut the road");
+    }
+
+    [Test]
+    public void Unreachable_waypoint_road_built_without_it_and_warns()
+    {
+        var s = new Synth();
+        int a = s.Hex, b = s.Far(a, 8);
+        int site = s.Far(b, 4);
+        foreach (int n in s.Ring(site)) s.SetWater(n, TileWaterKind.Ocean);
+        var result = RoadGenerator.Generate(s.Terrain(), [Node("a", a), Node("b", b), Node("site", site, RoadNodeKind.Site)],
+            [Road("scenic", "a", "b", RoadCategory.Land, "site")]);
+        result.IsError.Should().BeFalse(result.IsError ? result.FirstError.Description : "");
+        var g = result.Value;
+        g.Roads[0].Built.Should().BeTrue();
+        g.Segments.SelectMany(x => x.Tiles).Should().NotContain(site);
+        g.Warnings.Should().Contain("Road 'scenic': no land path through site; built without that waypoint.");
+    }
+
+    [Test]
+    public void Unreachable_ends_still_not_built_with_waypoint()
+    {
+        var s = new Synth();
+        int a = s.Hex, b = s.Far(a, 8);
+        int site = s.Far(s.Far(a, 4), 2);
+        foreach (int n in s.Ring(b)) s.SetWater(n, TileWaterKind.Ocean);
+        var g = RoadGenerator.Generate(s.Terrain(), [Node("a", a), Node("b", b), Node("site", site, RoadNodeKind.Site)],
+            [Road("scenic", "a", "b", RoadCategory.Land, "site")]).Value;
+        g.Roads[0].Built.Should().BeFalse();
+        g.Warnings.Should().Contain("Road 'scenic': no land path between site and b; needs a port or an air route. Not built.");
+    }
+
+    [Test]
     public void Identical_parallel_roads_are_two_segments()
     {
         var s = new Synth();

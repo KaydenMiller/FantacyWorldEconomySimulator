@@ -381,7 +381,7 @@ public class ViewModelTests
     {
         var vm = TestWorlds.MainWithWorld();
         var s = vm.Session!.Data.Settlements[0];
-        vm.Map!.DrawOptions.Markers.Should().Equal(new MapMarker(s.Cell, s.TileId!.Value, "Testburg"));
+        vm.Map!.DrawOptions.Markers.Should().Equal(new MapMarker(s.Cell, s.TileId!.Value, "Testburg", Id: s.Id));
         vm.Session.GlobeCellOfTile(s.TileId.Value).Should().Be(s.Cell);
     }
 

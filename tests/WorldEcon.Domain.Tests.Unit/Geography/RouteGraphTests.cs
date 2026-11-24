@@ -222,6 +222,17 @@ public class LegScheduleTests
     }
 
     [Test]
+    public void TryOnRoute_matches_PositionAt()
+    {
+        IReadOnlyList<CaravanLeg> legs = [Leg(0, 0, 100, 1), Leg(1, 100, 200)];
+        LegSchedule.TryOnRoute(legs, 150, out var index, out var metres).Should().BeTrue();
+        (index, metres).Should().Be((1, 5_000L));
+        LegSchedule.TryOnRoute(legs, -1, out _, out _).Should().BeFalse();
+        LegSchedule.TryOnRoute(legs, 200, out _, out _).Should().BeFalse();
+        LegSchedule.TryOnRoute([], 5, out _, out _).Should().BeFalse();
+    }
+
+    [Test]
     public void Rebase_mid_leg_splits_leg_and_keeps_position()
     {
         IReadOnlyList<CaravanLeg> legs = [Leg(0, 0, 1000)];

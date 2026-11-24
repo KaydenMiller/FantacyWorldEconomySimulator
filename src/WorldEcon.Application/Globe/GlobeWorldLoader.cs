@@ -17,7 +17,21 @@ public sealed record GlobeSettlement(Guid Id, string Name, int Cell, int? TileId
 /// the road it belongs to, its end names and its tile path from NodeA to NodeB.
 /// </summary>
 public sealed record GlobeRoute(Guid Id, RouteCategory Category, RouteSurface Surface, int MinTier, int MaxTier, long LengthMetres,
-    long TrafficCount, string RoadName, string NodeA, string NodeB, IReadOnlyList<int> Tiles);
+    long TrafficCount, string RoadName, string NodeA, string NodeB, IReadOnlyList<int> Tiles)
+{
+    /// <summary>Id of the node at the A end (empty for a route built in memory without nodes).</summary>
+    public Guid NodeAId { get; init; }
+
+    /// <summary>Id of the node at the B end.</summary>
+    public Guid NodeBId { get; init; }
+}
+
+/// <summary>A junction or site of the travel graph: its tile, its name (null for an unnamed junction) and the routes ending at it.</summary>
+public sealed record GlobeNode(Guid Id, RouteNodeKind Kind, int TileId, string? Name, IReadOnlyList<Guid> RouteIds)
+{
+    /// <summary>The name, or "<c>Kind @ tile n</c>" when unnamed.</summary>
+    public string Label => Name ?? $"{Kind} @ tile {TileId}";
+}
 
 /// <summary>Everything a globe viewer needs from one database, loaded once (see <see cref="GlobeWorldLoader.LoadAllAsync"/>).</summary>
 /// <param name="Regions">Region-cell summary.</param>
@@ -40,6 +54,9 @@ public sealed record LoadedGlobe(
 {
     /// <summary>Routes of the travel graph with their tile paths, ordered by road name then route id; empty for a world without roads.</summary>
     public IReadOnlyList<GlobeRoute> Routes { get; init; } = [];
+
+    /// <summary>Junction and site nodes, ordered by tile then id; empty for a world without roads.</summary>
+    public IReadOnlyList<GlobeNode> Nodes { get; init; } = [];
 
     /// <summary>Stored map imagery; null for a world written before it existed.</summary>
     public CellImagery? Imagery { get; init; }
@@ -132,10 +149,23 @@ public static class GlobeWorldLoader
             .GroupBy(t => t.RouteId).ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.OrderBy(t => t.Sequence).Select(t => t.TileId).ToArray());
         foreach (var v in await ctx.VoyagePaths.AsNoTracking().ToListAsync(ct))
             if (ids.Contains(v.RouteId)) tiles[v.RouteId] = v.Decode();
-        string Name(RouteNodeId id) => nodes.TryGetValue(id, out var n) ? n.Name ?? $"{n.Kind} @{n.TileId}" : "?";
+        string Name(RouteNodeId id) => nodes.TryGetValue(id, out var n) ? n.Name ?? $"{n.Kind} @ tile {n.TileId}" : "?";
         return routes.Select(r => new GlobeRoute(r.Id.Value, r.Category, r.Surface, r.MinTier, r.MaxTier, r.LengthMetres, r.TrafficCount,
-                roadOf.GetValueOrDefault(r.Id, r.Category == RouteCategory.Sea ? "Voyage" : ""), Name(r.NodeA), Name(r.NodeB), tiles.GetValueOrDefault(r.Id, [])))
+                roadOf.GetValueOrDefault(r.Id, r.Category == RouteCategory.Sea ? "Voyage" : ""), Name(r.NodeA), Name(r.NodeB), tiles.GetValueOrDefault(r.Id, []))
+            { NodeAId = r.NodeA.Value, NodeBId = r.NodeB.Value })
             .OrderBy(r => r.RoadName, StringComparer.Ordinal).ThenBy(r => r.Id).ToList();
+    }
+
+    /// <summary>Junction and site nodes of the world with the ids of the routes ending at each (see <see cref="GlobeNode"/>).</summary>
+    public static async Task<List<GlobeNode>> LoadNodesAsync(WorldDbContext ctx, WorldId worldId, CancellationToken ct = default)
+    {
+        var nodes = await ctx.RouteNodes.AsNoTracking().Where(n => n.WorldId == worldId && n.Kind != RouteNodeKind.Settlement).ToListAsync(ct);
+        if (nodes.Count == 0) return [];
+        var ends = (await ctx.Routes.AsNoTracking().Where(r => r.WorldId == worldId).Select(r => new { r.Id, r.NodeA, r.NodeB }).ToListAsync(ct))
+            .SelectMany(r => new[] { (Node: r.NodeA, r.Id), (Node: r.NodeB, r.Id) })
+            .GroupBy(x => x.Node).ToDictionary(g => g.Key, g => (IReadOnlyList<Guid>)g.Select(x => x.Id.Value).Distinct().OrderBy(x => x).ToArray());
+        return nodes.Select(n => new GlobeNode(n.Id.Value, n.Kind, n.TileId, n.Name, ends.GetValueOrDefault(n.Id, [])))
+            .OrderBy(n => n.TileId).ThenBy(n => n.Id).ToList();
     }
 
     /// <summary>
@@ -160,8 +190,9 @@ public static class GlobeWorldLoader
         var (world, stored) = await LoadStoredAsync(ctx, ct);
         var settlements = await LoadSettlementsAsync(ctx, world.Id, ct);
         var routes = await LoadRoutesAsync(ctx, world.Id, ct);
+        var nodes = await LoadNodesAsync(ctx, world.Id, ct);
         return new LoadedGlobe(world, stored.Layers, stored.Settings, stored.GeneratorVersion, settlements,
             stored.Regions, stored.Lakes, stored.TileGrid, new SqliteTileBlockSource(dbPath))
-        { Imagery = stored.Imagery, RiverCourses = stored.RiverCourses, Routes = routes };
+        { Imagery = stored.Imagery, RiverCourses = stored.RiverCourses, Routes = routes, Nodes = nodes };
     }
 }

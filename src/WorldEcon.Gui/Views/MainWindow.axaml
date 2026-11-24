@@ -41,23 +41,44 @@
       </StackPanel>
     </Border>
 
-    <TabControl Name="SideTabs" DockPanel.Dock="Right" Width="380" Background="#12151F">
+    <Grid Name="MainArea">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="Auto" />
+      <!-- Sidebar: drag the splitter between 380 and 900 px; the width stays for the session. -->
+      <ColumnDefinition Width="380" MinWidth="380" MaxWidth="900" />
+    </Grid.ColumnDefinitions>
+    <TabControl Name="SideTabs" Grid.Column="2" Background="#12151F" SelectedIndex="{Binding SideTabIndex}">
       <TabItem Name="DetailsTab" Header="Details">
         <ScrollViewer>
           <StackPanel Margin="8" Spacing="6">
             <TextBlock Name="DetailsTitle" Text="{Binding DetailsTitle}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+            <StackPanel Name="NodeNamePanel" IsVisible="{Binding HasNodeEditor}" Spacing="4">
+              <TextBlock Text="Name (1–64 characters; Clear removes it)" Foreground="#8890A0" />
+              <TextBox Name="NodeNameBox" Text="{Binding NodeEditor.Text}" MaxLength="64" IsEnabled="{Binding NodeEditor.IsEnabled}" />
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button Name="NodeSave" Content="Save" Click="OnNodeSave" IsEnabled="{Binding NodeEditor.CanSave}" />
+                <Button Name="NodeClear" Content="Clear name" Click="OnNodeClear" IsEnabled="{Binding NodeEditor.CanClear}" />
+              </StackPanel>
+              <TextBlock Name="NodeNameError" Text="{Binding NodeEditor.Error}" Foreground="#FF9090" TextWrapping="Wrap" />
+            </StackPanel>
             <ItemsControl Name="DetailRows" ItemsSource="{Binding DetailRows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:DetailRow">
                   <Grid ColumnDefinitions="118,*" Margin="0,2">
                     <TextBlock Text="{Binding Label}" Foreground="#8890A0" />
-                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" IsVisible="{Binding HasNoLink}" />
+                    <Button Grid.Column="1" Classes="link" Content="{Binding Value}" IsVisible="{Binding HasLink}" Click="OnDetailLink"
+                            Padding="0" Background="Transparent" BorderThickness="0" Foreground="#7FB8FF" Cursor="Hand" HorizontalAlignment="Left" />
                   </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </StackPanel>
         </ScrollViewer>
+      </TabItem>
+      <TabItem Name="CityTab" Header="City">
+        <v:CityPanelView Name="CityPanel" DataContext="{Binding City}" />
       </TabItem>
       <TabItem Name="LayersTab" Header="Layers">
         <StackPanel Margin="8" Spacing="8">
@@ -75,6 +96,9 @@
           <CheckBox Name="LandRoutesToggle" Content="Land (solid)" Margin="20,0,0,0" IsChecked="{Binding Map.LandRoutes}" IsEnabled="{Binding Map.Routes}" />
           <CheckBox Name="SeaRoutesToggle" Content="Sea voyages between ports (dashed)" Margin="20,0,0,0" IsChecked="{Binding Map.SeaRoutes}" IsEnabled="{Binding Map.Routes}" />
           <CheckBox Name="AirRoutesToggle" Content="Air (dotted)" Margin="20,0,0,0" IsChecked="{Binding Map.AirRoutes}" IsEnabled="{Binding Map.Routes}" />
+          <CheckBox Name="CaravansToggle" Content="Caravans (triangles, coloured by route)" Margin="20,0,0,0" IsChecked="{Binding Map.Caravans}" IsEnabled="{Binding Map.Routes}" />
+          <CheckBox Name="JunctionsToggle" Content="Junctions (Region and Detail View)" Margin="20,0,0,0" IsChecked="{Binding Map.Junctions}" IsEnabled="{Binding Map.Routes}" />
+          <CheckBox Name="SitesToggle" Content="Sites (diamonds)" Margin="20,0,0,0" IsChecked="{Binding Map.Sites}" IsEnabled="{Binding Map.Routes}" />
           <CheckBox Name="SettlementsToggle" Content="Settlements" IsChecked="{Binding Map.Settlements}" />
           <CheckBox Name="LabelsToggle" Content="Labels" IsChecked="{Binding Map.Labels}" />
           <CheckBox Name="ArrowsToggle" Content="Arrows (Winds and Currents layers, Globe View)" IsChecked="{Binding Map.Arrows}" />
@@ -114,11 +138,12 @@
         </DockPanel>
       </TabItem>
     </TabControl>
+    <GridSplitter Name="SideSplitter" Grid.Column="1" Width="4" ResizeDirection="Columns" Background="#2A3040" />
 
-    <Panel>
+    <Panel Grid.Column="0">
       <!-- GPU picture (cells, rivers) under the Skia map control, which draws the overlay and handles input. -->
       <g:GlMapView Name="GlMap" IsVisible="{Binding HasWorld}" />
-      <v:MapView Name="Map" IsVisible="{Binding HasWorld}" />
+      <v:MapView Name="Map" IsVisible="{Binding HasWorld}" ToolTip.Tip="{Binding HoverText}" ToolTip.ShowDelay="300" />
       <TextBlock IsVisible="{Binding !HasWorld}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#8890A0"
                  Text="No world open. File → Open… or File → New world…" />
       <Border Name="WarningsPanel" IsVisible="{Binding HasWarnings}" VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="24"
@@ -133,5 +158,6 @@
         <TextBlock Name="ErrorText" Text="{Binding ErrorText}" TextWrapping="Wrap" Foreground="#FFD8DC" />
       </Border>
     </Panel>
+    </Grid>
   </DockPanel>
 </Window>

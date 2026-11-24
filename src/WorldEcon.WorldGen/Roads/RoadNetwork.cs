@@ -14,6 +14,7 @@ public sealed record NetworkRoadEntry(int SegmentId, bool AtoB);
 /// Builds the route network one road path at a time, splitting paths into segments at nodes and crossings:
 /// <list type="bullet">
 /// <item>a Settlement node on an interior tile always cuts the path;</item>
+/// <item>a Site the road names as a waypoint (<c>stops</c>) always cuts the path: the road stops there;</item>
 /// <item>a Junction or Site node cuts it when the node's spokes lie on both sides of the path's chord;</item>
 /// <item>an existing segment of the same category whose chord on a tile interleaves with the path's chord is split,
 /// and a Junction is created there.</item>
@@ -54,7 +55,7 @@ public sealed class RoadNetwork(TileGrid grid)
 
     public int? NodeAt(int tile) => _nodeAt.TryGetValue(tile, out int i) ? i : null;
 
-    public void AddRoad(int roadIndex, int[] tiles, RoadCategory category = RoadCategory.Land)
+    public void AddRoad(int roadIndex, int[] tiles, RoadCategory category = RoadCategory.Land, IReadOnlySet<int>? stops = null)
     {
         if (tiles.Length < 2) throw new ArgumentException("A road path needs at least two tiles.", nameof(tiles));
         if (NodeAt(tiles[0]) is null || NodeAt(tiles[^1]) is null)
@@ -65,7 +66,7 @@ public sealed class RoadNetwork(TileGrid grid)
         if (category != RoadCategory.Air)
         {
             for (int i = 1; i < tiles.Length - 1; i++)
-                if (CutsAt(tiles, i, category)) cuts.Add(i);
+                if ((stops?.Contains(tiles[i]) == true && _nodeAt.ContainsKey(tiles[i])) || CutsAt(tiles, i, category)) cuts.Add(i);
         }
         cuts.Add(tiles.Length - 1);
 

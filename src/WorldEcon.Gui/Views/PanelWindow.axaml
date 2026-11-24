@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:WorldEcon.Gui.ViewModels"
+        xmlns:v="using:WorldEcon.Gui.Views"
+        x:Class="WorldEcon.Gui.Views.PanelWindow"
+        Width="640" Height="720" Background="#12151F">
+  <!-- A pop-out panel: any panel view model with a template here. -->
+  <Window.DataTemplates>
+    <DataTemplate DataType="vm:CityPanelViewModel">
+      <v:CityPanelView />
+    </DataTemplate>
+  </Window.DataTemplates>
+  <ContentControl Name="PanelContent" Content="{ReflectionBinding}" />
+</Window>

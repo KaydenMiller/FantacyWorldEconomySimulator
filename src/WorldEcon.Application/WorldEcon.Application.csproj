@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\WorldEcon.Domain\WorldEcon.Domain.csproj" />
     <ProjectReference Include="..\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
+    <ProjectReference Include="..\WorldEcon.Simulation\WorldEcon.Simulation.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- No patched version of SQLitePCLRaw.lib.e_sqlite3 exists yet; 2.1.11 is the latest release.

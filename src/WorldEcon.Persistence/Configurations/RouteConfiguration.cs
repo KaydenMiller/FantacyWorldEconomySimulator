@@ -25,7 +25,10 @@ public sealed class RouteNodeConfiguration : IEntityTypeConfiguration<RouteNode>
 {
     public void Configure(EntityTypeBuilder<RouteNode> b)
     {
-        b.ToTable("route_nodes");
+        // Junction and site names are limited to RouteNode.MaxNameLength (SQLite ignores column lengths, so it is a CHECK
+        // constraint). A settlement node copies the settlement's name, which has no such limit.
+        b.ToTable("route_nodes", t => t.HasCheckConstraint("CK_route_nodes_name_length",
+            $"\"Kind\" = 'Settlement' OR \"Name\" IS NULL OR length(\"Name\") <= {RouteNode.MaxNameLength}"));
         b.HasKey(x => x.Id);
         b.Property(x => x.Kind).HasConversion<string>();
         b.Property(x => x.PortKind).HasConversion<string>();

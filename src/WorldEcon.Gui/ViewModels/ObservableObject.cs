@@ -36,5 +36,10 @@ public sealed class RelayCommand(Action execute, Func<bool>? canExecute = null) 
     public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }
 
-/// <summary>One label/value line of the details panel.</summary>
-public sealed record DetailRow(string Label, string Value);
+/// <summary>One label/value line of the details panel; with <paramref name="Open"/> the value is a link that runs it.</summary>
+public sealed record DetailRow(string Label, string Value, Action? Open = null)
+{
+    public bool HasLink => Open is not null;
+
+    public bool HasNoLink => Open is null;
+}

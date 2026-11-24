@@ -22,6 +22,13 @@ public partial class MainWindow : Window
         AddHandler(KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         // --renderer cpu: no GPU control, the map stays on the CPU renderer.
         if (Program.Options.Renderer == "cpu" && GlMap.Parent is Panel panel) panel.Children.Remove(GlMap);
+        // Pop-out windows exist only on the desktop; elsewhere (the browser) the docked City tab is the whole feature.
+        DataContextChanged += (_, _) =>
+        {
+            if (Vm is { } vm && Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)
+                vm.Windows = new PanelWindows(new PanelWindowHost(this));
+        };
+        Closed += (_, _) => Vm?.Windows.CloseAll();
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
@@ -108,6 +115,36 @@ public partial class MainWindow : Window
     });
 
     private void OnExit(object? sender, RoutedEventArgs e) => Close();
+
+    private async void OnNodeSave(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Vm?.NodeEditor is { } editor) await editor.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            Vm?.ReportUnexpected("Renaming failed", ex);
+        }
+    }
+
+    private async void OnNodeClear(object? sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (Vm?.NodeEditor is { } editor) await editor.ClearAsync();
+        }
+        catch (Exception ex)
+        {
+            Vm?.ReportUnexpected("Clearing the name failed", ex);
+        }
+    }
+
+    /// <summary>A link value in the details panel: runs the row's action.</summary>
+    private void OnDetailLink(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is DetailRow { Open: { } open }) open();
+    }
 
     private void OnDismissWarnings(object? sender, RoutedEventArgs e) => Vm?.DismissWarnings();
 

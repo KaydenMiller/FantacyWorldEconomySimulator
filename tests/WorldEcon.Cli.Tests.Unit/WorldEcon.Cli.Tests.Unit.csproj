@@ -13,6 +13,10 @@
     <ProjectReference Include="..\..\src\WorldEcon.WorldGen\WorldEcon.WorldGen.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Shared economy fixture: query results are compared with CLI output on the same file. -->
+    <Compile Include="..\WorldEcon.Application.Tests.Unit\EconomyTestWorld.cs" Link="EconomyTestWorld.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- No patched version of SQLitePCLRaw.lib.e_sqlite3 exists yet; 2.1.11 is the latest release.
          Suppress this single transitive advisory until an upstream fix ships. -->
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-2m69-gcr7-jv3q" />

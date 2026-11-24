@@ -41,20 +41,38 @@ public static class LegSchedule
     /// <summary>Position at <paramref name="tick"/>: binary search for the leg with EnterTick ≤ tick &lt; ExitTick.</summary>
     public static LegPosition PositionAt(IReadOnlyList<CaravanLeg> legs, Tick tick)
     {
-        if (legs.Count == 0 || tick.Value < legs[0].EnterTick.Value)
-            return new LegPosition(LegPositionKind.AtOrigin, null, null, 0);
-        if (tick.Value >= legs[^1].ExitTick.Value)
-            return new LegPosition(LegPositionKind.AtDestination, null, null, 0);
+        if (TryOnRoute(legs, tick.Value, out var index, out var metres))
+        {
+            var l = legs[index];
+            return new LegPosition(LegPositionKind.OnRoute, l.RouteId, l.Direction, metres, l.Sequence);
+        }
+
+        return legs.Count == 0 || tick.Value < legs[0].EnterTick.Value
+            ? new LegPosition(LegPositionKind.AtOrigin, null, null, 0)
+            : new LegPosition(LegPositionKind.AtDestination, null, null, 0);
+    }
+
+    /// <summary>
+    /// The leg in progress at <paramref name="tick"/> (index into <paramref name="legs"/>) and the metres from that leg's
+    /// travel-start end of its route; false before the first leg or from the last leg's exit on. Allocates nothing, so a
+    /// map can place many caravans every tick.
+    /// </summary>
+    public static bool TryOnRoute(IReadOnlyList<CaravanLeg> legs, long tick, out int index, out long metresAlong)
+    {
+        index = -1;
+        metresAlong = 0;
+        if (legs.Count == 0 || tick < legs[0].EnterTick.Value || tick >= legs[^1].ExitTick.Value) return false;
         int lo = 0, hi = legs.Count - 1;
         while (lo < hi)
         {
             int mid = (lo + hi + 1) / 2;
-            if (legs[mid].EnterTick.Value <= tick.Value) lo = mid; else hi = mid - 1;
+            if (legs[mid].EnterTick.Value <= tick) lo = mid; else hi = mid - 1;
         }
         var l = legs[lo];
         long span = l.ExitTick.Value - l.EnterTick.Value;
-        long metres = l.OffsetMetres + (long)((Int128)(tick.Value - l.EnterTick.Value) * l.LengthMetres / span);
-        return new LegPosition(LegPositionKind.OnRoute, l.RouteId, l.Direction, metres, l.Sequence);
+        index = lo;
+        metresAlong = l.OffsetMetres + (long)((Int128)(tick - l.EnterTick.Value) * l.LengthMetres / span);
+        return true;
     }
 
     /// <summary>

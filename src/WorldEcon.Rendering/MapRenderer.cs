@@ -550,7 +550,16 @@ public sealed partial class MapRenderer : IDisposable
         if (options.HexGrid) DrawHexGrid(canvas, ref frame);
         if (options.Routes && options.RouteLines is { Count: > 0 } routes) DrawRoutes(canvas, ref frame, routes);
         _labelRects.Clear();
+        _labelBoxes.Clear();
+        _labelTexts.Clear();
+        _hits.Clear();
+        _nodeLabels.Clear();
+        if (options.Routes && options.NodeMarkers is { Count: > 0 } nodes) DrawNodes(canvas, ref frame, nodes, options.Labels);
         if (options.Settlements && options.Markers is { Count: > 0 } markers) DrawMarkers(canvas, ref frame, markers, options.Labels);
+        foreach (var (anchor, label) in _nodeLabels) AddLabel(anchor, label); // after settlements: lower priority
+        PlaceLabels(canvas);
+        if (options.Routes && options.Caravans && options.CaravanMarkers is { Count: > 0 } caravans) DrawCaravans(canvas, ref frame, caravans);
+        if (options.SelectedObject is { } obj) DrawSelectedObject(canvas, obj);
         if (options.Hover is { } hover) DrawHoverRings(canvas, ref frame, hover, skipCentre: hover == options.Selected);
         if (options.Selected is { } selected) StrokePick(canvas, ref frame, selected, SKColors.Yellow, 2.5f);
     }
@@ -562,6 +571,7 @@ public sealed partial class MapRenderer : IDisposable
             if (_disposed) return;
             _disposed = true;
             DisposeRoutes();
+            DisposeObjects();
             _cache?.Dispose();
             foreach (var p in _riverPaths) p.Dispose();
             _arrowPath.Dispose();
@@ -1301,21 +1311,27 @@ public sealed partial class MapRenderer : IDisposable
     /// <summary>Draws marker dots and the labels that fit (rectangles into <c>_labelRects</c>, reused between frames).</summary>
     private void DrawMarkers(SKCanvas canvas, ref Frame f, IReadOnlyList<MapMarker> markers, bool labels)
     {
-        _labelBoxes.Clear();
-        _labelTexts.Clear();
         foreach (var m in markers)
         {
             if (MarkerPoint(ref f, m) is not { } p) continue;
             if (m.Port != MapPortKind.None) DrawPortRing(canvas, p, m.Port);
             canvas.DrawCircle(p, 4f, _dot);
             canvas.DrawCircle(p, 4f, _ring);
-            if (labels && _font is not null && !string.IsNullOrEmpty(m.Label))
-            {
-                _labelBoxes.Add((p, new SKSize(_font.MeasureText(m.Label) + 1, _font.Size)));
-                _labelTexts.Add(m.Label);
-            }
+            if (m.Id != Guid.Empty) _hits.Add(new Hit(MapObjectKind.Settlement, m.Id, p.X, p.Y, SettlementPickPx, -1));
+            if (labels) AddLabel(p, m.Label);
         }
+    }
 
+    private void AddLabel(SKPoint anchor, string? label)
+    {
+        if (_font is null || string.IsNullOrEmpty(label)) return;
+        _labelBoxes.Add((anchor, new SKSize(_font.MeasureText(label) + 1, _font.Size)));
+        _labelTexts.Add(label);
+    }
+
+    /// <summary>Places the collected labels in order (earlier ones win) and draws those that fit.</summary>
+    private void PlaceLabels(SKCanvas canvas)
+    {
         if (_font is null || _labelBoxes.Count == 0) return;
         var placed = LabelLayout.Place(_labelBoxes, gapPx: 6);
         for (var i = 0; i < placed.Length; i++)

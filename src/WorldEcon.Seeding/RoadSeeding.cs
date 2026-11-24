@@ -85,11 +85,24 @@ public static class RoadSeeding
             settlementByKey[key] = s;
             keyOfName[s.Name] = key;
         }
+        var terrain = RoadTerrain.From(tiles, settings);
+        var usedTiles = requests.Select(r => r.TileId).ToHashSet();
         foreach (var n in seed.Nodes)
         {
             var key = $"node:{n.Name}";
             var kind = ParseEnum<RouteNodeKind>(n.Kind, $"node '{n.Name}' kind") == RouteNodeKind.Junction ? RoadNodeKind.Junction : RoadNodeKind.Site;
-            requests.Add(new RoadNodeRequest(key, kind, NearestTile(tiles.Grid, n.Lat, n.Lon), n.Name));
+            var tile = NearestTile(tiles.Grid, n.Lat, n.Lon);
+            if (!terrain.PassableLand(tile))
+            {
+                // A seed's coordinates may fall on water at another world size: use the nearest free land tile.
+                var land = NearestFreeLand(terrain, tile, usedTiles);
+                if (land < 0)
+                    throw new InvalidOperationException($"Seed invalid (roads): {kind} '{n.Name}' is on water and no land tile is free.");
+                warnings.Add($"{kind} '{n.Name}' is on water (tile {tile}); placed on the nearest land tile {land}.");
+                tile = land;
+            }
+            usedTiles.Add(tile);
+            requests.Add(new RoadNodeRequest(key, kind, tile, n.Name));
             keyOfName[n.Name] = key;
         }
 
@@ -111,7 +124,6 @@ public static class RoadSeeding
             roadSeeds.Add(r);
         }
 
-        var terrain = RoadTerrain.From(tiles, settings);
         var result = RoadGenerator.Generate(terrain, requests, roadRequests, warnIsolated: false);
         Lap("Land and air roads");
         if (result.IsError)
@@ -184,6 +196,25 @@ public static class RoadSeeding
     }
 
     /// <summary>Tile nearest to (lat, lon) in degrees.</summary>
+    /// <summary>Breadth-first nearest passable land tile not in <paramref name="used"/>, or −1.</summary>
+    private static int NearestFreeLand(RoadTerrain terrain, int from, IReadOnlySet<int> used)
+    {
+        var grid = terrain.Grid;
+        var seen = new HashSet<int> { from };
+        var queue = new Queue<int>();
+        queue.Enqueue(from);
+        Span<int> nb = stackalloc int[6];
+        while (queue.Count > 0)
+        {
+            var t = queue.Dequeue();
+            if (terrain.PassableLand(t) && !used.Contains(t)) return t;
+            var count = grid.Neighbours(t, nb);
+            for (var i = 0; i < count; i++)
+                if (seen.Add(nb[i])) queue.Enqueue(nb[i]);
+        }
+        return -1;
+    }
+
     public static int NearestTile(TileGrid grid, double latDeg, double lonDeg)
     {
         double la = latDeg * Math.PI / 180, lo = lonDeg * Math.PI / 180;
