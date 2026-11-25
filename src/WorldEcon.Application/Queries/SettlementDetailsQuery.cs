@@ -67,6 +67,13 @@ public static class SettlementDetailsQuery
     public static async Task<ErrorOr<IReadOnlyList<(Guid Id, string Name)>>> ListAsync(string dbPath, CancellationToken ct = default)
     {
         await using var ctx = GlobeWorldLoader.Open(dbPath);
+        return await ListAsync(ctx, ct);
+    }
+
+    /// <summary>Settlements of the first world (id, name), ordered by name (ordinal) then id, read through <paramref name="ctx"/>.</summary>
+    public static async Task<ErrorOr<IReadOnlyList<(Guid Id, string Name)>>> ListAsync(WorldDbContext ctx, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(ctx);
         var world = await ctx.Worlds.AsNoTracking().FirstOrDefaultAsync(ct);
         if (world is null) return Error.NotFound("world.notFound", "The database contains no world.");
         var rows = await ctx.Settlements.AsNoTracking().Where(s => s.WorldId == world.Id).Select(s => new { s.Id, s.Name }).ToListAsync(ct);

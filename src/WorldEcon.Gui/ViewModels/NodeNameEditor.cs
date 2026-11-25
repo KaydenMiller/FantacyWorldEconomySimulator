@@ -9,7 +9,8 @@ namespace WorldEcon.Gui.ViewModels;
 /// <see cref="RouteNodeRenameService"/> on a worker thread (which checks the name again: 1–64 characters, no control
 /// characters); on success the session takes the new name (<see cref="WorldSession.ApplyRename"/>), raises
 /// <see cref="WorldSession.DataChanged"/> once, and <c>onSaved</c> re-shows the node. Errors stay in <see cref="Error"/>.
-/// Disabled for a world without a file.
+/// Disabled for a world without a file; Save and Clear are disabled while a simulation run is open
+/// (<see cref="WorldSession.ActiveRun"/>: the run holds the file's write lock).
 /// </summary>
 public sealed class NodeNameEditor : ObservableObject
 {
@@ -47,11 +48,18 @@ public sealed class NodeNameEditor : ObservableObject
         }
     }
 
-    /// <summary>A file-backed world, not busy, and a trimmed name that is not empty and differs from the current name.</summary>
-    public bool CanSave => IsEnabled && !_isBusy && _text.Trim() is { Length: > 0 } t && t != _node.Name;
+    /// <summary>A file-backed world, not busy, no simulation run open, and a trimmed name that is not empty and differs from the current name.</summary>
+    public bool CanSave => IsEnabled && !_isBusy && _session.ActiveRun is null && _text.Trim() is { Length: > 0 } t && t != _node.Name;
 
-    /// <summary>A file-backed world, not busy, and the node has a name.</summary>
-    public bool CanClear => IsEnabled && !_isBusy && _node.Name is not null;
+    /// <summary>A file-backed world, not busy, no simulation run open, and the node has a name.</summary>
+    public bool CanClear => IsEnabled && !_isBusy && _session.ActiveRun is null && _node.Name is not null;
+
+    /// <summary>Re-evaluates <see cref="CanSave"/> and <see cref="CanClear"/> after <see cref="WorldSession.ActiveRun"/> changed.</summary>
+    internal void RunStateChanged()
+    {
+        Raise(nameof(CanSave));
+        Raise(nameof(CanClear));
+    }
 
     public string Error
     {

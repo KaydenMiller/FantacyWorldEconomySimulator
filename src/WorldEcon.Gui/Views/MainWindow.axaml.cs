@@ -11,7 +11,7 @@ using WorldEcon.Gui.ViewModels;
 
 namespace WorldEcon.Gui.Views;
 
-/// <summary>Main window: menu, toolbar, map, details, layers and areas tabs, status bar. Keys: Enter zooms to Region View on the selection, Esc zooms out to Globe View.</summary>
+/// <summary>Main window: menu, time bar, toolbar, map, details, layers and areas tabs, status bar. Keys: Enter zooms to Region View on the selection, Esc zooms out to Globe View, Space plays or pauses time.</summary>
 public partial class MainWindow : Window
 {
     private static readonly FilePickerFileType DbFiles = new("World database") { Patterns = ["*.db", "*.sqlite"] };
@@ -29,6 +29,40 @@ public partial class MainWindow : Window
                 vm.Windows = new PanelWindows(new PanelWindowHost(this));
         };
         Closed += (_, _) => Vm?.Windows.CloseAll();
+        Closing += OnClosing;
+        DataContextChanged += (_, _) => TimeBar.Main = Vm;
+    }
+
+    private bool _closeAfterRun;
+    private bool _endingRun;
+
+    /// <summary>
+    /// Closing while a time run is open: the close waits for the run to commit (Play pauses, a jump stops at its last
+    /// completed boundary), then the window closes.
+    /// </summary>
+    private async void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_closeAfterRun) return;
+        if (_endingRun)
+        {
+            e.Cancel = true; // a second close while the run commits waits for the same commit
+            return;
+        }
+
+        if (Vm?.Time is not { IsRunActive: true } time) return;
+        e.Cancel = true;
+        _endingRun = true;
+        try
+        {
+            await time.EndAnyRunAsync();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Vm?.ReportUnexpected("Could not save the time run", ex);
+        }
+
+        _closeAfterRun = true;
+        Close();
     }
 
     private MainViewModel? Vm => DataContext as MainViewModel;
@@ -39,7 +73,17 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnPreviewKeyDown(object? sender, KeyEventArgs e)
     {
-        if (Vm is not { } vm || e.Key is not (Key.Enter or Key.Return or Key.Escape)) return;
+        if (Vm is not { } vm) return;
+        if (e.Key == Key.Space)
+        {
+            // Space toggles Play, except in a text box, combo box, list box or menu, or while a popup is open.
+            if (KeyBelongsToControl(e.Source) || AnyPopupOpen() || vm.Time is not { IsAvailable: true, IsJumping: false } time) return;
+            e.Handled = true;
+            Run("Could not play", () => time.TogglePlayAsync());
+            return;
+        }
+
+        if (e.Key is not (Key.Enter or Key.Return or Key.Escape)) return;
         if (KeyBelongsToControl(e.Source) || AnyPopupOpen()) return;
         if (e.Key is Key.Enter or Key.Return)
         {

@@ -462,4 +462,149 @@ public class HeadlessFlowTests
             if (!keepFrames) Directory.Delete(frames, recursive: true);
         }
     }
+
+    [Test]
+    public async Task TimeBar_JumpButton_AdvancesDateLabel()
+    {
+        var db = Path.Combine(Path.GetTempPath(), $"gui_timebar_{Guid.NewGuid():N}.db");
+        try
+        {
+            await DemoSeeder.CreateAsync(db, TestWorlds.Settings);
+            SqliteConnection.ClearAllPools();
+            await Session.Value.Dispatch(async () =>
+            {
+                var vm = new MainViewModel();
+                var window = new MainWindow { DataContext = vm, Width = 1280, Height = 800 };
+                window.Show();
+                await Pump(vm.OpenAsync(db));
+                var time = vm.Time!;
+                time.IsAvailable.Should().BeTrue(time.UnavailableReason);
+                var start = time.DisplayTick;
+                var date = window.FindControl<TextBlock>("TimeDate")!;
+                date.Text.Should().Contain($"(tick {start:N0})");
+
+                window.FindControl<Button>("Jump1d")!.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                for (var i = 0; i < 4000 && (time.IsRunActive || time.DisplayTick == start); i++)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(5);
+                }
+
+                Dispatcher.UIThread.RunJobs();
+                date.Text.Should().Contain($"(tick {start + 1440:N0})");
+                window.Close();
+                vm.Session!.Dispose();
+            }, CancellationToken.None);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            foreach (var f in new[] { db, db + "-wal", db + "-shm" })
+                File.Delete(f);
+        }
+    }
+
+    /// <summary>A window over an in-memory world whose time bar runs a scripted run (no database).</summary>
+    private static (MainViewModel Vm, MainWindow Window, FakeRun Run) ScriptedTimeWindow()
+    {
+        var session = new WorldSession(TestWorlds.Loaded with { TimeControlsAvailable = true }, path: "stub.db");
+        var vm = TestWorlds.MainWithWorld(session: session);
+        vm.CaravanQuery = _ => Task.FromResult<ErrorOr.ErrorOr<Application.Queries.CaravanPositions>>(new Application.Queries.CaravanPositions(0, []));
+        var run = new FakeRun(0);
+        vm.ReplaceTime(new TimeControlsViewModel(vm, session, _ => Task.FromResult<ErrorOr.ErrorOr<Application.Simulation.ISimulationRun>>(run), null));
+        var window = new MainWindow { DataContext = vm, Width = 1280, Height = 800 };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        return (vm, window, run);
+    }
+
+    [Test]
+    public async Task Space_TogglesPlay_NotInTextBox()
+    {
+        await Session.Value.Dispatch(async () =>
+        {
+            var (vm, window, run) = ScriptedTimeWindow();
+            window.FindControl<MapView>("Map")!.Focus();
+            Key(window, Avalonia.Input.Key.Space, PhysicalKey.Space);
+            for (var i = 0; i < 200 && !vm.Time!.IsPlaying; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5);
+            }
+
+            vm.Time!.IsPlaying.Should().BeTrue();
+
+            window.FindControl<TextBox>("ToTime")!.Focus();
+            Key(window, Avalonia.Input.Key.Space, PhysicalKey.Space);
+            await Task.Delay(20);
+            Dispatcher.UIThread.RunJobs();
+            vm.Time.IsPlaying.Should().BeTrue("Space in a text box is typed, not Play/Pause");
+
+            await Pump(vm.Time.TogglePlayAsync());
+            run.EndCalls.Should().Be(1);
+            window.Close();
+        }, CancellationToken.None);
+    }
+
+    [Test]
+    public async Task Close_DuringPlay_CommitsBeforeClosing()
+    {
+        await Session.Value.Dispatch(async () =>
+        {
+            var (vm, window, run) = ScriptedTimeWindow();
+            var time = vm.Time!;
+            await Pump(time.TogglePlayAsync());
+            time.SpeedIndex = 4; // 1 day/s
+            time.Tick(TimeSpan.FromSeconds(1.5)); // past the first day boundary: a step starts and the clock holds there
+            var closed = false;
+            window.Closed += (_, _) => closed = true;
+
+            window.Close();
+            for (var i = 0; i < 2000 && !closed; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5);
+            }
+
+            closed.Should().BeTrue();
+            run.EndCalls.Should().Be(1);
+            time.Controller.FileTick.Should().Be(time.DisplayTick);
+            time.IsRunActive.Should().BeFalse();
+        }, CancellationToken.None);
+    }
+
+    [Test]
+    public async Task Close_Twice_WhileRunCommits_WaitsForTheCommit()
+    {
+        await Session.Value.Dispatch(async () =>
+        {
+            var (vm, window, run) = ScriptedTimeWindow();
+            var time = vm.Time!;
+            await Pump(time.TogglePlayAsync());
+            run.HoldEnd = true;
+            var closed = false;
+            window.Closed += (_, _) => closed = true;
+
+            window.Close();
+            for (var i = 0; i < 400 && !run.EndStarted.Task.IsCompleted; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5);
+            }
+
+            window.Close(); // a second click on close while the run commits
+            Dispatcher.UIThread.RunJobs();
+            closed.Should().BeFalse("the window waits for the commit");
+
+            run.ReleaseEnd();
+            for (var i = 0; i < 2000 && !closed; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(5);
+            }
+
+            closed.Should().BeTrue();
+            run.EndCalls.Should().Be(1);
+        }, CancellationToken.None);
+    }
 }

@@ -199,14 +199,22 @@ public static class DemoSeeder
 
     /// <summary>
     /// Creates (or opens) the SQLite database at <paramref name="dbPath"/>, applies the migrations and seeds the demo world
-    /// into it (see <see cref="SeedAsync"/>). The CLI's <c>new</c> command and the desktop app both use this.
+    /// into it (see <see cref="SeedAsync"/>), then switches the file to WAL mode (<see cref="WorldFileJournal"/>). The desktop app
+    /// uses this.
     /// </summary>
     public static async Task<(World World, GlobeSeedingReport Globe)> CreateAsync(string dbPath, WorldGenSettings? settings = null,
         IProgress<SeedingProgress>? progress = null, CancellationToken ct = default, ulong seed = DefaultSeed, GeneratedWorld? generated = null)
     {
-        await using var ctx = new WorldDbContext(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={dbPath}").Options);
-        await ctx.Database.MigrateAsync(ct);
-        return await SeedAsync(ctx, settings, progress, ct, seed, generated);
+        (World World, GlobeSeedingReport Globe) result;
+        await using (var ctx = new WorldDbContext(new DbContextOptionsBuilder<WorldDbContext>().UseSqlite($"Data Source={dbPath}").Options))
+        {
+            await ctx.Database.MigrateAsync(ct);
+            result = await SeedAsync(ctx, settings, progress, ct, seed, generated);
+        }
+
+        // The desktop app's time controls need WAL mode; new files get it here (EF Core usually creates them in it already).
+        await WorldFileJournal.TryEnableWalAsync(dbPath, ct);
+        return result;
     }
 
     // ---- Builders -------------------------------------------------------------------------

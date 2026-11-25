@@ -1,5 +1,6 @@
 using WorldEcon.Application.Globe;
 using WorldEcon.Application.Routes;
+using WorldEcon.Application.Simulation;
 using WorldEcon.Rendering;
 using WorldEcon.WorldGen.Grid;
 using WorldEcon.WorldGen.Pipeline;
@@ -145,6 +146,26 @@ public sealed class WorldSession : IMapSession
             // Reported by the code that started the work.
         }
     }
+
+    private ISimulationRun? _activeRun;
+
+    /// <summary>
+    /// The simulation run open on this world's file (Play, a jump or To:), or null. While it is set, economy reads go
+    /// through it (other connections see the file as it was before the run) and writes to the file are disabled.
+    /// </summary>
+    public ISimulationRun? ActiveRun
+    {
+        get => _activeRun;
+        set
+        {
+            if (ReferenceEquals(_activeRun, value)) return;
+            _activeRun = value;
+            ActiveRunChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>Raised when <see cref="ActiveRun"/> changes.</summary>
+    public event EventHandler? ActiveRunChanged;
 
     /// <summary>Raised when economy data changed (refresh, rename, an advance): open panels re-query.</summary>
     public event EventHandler? DataChanged;

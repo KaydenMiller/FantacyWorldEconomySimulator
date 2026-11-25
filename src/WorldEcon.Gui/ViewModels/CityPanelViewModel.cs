@@ -62,10 +62,21 @@ public sealed class CityPanelViewModel : ObservableObject
         _selectOnMap = selectOnMap;
         _highlightRoute = highlightRoute;
         _centreOn = centreOn;
-        _query = query ?? (session.Path is { } path ? (id, ct) => SettlementDetailsQuery.RunAsync(path, id, ct) : null);
-        _list = list ?? (session.Path is { } p ? () => SettlementDetailsQuery.ListAsync(p) : null);
+        // The run is looked up at call time: a panel made before Play reads through the run while it is open.
+        _query = query ?? (session.Path is { } path
+            ? (id, ct) => session.ActiveRun is { } run ? run.SettlementDetailsAsync(id, ct) : SettlementDetailsQuery.RunAsync(path, id, ct)
+            : null);
+        _list = list ?? (session.Path is { } p
+            ? () => session.ActiveRun is { } run ? run.SettlementListAsync() : SettlementDetailsQuery.ListAsync(p)
+            : null);
         _session.DataChanged += OnDataChanged;
+        _session.ActiveRunChanged += OnActiveRunChanged;
     }
+
+    /// <summary>The Refresh button is enabled: not while a simulation run is open (the time controls re-read the panels).</summary>
+    public bool CanRefresh => _session.ActiveRun is null;
+
+    private void OnActiveRunChanged(object? sender, EventArgs e) => Raise(nameof(CanRefresh));
 
     /// <summary>Raised when the user asks to open this city in its own window.</summary>
     public event EventHandler? PopOutRequested;
@@ -154,7 +165,10 @@ public sealed class CityPanelViewModel : ObservableObject
     /// The Refresh button: raises <see cref="WorldSession.DataChanged"/> once, so the caravans and every open panel
     /// (this one included) are read again.
     /// </summary>
-    public void RefreshAll() => _session.RaiseDataChanged();
+    public void RefreshAll()
+    {
+        if (CanRefresh) _session.RaiseDataChanged();
+    }
 
     /// <summary>Stops following the session (the panel is closed or the world replaced).</summary>
     public void Detach()
@@ -162,6 +176,7 @@ public sealed class CityPanelViewModel : ObservableObject
         _attached = false;
         _request++;
         _session.DataChanged -= OnDataChanged;
+        _session.ActiveRunChanged -= OnActiveRunChanged;
     }
 
     private void OnDataChanged(object? sender, EventArgs e)

@@ -1,13 +1,16 @@
-using WorldEcon.Engine.Logging;
+using Microsoft.EntityFrameworkCore;
+using WorldEcon.Domain.Geography;
+using WorldEcon.Persistence;
 using WorldEcon.SharedKernel;
 
 namespace WorldEcon.Engine;
 
 /// <summary>
 /// The core loop that advances in-world time and runs each cadence-gated phase whose cadence divides
-/// the new tick. It skips straight to the next phase-due boundary rather than stepping every minute,
-/// and persists + resets the change tracker at each boundary so long advances stay fast. Determinism
-/// comes from the fixed phase order plus seeded RNG and stable entity ordering inside phases.
+/// the new tick. Each advance is an <see cref="EngineRun"/>: one transaction, stepped to the target and
+/// committed at the end (see that type for the skip-ahead loop and the save discipline). Phases run in a
+/// fixed order; runs are not bit-for-bit repeatable yet, because rows created during a run get random ids
+/// and some phases visit rows in id order (see "Seeded entity IDs" in the roadmap).
 /// </summary>
 public sealed class TickEngine : ITickEngine
 {
@@ -30,92 +33,62 @@ public sealed class TickEngine : ITickEngine
         _phases = ordered;
     }
 
+    /// <summary>
+    /// Advances <paramref name="ctx"/>'s world by <paramref name="ticks"/> as one run (<see cref="BeginRunAsync(SimulationContext, CancellationToken)"/>):
+    /// all of it is committed, or none of it is when it fails.
+    /// </summary>
     public async Task AdvanceAsync(SimulationContext ctx, long ticks)
     {
         ArgumentNullException.ThrowIfNull(ctx);
         if (ticks < 0)
             throw new ArgumentOutOfRangeException(nameof(ticks), ticks, "Cannot advance a negative number of ticks.");
 
-        long finalTick = ctx.World.CurrentTick.Value + ticks;
+        await using var run = await BeginRunAsync(ctx);
+        await run.StepToAsync(new Tick(run.Context.World.CurrentTick.Value + ticks));
+        await run.EndAsync();
+    }
 
-        // Two things make a long advance fast:
-        //  1. Skip-ahead loop — jump straight to the next tick any phase is due (capped at the final
-        //     tick) instead of stepping every minute. Phases only ever run on cadence boundaries, so
-        //     this is identical to a per-minute walk but does O(boundaries) work, not O(ticks).
-        //  2. Change-tracking discipline — EF's automatic DetectChanges runs on *every* query and is
-        //     O(tracked entities); across thousands of days the tracked graph (work orders, caravans,
-        //     log events, …) grows and turns the advance quadratic. We turn auto-detect off (phases
-        //     read in-memory mutated state directly and use Local-membership, neither of which needs
-        //     it), DetectChanges manually right before each save, and periodically save+clear to batch
-        //     fsyncs and bound memory. Entities reference each other by raw id (no EF navigations), so
-        //     clearing is safe; we only re-attach the World so its clock keeps persisting.
-        var tracker = ctx.Db.ChangeTracker;
-        bool prevAutoDetect = tracker.AutoDetectChangesEnabled;
-        tracker.AutoDetectChangesEnabled = false;
+    /// <summary>
+    /// Begins a run on <paramref name="db"/>: the transaction first (SQLite <c>BEGIN IMMEDIATE</c>, so no other writer
+    /// can change the file between the load and the commit), then the world is loaded inside it. Joins a transaction
+    /// already open on <paramref name="db"/>.
+    /// </summary>
+    public async Task<EngineRun> BeginRunAsync(WorldDbContext db, WorldId worldId, CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
         try
         {
-            const long saveIntervalTicks = 90 * Tick.DefaultMinutesPerDay; // ~quarter-year batches
-            long lastSaveTick = ctx.World.CurrentTick.Value;
-            // Money-supply snapshots roll up on calendar month rollover (calendar-correct for variable
-            // month lengths) plus one at end of advance. Seed from the starting month so we snapshot
-            // when the month actually changes, not immediately.
-            int lastMonthKey = MonthKey(ctx, ctx.World.CurrentTick);
-
-            while (ctx.World.CurrentTick.Value < finalTick)
-            {
-                long current = ctx.World.CurrentTick.Value;
-
-                long nextDue = finalTick;
-                foreach (var phase in _phases)
-                {
-                    long cadence = phase.CadenceTicks;
-                    long due = (current / cadence + 1) * cadence; // smallest multiple of cadence strictly > current
-                    if (due < nextDue)
-                        nextDue = due;
-                }
-
-                var boundary = new Tick(nextDue);
-                ctx.World.AdvanceTo(boundary);
-
-                foreach (var phase in _phases)
-                {
-                    if (nextDue % phase.CadenceTicks == 0)
-                        await phase.ExecuteAsync(ctx, boundary);
-                }
-
-                int monthKey = MonthKey(ctx, boundary);
-                if (monthKey != lastMonthKey)
-                {
-                    await ctx.Money.SnapshotAsync(boundary);
-                    lastMonthKey = monthKey;
-                }
-
-                if (nextDue - lastSaveTick >= saveIntervalTicks)
-                {
-                    tracker.DetectChanges();
-                    await ctx.Db.SaveChangesAsync();
-                    tracker.Clear();
-                    ctx.Db.Attach(ctx.World);
-                    lastSaveTick = nextDue;
-                }
-            }
-
-            await ctx.Money.SnapshotAsync(ctx.World.CurrentTick); // final data point for this advance
-            await LogRetention.PruneAsync(ctx.Db, ctx.World.Id, ctx.World.CurrentTick);
-            tracker.DetectChanges();
-            await ctx.Db.SaveChangesAsync();
+            var ctx = await SimulationContext.LoadAsync(db, worldId);
+            return new EngineRun(ctx, _phases, tx);
         }
-        finally
+        catch
         {
-            tracker.AutoDetectChangesEnabled = prevAutoDetect;
+            if (tx is not null) await tx.DisposeAsync();
+            throw;
         }
     }
 
-    /// <summary>A comparable key for the in-world month (year*100+month) — used to detect month rollover
-    /// for money-ledger snapshots, correct even when months have different lengths.</summary>
-    private static int MonthKey(SimulationContext ctx, Tick tick)
+    /// <summary>
+    /// Begins a run on an already loaded context: the transaction first (joining one already open on its database), then
+    /// the world row is reloaded so the run starts from the committed clock.
+    /// </summary>
+    public async Task<EngineRun> BeginRunAsync(SimulationContext ctx, CancellationToken ct = default)
     {
-        var d = ctx.Calendar.ToDate(tick);
-        return d.Year * 100 + d.Month;
+        ArgumentNullException.ThrowIfNull(ctx);
+        var db = ctx.Db;
+        var tx = db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync(ct) : null;
+        try
+        {
+            var entry = db.Entry(ctx.World);
+            if (entry.State == EntityState.Detached) db.Attach(ctx.World);
+            await entry.ReloadAsync(ct);
+            return new EngineRun(ctx, _phases, tx);
+        }
+        catch
+        {
+            if (tx is not null) await tx.DisposeAsync();
+            throw;
+        }
     }
 }

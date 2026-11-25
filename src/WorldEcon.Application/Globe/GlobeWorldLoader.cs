@@ -65,6 +65,12 @@ public sealed record LoadedGlobe(
     public RiverCourses? RiverCourses { get; init; }
 
     /// <summary>
+    /// True when the world's file is in WAL (write-ahead logging) mode, which simulation runs need (see
+    /// <see cref="WorldFileJournal"/>); false for an in-memory world or a file another program kept from switching.
+    /// </summary>
+    public bool TimeControlsAvailable { get; init; }
+
+    /// <summary>
     /// A loaded globe over an in-memory generation (tests, tools): tiles come from an <see cref="InMemoryTileBlockSource"/>.
     /// <paramref name="generated"/> must be the output of <see cref="WorldGenerator.Generate"/>.
     /// </summary>
@@ -183,9 +189,15 @@ public static class GlobeWorldLoader
         return (world, stored);
     }
 
-    /// <summary>Loads the world, layers with areas, region summary, lakes, settlements and recorded settings from a database file; tiles load on demand through <see cref="LoadedGlobe.Tiles"/>.</summary>
+    /// <summary>
+    /// Loads the world, layers with areas, region summary, lakes, settlements and recorded settings from a database file;
+    /// tiles load on demand through <see cref="LoadedGlobe.Tiles"/>. The file is first switched to WAL mode (before any
+    /// connection of the loader or the tile source is open, since the switch needs the file to itself);
+    /// <see cref="LoadedGlobe.TimeControlsAvailable"/> says whether that succeeded.
+    /// </summary>
     public static async Task<LoadedGlobe> LoadAllAsync(string dbPath, CancellationToken ct = default)
     {
+        var wal = await WorldFileJournal.TryEnableWalAsync(dbPath, ct);
         await using var ctx = Open(dbPath);
         var (world, stored) = await LoadStoredAsync(ctx, ct);
         var settlements = await LoadSettlementsAsync(ctx, world.Id, ct);
@@ -193,6 +205,6 @@ public static class GlobeWorldLoader
         var nodes = await LoadNodesAsync(ctx, world.Id, ct);
         return new LoadedGlobe(world, stored.Layers, stored.Settings, stored.GeneratorVersion, settlements,
             stored.Regions, stored.Lakes, stored.TileGrid, new SqliteTileBlockSource(dbPath))
-        { Imagery = stored.Imagery, RiverCourses = stored.RiverCourses, Routes = routes, Nodes = nodes };
+        { Imagery = stored.Imagery, RiverCourses = stored.RiverCourses, Routes = routes, Nodes = nodes, TimeControlsAvailable = wal };
     }
 }

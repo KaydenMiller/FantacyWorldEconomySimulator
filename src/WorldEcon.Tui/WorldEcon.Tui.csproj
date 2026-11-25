@@ -18,4 +18,7 @@
     <ProjectReference Include="..\WorldEcon.Seeding\WorldEcon.Seeding.csproj" />
     <ProjectReference Include="..\WorldEcon.Domain\WorldEcon.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WorldEcon.Tui.Tests.Unit" />
+  </ItemGroup>
 </Project>

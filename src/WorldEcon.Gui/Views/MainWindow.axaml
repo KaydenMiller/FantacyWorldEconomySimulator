@@ -87,6 +87,11 @@
       </StackPanel>
     </Border>
 
+    <!-- Time bar of the open world (hidden without one and in tuning mode). -->
+    <Panel DockPanel.Dock="Top" IsVisible="{Binding HasWorld}">
+      <v:TimeBar Name="TimeBar" DataContext="{Binding Time}" />
+    </Panel>
+
     <Border DockPanel.Dock="Top" Padding="8,4" Background="#151925">
       <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding HasWorld}">
         <TextBlock Name="ViewName" Text="{Binding LevelName, StringFormat='{}{0} View'}" VerticalAlignment="Center" FontWeight="SemiBold" MinWidth="96" />

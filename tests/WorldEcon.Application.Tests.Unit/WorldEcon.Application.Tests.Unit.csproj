@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\WorldEcon.Application\WorldEcon.Application.csproj" />
     <ProjectReference Include="..\..\src\WorldEcon.Persistence\WorldEcon.Persistence.csproj" />
+    <ProjectReference Include="..\..\src\WorldEcon.Seeding\WorldEcon.Seeding.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- No patched version of SQLitePCLRaw.lib.e_sqlite3 exists yet; 2.1.11 is the latest release.

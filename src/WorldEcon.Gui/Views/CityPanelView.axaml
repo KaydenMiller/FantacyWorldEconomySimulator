@@ -18,7 +18,7 @@
     <StackPanel DockPanel.Dock="Top" Spacing="4">
       <Grid ColumnDefinitions="*,Auto,Auto">
         <TextBox Name="CitySearch" Text="{Binding SearchText}" PlaceholderText="Search settlements…" />
-        <Button Name="CityRefresh" Grid.Column="1" Margin="6,0,0,0" Content="Refresh" Click="OnRefresh" />
+        <Button Name="CityRefresh" Grid.Column="1" Margin="6,0,0,0" Content="Refresh" Click="OnRefresh" IsEnabled="{Binding CanRefresh}" />
         <Button Name="CityPopOut" Grid.Column="2" Margin="6,0,0,0" Content="Pop out" Click="OnPopOut" IsVisible="{Binding CanPopOut}" />
       </Grid>
       <ListBox Name="CitySearchResults" ItemsSource="{Binding SearchResults}" MaxHeight="160" IsVisible="{Binding HasSearchResults}" SelectionChanged="OnSearchChosen">

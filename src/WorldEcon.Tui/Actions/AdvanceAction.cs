@@ -7,6 +7,14 @@ namespace WorldEcon.Tui.Actions;
 /// M=month, y=year (case-sensitive: m≠M). A bare integer is treated as raw ticks (minutes).</summary>
 public sealed class AdvanceAction : IGlobalAction
 {
+    private readonly Func<TickEngine> _engineFactory;
+
+    /// <summary>Advances with the standard phases.</summary>
+    public AdvanceAction() : this(() => new TickEngine(StandardPhases.All())) { }
+
+    /// <summary>Advances with the engine <paramref name="engineFactory"/> makes (tests).</summary>
+    internal AdvanceAction(Func<TickEngine> engineFactory) => _engineFactory = engineFactory;
+
     public char Key => 'a';
     public string Label => "Advance";
 
@@ -26,8 +34,19 @@ public sealed class AdvanceAction : IGlobalAction
             return;
         }
 
-        var sim = await SimulationContext.LoadAsync(ctx.Db, ctx.World.Id);
-        await new TickEngine(StandardPhases.All()).AdvanceAsync(sim, ticks);
+        try
+        {
+            var sim = await SimulationContext.LoadAsync(ctx.Db, ctx.World.Id);
+            await _engineFactory().AdvanceAsync(sim, ticks);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The advance is one transaction: it was rolled back and the context's change tracker cleared, so the
+            // world is re-read to drop the abandoned clock.
+            await ctx.ReloadWorldAsync();
+            await ui.ShowMessageAsync("Advance failed", [ex.Message, "Nothing was saved."]);
+            return;
+        }
 
         await ctx.ReloadWorldAsync();
 

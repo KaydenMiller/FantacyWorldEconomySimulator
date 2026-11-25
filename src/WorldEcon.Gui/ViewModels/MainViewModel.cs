@@ -51,6 +51,7 @@ public sealed class MainViewModel : ObservableObject
     private CaravanLayer? _caravans;
     private string? _hoverText;
     private NodeNameEditor? _nodeEditor;
+    private TimeControlsViewModel? _time;
     private CityPanelViewModel? _city;
     private int _caravanRequest;
     private PanelWindows _windows = new(null);
@@ -149,6 +150,20 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public bool HasNodeEditor => _nodeEditor is not null;
+
+    /// <summary>The time bar of the open world; null without a world.</summary>
+    public TimeControlsViewModel? Time
+    {
+        get => _time;
+        private set => Set(ref _time, value);
+    }
+
+    /// <summary>Tests: replaces the time bar (for example one over a scripted run).</summary>
+    internal void ReplaceTime(TimeControlsViewModel time)
+    {
+        _time?.Dispose();
+        Time = time;
+    }
 
     /// <summary>Tooltip text for the caravan, settlement or node under the pointer; null when none.</summary>
     public string? HoverText
@@ -291,8 +306,19 @@ public sealed class MainViewModel : ObservableObject
     /// </summary>
     public bool CanZoomToRegion => _map is { Level: not MapLevel.Detail, Selected: { Level: MapLevel.Globe or MapLevel.Region } };
 
-    /// <summary>File → Open and File → New world are enabled (not while a load or seeding runs).</summary>
-    public bool CanUseFileActions => !_isBusy;
+    /// <summary>File → Open, File → New world and tuning are enabled (not while a load or seeding runs, nor while a simulation run is open).</summary>
+    public bool CanUseFileActions => !_isBusy && !IsTimeRunning;
+
+    /// <summary>A simulation run is open on the world's file (<see cref="WorldSession.ActiveRun"/>).</summary>
+    public bool IsTimeRunning => _session?.ActiveRun is not null;
+
+    private void OnActiveRunChanged(object? sender, EventArgs e)
+    {
+        if (!ReferenceEquals(sender, _session)) return;
+        Raise(nameof(IsTimeRunning));
+        Raise(nameof(CanUseFileActions));
+        _nodeEditor?.RunStateChanged();
+    }
 
     public string DetailsTitle
     {
@@ -410,8 +436,14 @@ public sealed class MainViewModel : ObservableObject
         var map = _map;
         // A copy per update: the render thread draws from options captured earlier while the layer is rewritten here.
         _caravans.Changed += (_, _) => map.SetCaravans(_caravans?.OnRoute.ToArray());
-        if (old is not null) old.DataChanged -= OnDataChanged;
+        if (old is not null)
+        {
+            old.DataChanged -= OnDataChanged;
+            old.ActiveRunChanged -= OnActiveRunChanged;
+        }
+
         session.DataChanged += OnDataChanged;
+        session.ActiveRunChanged += OnActiveRunChanged;
         _windows.CloseAll(); // pop-outs of the old world close before it is disposed
         _city?.Detach();
         City = NewCityPanel(session);
@@ -419,9 +451,13 @@ public sealed class MainViewModel : ObservableObject
         var city = _city;
         _city.PopOutRequested += (_, _) => { if (city.SettlementId is { } id) OpenSettlementInWindow(id); };
         CaravansLoaded = RefreshCaravansAsync();
+        _time?.Dispose();
+        Time = new TimeControlsViewModel(this, session);
         AreaDetailsTitle = "No area selected";
         AreaDetailRows = [];
         Raise(nameof(HasWorld));
+        Raise(nameof(IsTimeRunning));
+        Raise(nameof(CanUseFileActions));
         Raise(nameof(ShowsMap));
         ShowNothing();
         RaiseMapState();
@@ -554,7 +590,8 @@ public sealed class MainViewModel : ObservableObject
     public void ReportUnexpected(string context, Exception ex) => ReportError(context, ex);
 
     /// <summary>
-    /// Re-reads the caravans of the open world from its file (worker thread) and places them at the tick read with them.
+    /// Re-reads the caravans of the open world from its file (worker thread), or through <see cref="WorldSession.ActiveRun"/>
+    /// while a simulation run is open, and places them at the tick read with them.
     /// Does nothing for a world without a file. Errors go to the status bar and error text.
     /// </summary>
     public async Task RefreshCaravansAsync()
@@ -563,7 +600,10 @@ public sealed class MainViewModel : ObservableObject
         var request = ++_caravanRequest;
         try
         {
-            var result = await session.Track(Task.Run(() => CaravanQuery(path)));
+            // Looked up at call time: while a run is open the caravans are read through it (the file shows the pre-run state).
+            var result = session.ActiveRun is { } run
+                ? await session.Track(run.CaravanPositionsAsync())
+                : await session.Track(Task.Run(() => CaravanQuery(path)));
             // Another world replaced this one, or a later refresh was started: this result is stale.
             if (!ReferenceEquals(session, _session) || session.IsClosed || request != _caravanRequest) return;
             if (result.IsError)
@@ -573,11 +613,33 @@ public sealed class MainViewModel : ObservableObject
             }
 
             layer.Load(result.Value);
+            RefreshSelectedCaravan(session, layer);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             if (ReferenceEquals(session, _session)) ReportError("Could not load caravans", ex);
         }
+    }
+
+    /// <summary>Delivered caravan note in Details (the caravan left the map with the last read).</summary>
+    public const string DeliveredText = "Delivered — no longer on the map";
+
+    /// <summary>
+    /// After a caravan read: a selected caravan's details show its new position, or, when it is no longer among the
+    /// undelivered caravans, keep its selection and say it was delivered.
+    /// </summary>
+    private void RefreshSelectedCaravan(WorldSession session, CaravanLayer layer)
+    {
+        if (_map?.SelectedObject is not { Kind: MapObjectKind.Caravan } selected) return;
+        if (layer.Caravan(selected.Id) is { } c)
+        {
+            (DetailsTitle, DetailRows) = DetailFormatter.Caravan(c, layer, session);
+            return;
+        }
+
+        if (DetailRows.Any(r => r.Value == DeliveredText)) return;
+        DetailRows = [new DetailRow("Status", DeliveredText), .. DetailRows];
+        _map.HighlightedRoute = null;
     }
 
     /// <summary>Reads the caravans of a world file (tests replace it with a stub).</summary>
@@ -884,14 +946,23 @@ public sealed class MainViewModel : ObservableObject
         _detailsRequest++;
         _caravans = null;
         NodeEditor = null;
-        if (old is not null) old.DataChanged -= OnDataChanged;
+        if (old is not null)
+        {
+            old.DataChanged -= OnDataChanged;
+            old.ActiveRunChanged -= OnActiveRunChanged;
+        }
+
         _windows.CloseAll();
         _city?.Detach();
         City = null;
+        _time?.Dispose();
+        Time = null;
         Map = null;
         Session = null;
         Areas = AreasViewModel.Empty;
         Raise(nameof(HasWorld));
+        Raise(nameof(IsTimeRunning));
+        Raise(nameof(CanUseFileActions));
         Raise(nameof(ShowsMap));
         ShowNothing();
         RaiseMapState();

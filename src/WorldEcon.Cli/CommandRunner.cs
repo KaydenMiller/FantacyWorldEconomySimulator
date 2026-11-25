@@ -152,8 +152,11 @@ internal static class CommandRunner
             shops = await ctx.Shops.CountAsync();
         }
 
-        total.Stop();
         SqliteConnection.ClearAllPools();
+        // The desktop app's time controls need WAL mode (EF Core usually creates the file in it already).
+        if (!await WorldFileJournal.TryEnableWalAsync(path))
+            Console.Error.WriteLine("Warning: could not switch the file to WAL mode; the desktop app will try again when it opens it.");
+        total.Stop();
         Console.WriteLine($"Created world '{world.Name}' (ruleset {world.RulesetVersion}, seed {world.Seed}) at {path}");
         Console.WriteLine($"  Settlements: {settlements}");
         Console.WriteLine($"  Goods:       {goods}");

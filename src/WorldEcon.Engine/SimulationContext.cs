@@ -11,7 +11,8 @@ namespace WorldEcon.Engine;
 /// <summary>
 /// The live simulation state handed to every phase within an advance. The SQLite-backed
 /// <see cref="WorldDbContext"/> is the authoritative world state (architecture decision):
-/// phases load/mutate tracked entities, and the engine saves once per advance.
+/// phases load/mutate tracked entities, and the engine saves at the end of every step of a run, all inside the run's
+/// one transaction (<see cref="EngineRun"/>), so nothing is committed until the run ends.
 /// </summary>
 public sealed class SimulationContext
 {
@@ -30,8 +31,8 @@ public sealed class SimulationContext
     public IRngStreams Rng { get; }
     public CalendarSystem Calendar { get; }
 
-    /// <summary>The log-event writer for this advance. Phases emit through this; the engine's single
-    /// end-of-advance SaveChanges persists the rows.</summary>
+    /// <summary>The log-event writer for this advance. Phases emit through this; the engine's per-step saves
+    /// write the rows inside the run's transaction.</summary>
     public LogEventEmitter Log { get; }
 
     /// <summary>The money-supply ledger. Phases record currency flows by channel; the engine writes
